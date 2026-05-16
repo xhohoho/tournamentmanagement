@@ -77,7 +77,7 @@ export default function Home() {
           ))}
         </nav>
 
-        <main className="flex-1">
+        <main className="flex-1 flex-grow">
           <div className={activeTab === 'players' ? 'block' : 'hidden'}><PlayersTab /></div>
           <div className={activeTab === 'teams' ? 'block' : 'hidden'}><TeamsTab /></div>
           <div className={activeTab === 'bracket' ? 'block' : 'hidden'}><BracketTab /></div>
