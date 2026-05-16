@@ -8,6 +8,7 @@ import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
 import { MapsTab } from '@/components/MapsTab';
 import type { TabId } from '@/lib/types';
+import Head from 'next/head';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'players', icon: '👥', label: 'Players' },
@@ -40,14 +41,18 @@ export default function Home() {
   }
 
   return (
-    <div className="relative min-h-screen">
+    <>
+      <Head>
+        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+      </Head>
+      <div className="relative min-h-screen">
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_20%_10%,rgba(77,124,255,0.07)_0%,transparent_70%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_80%_90%,rgba(255,61,90,0.06)_0%,transparent_70%)]" />
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        <header className="flex items-center justify-between px-6 py-3.5 bg-[rgba(15,15,26,0.9)] border-b border-[#252538] backdrop-blur-xl sticky top-0 z-40">
+        <header className="flex items-center justify-between px-6 py-[14px] bg-[rgba(15,15,26,0.9)] border-b border-[#252538] blur-[12px] sticky top-0 z-40">
           <div className="font-['Bebas_Neue'] text-3xl tracking-widest bg-gradient-to-r from-[#ff3d5a] to-[#4d7cff] bg-clip-text text-transparent">
             ⚔ TOURNEY
           </div>
