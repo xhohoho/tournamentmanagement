@@ -47,7 +47,7 @@ export default function Home() {
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        <header className="flex items-center justify-between px-6 py-3.5 bg-[rgba(15,15,26,0.9)] border-b border-[#252538] backdrop-blur-xl sticky top-0 z-40">
+        <header className="flex items-center justify-between px-4 py-3 md:px-6 md:py-3.5 bg-[rgba(15,15,26,0.9)] border-b border-[#252538] backdrop-blur-xl sticky top-0 z-40">
           <div className="font-['Bebas_Neue'] text-3xl tracking-widest bg-gradient-to-r from-[#ff3d5a] to-[#4d7cff] bg-clip-text text-transparent">
             ⚔ TOURNEY
           </div>
@@ -60,11 +60,11 @@ export default function Home() {
           </button>
         </header>
 
-        <nav className="flex bg-[#0f0f1a] border-b border-[#252538] overflow-x-auto">
+        <nav className="flex flex-col md:flex-row bg-[#0f0f1a] border-b border-[#252538] overflow-x-auto px-4>
           {TABS.map(tab => (
             <button
               key={tab.id}
-              className={`flex items-center gap-1.5 px-5 py-3.5 font-['DM_Mono'] text-xs tracking-widest uppercase border-b-2 transition-all whitespace-nowrap flex-shrink-0 cursor-pointer ${activeTab === tab.id ? 'border-[#4d7cff] text-[#4d7cff] bg-[rgba(77,124,255,0.06)]' : 'border-transparent text-[#7878a0] hover:text-[#dde0f0] hover:bg-[rgba(255,255,255,0.03)]'}`}
+              className={`flex items-center gap-1.5 px-4 py-3 md:px-5 md:py-3.5 font-['DM_Mono'] text-xs tracking-widest uppercase border-b-2 transition-all whitespace-nowrap w-full md:w-auto cursor-pointer ${activeTab === tab.id ? 'border-[#4d7cff] text-[#4d7cff] bg-[rgba(77,124,255,0.06)]' : 'border-transparent text-[#7878a0] hover:text-[#dde0f0] hover:bg-[rgba(255,255,255,0.03)]'}`}
               onClick={() => setActiveTab(tab.id)}
             >
               {tab.icon} {tab.label}
