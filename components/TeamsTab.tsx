@@ -67,11 +67,12 @@ function AnimatedSlotName({ names }: { names: string[] }) {
 }
 
 export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
-  const { roster, teams, teamMode, isAdmin, formTeams, resetTeams, setTeamMode } = useTourney();
+  const { roster, teams, teamMode, isAdmin, formTeams, resetTeams, setTeamMode, assignLeader } = useTourney();
   const [leaders, setLeaders] = useState<string[]>([]);
   const [animating, setAnimating] = useState(false);
   const [revealedCount, setRevealedCount] = useState(0);
   const [err, setErr] = useState('');
+  const [leaderAssignments, setLeaderAssignments] = useState<Record<string, string>>({});
 
   const n = Math.floor(roster.length / 5);
   const slots = n > 0 ? n : Math.max(2, Math.ceil(10 / 5));
@@ -294,7 +295,58 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
               </h2>
 
               {teams.length > 0 ? (
-                <TeamsGrid teams={teams} />
+                <div className="space-y-4">
+                  <TeamsGrid teams={teams} />
+                  {teamMode === 'random' && isAdmin && (
+                    <div className="t-surface border t-border rounded-2xl p-5">
+                      <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">
+                        Assign Leaders
+                      </h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {teams.map(team => (
+                          <div
+                            key={team.name}
+                            className="t-elevated border t-border rounded-xl p-3.5"
+                            style={{ borderColor: team.color }}
+                          >
+                            <h4
+                              className="font-['Bebas_Neue'] text-base tracking-widest mb-2"
+                              style={{ color: team.color }}
+                            >
+                              {team.name}
+                            </h4>
+                            <select
+                              className="w-full rounded-lg px-3 py-2 text-sm outline-none border transition-colors"
+                              style={{
+                                background: 'var(--bg-hover)',
+                                borderColor: leaderAssignments[team.name] ? team.color : 'var(--border-mid)',
+                                color: 'var(--text)',
+                                cursor: 'pointer'
+                              }}
+                              value={leaderAssignments[team.name] || ''}
+                              onChange={e => {
+                                const newAssignments = { ...leaderAssignments, [team.name]: e.target.value };
+                                setLeaderAssignments(newAssignments);
+                                if (e.target.value) {
+                                  assignLeader(team.name, e.target.value);
+                                }
+                              }}
+                              onFocus={e => (e.currentTarget.style.borderColor = team.color)}
+                              onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-mid)')}
+                            >
+                              <option value="">— Pick Leader —</option>
+                              {roster.map(p => (
+                                <option key={p} value={p}>
+                                  {p}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {Array.from({ length: slots }, (_, i) => (

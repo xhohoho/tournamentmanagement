@@ -171,6 +171,19 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     return {};
   };
 
+  const assignLeader = async (teamId: string, playerName: string) => {
+    const res = await fetch('/api/teams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignments: { [teamId]: playerName } })
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    // Refresh local state to reflect new leader assignment
+    await refresh();
+    return {};
+  };
+
   const resetTeams = async () => {
     await fetch('/api/teams', { method: 'DELETE' });
     setTeams([]);

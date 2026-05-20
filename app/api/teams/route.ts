@@ -9,10 +9,41 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { teamMode, leaders } = await req.json();
+  const { teamMode, leaders, assignments } = await req.json();
   const state = await getState();
   const roster = state.roster;
 
+  // -------------------------------------------------------------------------
+  // New use‑case: assign leaders to already‑created teams (post‑random mode)
+  // -------------------------------------------------------------------------
+  if (assignments && typeof assignments === 'object' && !Array.isArray(assignments)) {
+    if (!isAdminLoggedIn()) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    // Build a map of teamName → leaderName
+    const leaderAssignments = { ...assignments };
+
+    const stateCopy = await getState();
+    const currentTeams = stateCopy.teams || [];
+
+    // Update the `leader` field of matching teams
+    const updatedTeams = currentTeams.map(team => {
+      if (leaderAssignments[team.name]) {
+        return { ...team, leader: leaderAssignments[team.name] };
+      }
+      return team;
+    });
+
+    // Persist the updated teams
+    await updateState(s => ({ ...s, teams: updatedTeams }));
+
+    return NextResponse.json({ teams: updatedTeams });
+  }
+
+  // -------------------------------------------------------------------------
+  // Existing behaviour: (re)create teams based on roster & mode
+  // -------------------------------------------------------------------------
   if (roster.length < 10 || roster.length % 5 !== 0) {
     return NextResponse.json({ error: 'Need 10+ roster players in multiples of 5' }, { status: 400 });
   }
