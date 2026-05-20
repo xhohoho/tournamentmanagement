@@ -108,6 +108,11 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
         enqueueSlot(teamIdx, player);
       });
     });
+    // Clear animatingSlots after 2 seconds to stop animation
+    setTimeout(() => {
+      setAnimatingSlots([]);
+      setAnimating(false);
+    }, 2000);
   };
 
   const enqueueSlot = (teamIdx: number, playerName: string) => {
@@ -308,10 +313,15 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
   );
 }
 
-function TeamsGrid({ teams, isAdmin, assignLeader }: { teams: ReturnType<typeof useTourney>['teams']; isAdmin: boolean; assignLeader: (teamName: string, player: string) => void }) {
+function TeamsGrid({ teams, isAdmin, assignLeader, animatingSlots }: {
+  teams: ReturnType<typeof useTourney>['teams'];
+  isAdmin: boolean;
+  assignLeader: (teamName: string, player: string) => void;
+  animatingSlots: {teamIdx: number, slotIdx: number, playerName: string}[]
+}) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
-      {teams.map((t) => (
+      {teams.map((t, teamIdx) => (
         <div
           key={t.name}
           className="rounded-xl border p-4"
@@ -326,15 +336,18 @@ function TeamsGrid({ teams, isAdmin, assignLeader }: { teams: ReturnType<typeof 
             <h3 className="font-['Bebas_Neue'] text-xl tracking-wide" style={{ color: t.color }}>{t.name}</h3>
           </div>
 
-          {t.members.map((m) => (
+          {t.members.map((m, slotIdx) => (
             <div
               key={m}
               className="flex items-center justify-between w-full py-1.5 font-['DM_Mono'] text-sm"
               style={{ color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)' }}
             >
               <span className="w-5">{m === t.leader ? '👑' : '·'}</span>
-              <div className="flex-1 truncate">{m}</div>
-
+              <div className="flex-1 truncate">
+                {animatingSlots.some(s => s.teamIdx === teamIdx && s.slotIdx === slotIdx && s.playerName === m) ? (
+                  <SlotMachine finalName={m} delay={slotIdx * 120} done={false} />
+                ) : m}
+              </div>
               {isAdmin && m !== t.leader && (
                 <button
                   onClick={() => {
