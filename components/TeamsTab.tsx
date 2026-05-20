@@ -54,7 +54,7 @@ export function TeamsTab() {
   useEffect(() => {
     if (revealing) {
       setShuffledPlayers(() => {
-        const players = [];
+        const players: {teamIdx: number; slotIdx: number}[] = [];
         teams.forEach((team, teamIdx) => {
           for (let slotIdx = 0; slotIdx < 5; slotIdx++) {
             players.push({ teamIdx, slotIdx });
