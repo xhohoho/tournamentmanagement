@@ -97,11 +97,18 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
   const handleForm = async () => {
     if (!isAdmin) return;
     setErr('');
-    setAnimating(true);
     setRevealedCount(0);
     setAnimatingSlots([]);
+    setAnimating(true); // Move this after reset but before formTeams
     const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
     if (result.error) { setErr(result.error); setAnimating(false); return; }
+    // If successful, enqueue each player insertion
+    const teamsWithSlots = result.teams || [];
+    teamsWithSlots.forEach((team, teamIdx) => {
+      team.members.forEach((player, slotIdx) => {
+        enqueueSlot(teamIdx, player);
+      });
+    });
   };
 
   const enqueueSlot = (teamIdx: number, playerName: string) => {
