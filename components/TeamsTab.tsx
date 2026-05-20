@@ -38,6 +38,7 @@ export function TeamsTab() {
   const [err, setErr] = useState('');
   const [revealing, setRevealing] = useState(false);
   const [shuffledPlayers, setShuffledPlayers] = useState<{teamIdx: number; slotIdx: number}[]>([]);
+  const [completed, setCompleted] = useState(false);
 
   // Total slots across all teams (5 per team)
   const totalSlots = teams.length * 5;
@@ -46,6 +47,7 @@ export function TeamsTab() {
   // Stop revealing once all slots are shown
   useEffect(() => {
     if (revealing && revealCount >= totalSlots && totalSlots > 0) {
+      setCompleted(true);
       setRevealing(false);
     }
   }, [revealing, revealCount, totalSlots]);
@@ -223,8 +225,7 @@ export function TeamsTab() {
                 <div key={t.name} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}>
                   <h3 className="font-['Bebas_Neue'] text-xl tracking-wide mb-3 pb-2 border-b" style={{ color: t.color, borderColor: 'var(--border)' }}>{t.name}</h3>
                   {t.members.map((m, slotIdx) => {
-                    const isAnimatingDone = !revealing && revealCount >= totalSlots && totalSlots > 0;
-                    const visible = isAnimatingDone
+                    const visible = completed
                       ? true
                       : revealing
                         ? isVisible(teamIdx, slotIdx)
