@@ -254,15 +254,15 @@ export function TeamsTab() {
               ))}
             </div>
           ) : (
-            // Preview — static empty slots, no animation
+            // Preview — empty slots matching team visual
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {Array.from({ length: previewSlots }, (_, i) => (
-                <div key={i} className="rounded-xl border-2 border-dashed p-4" style={{ borderColor: TEAM_COLORS[i % TEAM_COLORS.length] + '55' }}>
-                  <div className="font-['Bebas_Neue'] text-base tracking-widest mb-3" style={{ color: TEAM_COLORS[i % TEAM_COLORS.length] }}>Team {i + 1}</div>
+                <div key={i} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: TEAM_COLORS[i % TEAM_COLORS.length], borderTopWidth: 3 }}>
+                  <h3 className="font-['Bebas_Neue'] text-xl tracking-wide mb-3 pb-2 border-b" style={{ color: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: 'var(--border)' }}>Team {i + 1}</h3>
                   {Array.from({ length: 5 }, (__, j) => (
-                    <div key={j} className="flex items-center gap-2 py-1.5">
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: TEAM_COLORS[i % TEAM_COLORS.length] + '40' }} />
-                      <div className="h-2 rounded" style={{ width: `${50 + (j * 17 + i * 11) % 35}%`, background: TEAM_COLORS[i % TEAM_COLORS.length] + '30' }} />
+                    <div key={j} className="flex items-center justify-between py-1.5 font-['DM_Mono'] text-sm transition-all duration-200" style={{ opacity: 1 }}>
+                      <span className="w-5 shrink-0">·</span>
+                      <div className="flex-1 h-2 rounded" style={{ background: 'var(--bg-hover)' }} />
                     </div>
                   ))}
                 </div>
