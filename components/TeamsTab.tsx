@@ -37,7 +37,7 @@ export function TeamsTab() {
   const [leaders, setLeaders] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [revealing, setRevealing] = useState(false);
-  const [shuffledPlayers, setShuffledPlayers] = useState([]);
+  const [shuffledPlayers, setShuffledPlayers] = useState<{teamIdx: number; slotIdx: number}[]>([]);
 
   // Total slots across all teams (5 per team)
   const totalSlots = teams.length * 5;
