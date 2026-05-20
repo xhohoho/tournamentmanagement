@@ -133,7 +133,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
       {/* Animation overlay */}
       {animating && teams.length > 0 && (
         <div
-          className="fixed inset-0 z-50 backdrop-blur-xl flex flex-col items-center justify-center gap-6"
+          className=""
           style={{ background: 'rgba(8,8,16,0.95)' }}
         >
           <div className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent)' }}>
