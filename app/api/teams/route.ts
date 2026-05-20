@@ -6,7 +6,7 @@ import { shuffle, TEAM_COLORS } from '@/lib/utils';
 // Simple admin authorization – replace with your real logic
 function isAdminAuthorized(req: NextRequest): boolean {
   const secret = process.env.ADMIN_SECRET;
-  return secret && req.headers.get('X-Admin-Secret') === secret;
+  return !!secret && req.headers.get('X-Admin-Secret') === secret;
 }
 
 export async function GET() {
