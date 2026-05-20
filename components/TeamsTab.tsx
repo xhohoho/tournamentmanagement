@@ -223,9 +223,12 @@ export function TeamsTab() {
                 <div key={t.name} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}>
                   <h3 className="font-['Bebas_Neue'] text-xl tracking-wide mb-3 pb-2 border-b" style={{ color: t.color, borderColor: 'var(--border)' }}>{t.name}</h3>
                   {t.members.map((m, slotIdx) => {
-                    const visible = !revealing && revealCount === 0
-                      ? true  // already done, show all
-                      : isVisible(teamIdx, slotIdx);
+                    const isAnimatingDone = !revealing && revealCount >= totalSlots && totalSlots > 0;
+                    const visible = isAnimatingDone
+                      ? true
+                      : revealing
+                        ? isVisible(teamIdx, slotIdx)
+                        : false;
                     return (
                       <div
                         key={m}
