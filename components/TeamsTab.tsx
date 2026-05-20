@@ -73,6 +73,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
   const [revealedCount, setRevealedCount] = useState(0);
   const [err, setErr] = useState('');
   const [leaderAssignments, setLeaderAssignments] = useState<Record<string, string>>({});
+  const [animatingSlots, setAnimatingSlots] = useState<{teamIdx: number, slotIdx: number, playerName: string}[]>([]);
 
   const n = Math.floor(roster.length / 5);
   const slots = n > 0 ? n : Math.max(2, Math.ceil(10 / 5));
@@ -92,6 +93,17 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
     return roster.filter(p => !picked.includes(p));
   };
 
+  const resetTeams = async () => {
+    setErr('');
+    setAnimatingSlots([]);
+    setRevealedCount(0);
+    setLeaderAssignments({});
+    if (isAdmin) {
+      // Clear any pending animations and reset state
+      setAnimating(false);
+    }
+  };
+
   const handleForm = async () => {
     if (!isAdmin) return;
     setErr('');
@@ -101,21 +113,9 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
     if (result.error) { setErr(result.error); setAnimating(false); return; }
   };
 
-  // After teams arrive, stagger reveal
-  useEffect(() => {
-    if (!animating || !teams.length) return;
-    let count = 0;
-    const totalSlots = teams.reduce((acc, t) => acc + t.members.length, 0);
-    const iv = setInterval(() => {
-      count++;
-      setRevealedCount(count);
-      if (count >= totalSlots) {
-        clearInterval(iv);
-        setTimeout(() => setAnimating(false), 800);
-      }
-    }, 180);
-    return () => clearInterval(iv);
-  }, [animating, teams]);
+  const startSlotAnimation = (teamIdx: number, playerName: string) => {
+    setAnimatingSlots(prev => [...prev, { teamIdx, slotIdx: playerName.length, playerName }]);
+  };
 
   // Build flat slot list for animation
   const allSlots: { name: string; team: string; color: string; isLeader: boolean }[] = [];
