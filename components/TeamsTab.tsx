@@ -99,12 +99,13 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
     setErr('');
     setAnimating(true);
     setRevealedCount(0);
+    setAnimatingSlots([]);
     const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
     if (result.error) { setErr(result.error); setAnimating(false); return; }
   };
 
-  const startSlotAnimation = (teamIdx: number, playerName: string) => {
-    setAnimatingSlots(prev => [...prev, { teamIdx, slotIdx: playerName.length, playerName }]);
+  const enqueueSlot = (teamIdx: number, playerName: string) => {
+    setAnimatingSlots(prev => [...prev, { teamIdx, slotIdx: prev.filter(s => s.teamIdx === teamIdx).length, playerName }]);
   };
 
   // Build flat slot list for animation
@@ -130,43 +131,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
     <div className={`min-h-[calc(100vh-120px)] t-bg ${lightMode ? 'light' : ''}`}>
     <div className="max-w-6xl mx-auto px-6 py-8">
 
-      {/* Animation overlay */}
-      {animating && teams.length > 0 && (
-        <div
-          className=""
-          style={{ background: 'rgba(8,8,16,0.95)' }}
-        >
-          <div className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent)' }}>
-            FORMING TEAMS
-          </div>
-          <p className="font-['DM_Mono'] text-xs" style={{ color: 'var(--text-muted)' }}>Dealing players…</p>
-          <div className="flex flex-wrap gap-3 justify-center max-w-2xl px-4">
-            {allSlots.map((slot, i) => (
-              <div
-                key={i}
-                className="px-4 py-2.5 rounded-xl font-['DM_Mono'] text-sm border transition-all duration-300"
-                style={{
-                  borderColor: i < revealedCount ? (slot.isLeader ? 'var(--accent-gold)' : slot.color) : 'var(--border-mid)',
-                  color: i < revealedCount ? (slot.isLeader ? 'var(--accent-gold)' : slot.color) : 'var(--text-dim)',
-                  background: i < revealedCount
-                    ? (slot.isLeader ? 'rgba(255,176,32,0.08)' : `${slot.color}15`)
-                    : 'var(--bg-elevated)',
-                  transform: i < revealedCount ? 'scale(1) translateY(0)' : 'scale(0.9) translateY(8px)',
-                  opacity: i < revealedCount ? 1 : 0.3,
-                }}
-              >
-                {slot.isLeader ? '👑 ' : ''}
-                {i < revealedCount
-                  ? slot.name
-                  : <SlotMachine finalName={slot.name} delay={i * 120} done={i < revealedCount} />
-                }
-                <span className="ml-2 text-[10px] opacity-60">→ {slot.team}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
+      
       {/* Header */}
       <div className="mb-6">
         <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Team Formation</h1>
