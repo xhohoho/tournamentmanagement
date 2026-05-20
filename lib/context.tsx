@@ -189,7 +189,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   // —— FIXED OVERWRITE LAYER ——
   const assignLeader = async (teamId: string, playerName: string) => {
-    // 1. First, attempt to update the backend server standardly
     try {
       const res = await fetch('/api/teams', {
         method: 'POST',
@@ -199,27 +198,29 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       
       const data = await res.json();
       
-      if (res.ok && data.teams) {
-        setTeams(data.teams);
-        return {};
+      // If the server explicitly rejected it, return the backend message to the screen
+      if (!res.ok) {
+        return { error: data.error || 'Server rejected leader assignment.' };
       }
+      
+      // Successfully synchronized with database! Update real-time state values
+      setTeams(data.teams);
+      return {};
+      
     } catch (e) {
-      // Network failure or backend route missing, fall through to client-side backup
+      // FALLBACK: If the internet drops or server encounters a timeout block,
+      // update it locally so the admin doesn't see a broken interface.
+      setTeams(prevTeams =>
+        prevTeams.map(t => {
+          if (t.name === teamId) {
+            return { ...t, leader: playerName };
+          }
+          return t;
+        })
+      );
+      
+      return { error: 'Network failure. Leader assigned locally, but not saved to cloud database.' };
     }
-
-    // 2. CLIENT-SIDE BACKUP (For Fully Random Overwrites)
-    // If the backend returns 403 Forbidden or fails, bypass it and force update the local state
-    setTeams(prevTeams =>
-      prevTeams.map(t => {
-        // Match by team name (e.g., "Team 1")
-        if (t.name === teamId) {
-          return { ...t, leader: playerName };
-        }
-        return t;
-      })
-    );
-
-    return {};
   };
 
   const resetTeams = async () => {
