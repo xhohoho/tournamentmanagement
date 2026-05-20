@@ -219,7 +219,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     const res = await fetch('/api/bracket', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ elimMode: elimModeState }),
+      body: JSON.stringify({ elimMode }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
@@ -316,7 +316,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      players, roster, teamMode, teams, elimMode: elimModeState, bracket, maps, stageMaps,
+      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps,
       isAdmin, loading, setIsAdmin, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
