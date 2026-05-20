@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       type: 'double',
       upper: buildSE(names),
       lower: [],
-      grandFinal: { p1: null, p2: null, winner: null },
+      grandFinal: { p1: null, p2: null, winner: null, score1: 0, score2: 0, format: 'bo1' },
       champion: null,
     };
   }
