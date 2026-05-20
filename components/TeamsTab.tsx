@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import { useTourney } from '@/lib/context';
 import { TEAM_COLORS } from '@/lib/utils';
@@ -24,11 +23,21 @@ function useReveal(active: boolean, total: number, intervalMs = 180) {
   return count;
 }
 
+// Shuffle function for randomizing player order
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
 export function TeamsTab() {
   const { roster, teams, teamMode, isAdmin, formTeams, resetTeams, setTeamMode, assignLeader } = useTourney();
   const [leaders, setLeaders] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [revealing, setRevealing] = useState(false);
+  const [shuffledPlayers, setShuffledPlayers] = useState([]);
 
   // Total slots across all teams (5 per team)
   const totalSlots = teams.length * 5;
@@ -40,6 +49,21 @@ export function TeamsTab() {
       setRevealing(false);
     }
   }, [revealing, revealCount, totalSlots]);
+
+  // Generate shuffled player order when revealing starts
+  useEffect(() => {
+    if (revealing) {
+      setShuffledPlayers(() => {
+        const players = [];
+        teams.forEach((team, teamIdx) => {
+          for (let slotIdx = 0; slotIdx < 5; slotIdx++) {
+            players.push({ teamIdx, slotIdx });
+          }
+        });
+        return shuffle(players);
+      });
+    }
+  }, [revealing, teams]);
 
   const n = Math.floor(roster.length / 5);
   const previewSlots = n > 0 ? n : Math.max(2, Math.ceil(10 / 5));
@@ -63,12 +87,13 @@ export function TeamsTab() {
   const rosterOk = roster.length >= 10 && roster.length % 5 === 0;
 
   // Global slot index: team 0 slot 0 = 0, team 0 slot 1 = 1, team 1 slot 0 = 5, etc.
-  const isVisible = (teamIdx: number, slotIdx: number) =>
-    teamIdx * 5 + slotIdx < revealCount;
+  const isVisible = (teamIdx: number, slotIdx: number) => {
+    const player = shuffledPlayers.find(p => p.teamIdx === teamIdx && p.slotIdx === slotIdx);
+    return shuffledPlayers.indexOf(player) < revealCount;
+  };
 
   return (
     <div className="flex-1 flex flex-col w-full py-6 gap-5">
-
       <div>
         <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Team Formation</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">5 players per team · {isAdmin ? 'Admin controls below' : 'View only — admin required to edit'}</p>
@@ -161,7 +186,7 @@ export function TeamsTab() {
                         Team {i + 1}
                       </h4>
                       <select
-                        className="w-full rounded-lg px-2 py-1.5 text-sm outline-none border transition-colors cursor-pointer"
+                        className="w-full rounded-lg px-2 py-1.5 text-sm outline-not- border transition-colors cursor-pointer"
                         style={{ background: 'var(--bg-hover)', borderColor: 'var(--border-mid)', color: 'var(--text)' }}
                         value={leaders[i] ?? ''}
                         onChange={e => updateLeader(i, e.target.value)}
