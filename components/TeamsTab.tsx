@@ -1,11 +1,11 @@
 'use client';
-import { useState, useEffect } from 'react';
+
+import { useState, useEffect, useMemo } from 'react';
 import { useTourney } from '@/lib/context';
 import { TEAM_COLORS } from '@/lib/utils';
 
 // How many players have been "revealed" so far after form
-// revealCount goes 0 → total players, one per interval tick
-function useReveal(active: boolean, total: number, intervalMs = 180) {
+function useReveal(active: boolean, total: number, intervalMs = 120) {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
@@ -23,49 +23,44 @@ function useReveal(active: boolean, total: number, intervalMs = 180) {
   return count;
 }
 
-// Shuffle function for randomizing player order
-function shuffle<T>(array: T[]): T[] {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
 export function TeamsTab() {
   const { roster, teams, teamMode, isAdmin, formTeams, resetTeams, setTeamMode, assignLeader } = useTourney();
   const [leaders, setLeaders] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [revealing, setRevealing] = useState(false);
-  const [shuffledPlayers, setShuffledPlayers] = useState<{teamIdx: number; slotIdx: number}[]>([]);
-  const [completed, setCompleted] = useState(false);
 
   // Total slots across all teams (5 per team)
   const totalSlots = teams.length * 5;
   const revealCount = useReveal(revealing, totalSlots);
 
-  // Stop revealing once all slots are shown
+  // --- FIX: Map member names to a randomized reveal order index using useMemo ---
+  // This guarantees that every time teams change, we build a static, random reveal order.
+  const revealOrderMap = useMemo(() => {
+    if (teams.length === 0) return new Map<string, number>();
+
+    const allMembers = teams.flatMap(t => t.members);
+    const orderIndices = Array.from({ length: allMembers.length }, (_, i) => i);
+    
+    // Fisher-Yates shuffle on indices to maintain purity
+    for (let i = orderIndices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [orderIndices[i], orderIndices[j]] = [orderIndices[j], orderIndices[i]];
+    }
+
+    const map = new Map<string, number>();
+    allMembers.forEach((member, index) => {
+      map.set(member, orderIndices[index]);
+    });
+
+    return map;
+  }, [teams]);
+
+  // Turn off revealing state once everything is uncovered
   useEffect(() => {
     if (revealing && revealCount >= totalSlots && totalSlots > 0) {
-      setCompleted(true);
       setRevealing(false);
     }
   }, [revealing, revealCount, totalSlots]);
-
-  // Generate shuffled player order when revealing starts
-  useEffect(() => {
-    if (revealing) {
-      setShuffledPlayers(() => {
-        const players: {teamIdx: number; slotIdx: number}[] = [];
-        teams.forEach((team, teamIdx) => {
-          for (let slotIdx = 0; slotIdx < 5; slotIdx++) {
-            players.push({ teamIdx, slotIdx });
-          }
-        });
-        return shuffle(players);
-      });
-    }
-  }, [revealing, teams]);
 
   const n = Math.floor(roster.length / 5);
   const previewSlots = n > 0 ? n : Math.max(2, Math.ceil(10 / 5));
@@ -80,19 +75,24 @@ export function TeamsTab() {
 
   const handleForm = async () => {
     setErr('');
+    // Safely turn off animation tracker before pulling fresh roster data
+    setRevealing(false);
     const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
     if (result.error) { setErr(result.error); return; }
-    // Trigger reveal animation after teams arrive
+    // Start animation cascade
     setRevealing(true);
   };
 
   const rosterOk = roster.length >= 10 && roster.length % 5 === 0;
 
-  // Global slot index: team 0 slot 0 = 0, team 0 slot 1 = 1, team 1 slot 0 = 5, etc.
-  const isVisible = (teamIdx: number, slotIdx: number) => {
-    const player = shuffledPlayers.find(p => p.teamIdx === teamIdx && p.slotIdx === slotIdx);
-    const idx = player ? shuffledPlayers.indexOf(player) : -1;
-    return idx < revealCount;
+  // --- FIX: Safe visibility check ---
+  const isVisible = (member: string) => {
+    // If we aren't explicitly animating right now, teams should be fully visible 
+    // (e.g. data loaded from context on component mount or view-only users)
+    if (!revealing && revealCount === 0) return true;
+    
+    const assignedIndex = revealOrderMap.get(member) ?? 0;
+    return assignedIndex < revealCount;
   };
 
   return (
@@ -111,7 +111,6 @@ export function TeamsTab() {
       <div className={`flex-1 flex flex-col gap-5 ${!isAdmin ? 'min-h-0' : ''}`}>
         {isAdmin && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 shrink-0">
-
             {/* Mode selector */}
             <div className="t-surface border t-border rounded-2xl p-5">
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">Formation Mode</h2>
@@ -189,7 +188,7 @@ export function TeamsTab() {
                         Team {i + 1}
                       </h4>
                       <select
-                        className="w-full rounded-lg px-2 py-1.5 text-sm outline-not- border transition-colors cursor-pointer"
+                        className="w-full rounded-lg px-2 py-1.5 text-sm outline-none border transition-colors cursor-pointer"
                         style={{ background: 'var(--bg-hover)', borderColor: 'var(--border-mid)', color: 'var(--text)' }}
                         value={leaders[i] ?? ''}
                         onChange={e => updateLeader(i, e.target.value)}
@@ -221,15 +220,12 @@ export function TeamsTab() {
 
           {teams.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {teams.map((t, teamIdx) => (
+              {teams.map((t) => (
                 <div key={t.name} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}>
                   <h3 className="font-['Bebas_Neue'] text-xl tracking-wide mb-3 pb-2 border-b" style={{ color: t.color, borderColor: 'var(--border)' }}>{t.name}</h3>
-                  {t.members.map((m, slotIdx) => {
-                    const visible = completed
-                      ? true
-                      : revealing
-                        ? isVisible(teamIdx, slotIdx)
-                        : false;
+                  {t.members.map((m) => {
+                    // Check visibility using the member name string key
+                    const visible = isVisible(m);
                     return (
                       <div
                         key={m}
@@ -258,7 +254,7 @@ export function TeamsTab() {
               ))}
             </div>
           ) : (
-            // Preview — empty slots matching team visual
+            {/* Preview UI */}
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {Array.from({ length: previewSlots }, (_, i) => (
                 <div key={i} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: TEAM_COLORS[i % TEAM_COLORS.length], borderTopWidth: 3 }}>
