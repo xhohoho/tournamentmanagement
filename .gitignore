@@ -41,3 +41,8 @@ yarn-error.log*
 next-env.d.ts
 
 test-results/
+
+# additional: generated runtime, secrets, caches
+/tmp
+/credentials.json
+/token.json
