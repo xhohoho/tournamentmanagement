@@ -25,6 +25,11 @@ function buildSE(names: string[], format: 'bo1' | 'bo3' = 'bo1'): BracketMatch[]
   return rounds;
 }
 
+// Build a 3rd-place match bracket (one extra match with the two semi-final losers)
+function buildThirdPlace(format: 'bo1' | 'bo3' = 'bo1'): BracketMatch {
+  return emptyMatch(format);
+}
+
 // Returns winner if score determines it (bo1: any win; bo3: first to 2)
 function resolveWinner(match: BracketMatch | GrandFinal): string | null {
   const target = match.format === 'bo3' ? 2 : 1;
@@ -69,7 +74,10 @@ export async function POST(req: NextRequest) {
   let bracket: Bracket;
 
   if (elimMode === 'single') {
-    bracket = { type: 'single', upper: buildSE(names), champion: null };
+    const upper = buildSE(names);
+    // If 4+ teams, add a 3rd place match (losers of semi-finals)
+    const thirdPlace = names.length >= 4 ? buildThirdPlace() : null;
+    bracket = { type: 'single', upper, thirdPlace: thirdPlace ?? undefined, champion: null };
   } else {
     bracket = {
       type: 'double',
@@ -138,11 +146,19 @@ export async function PATCH(req: NextRequest) {
   const loser = winner === match.p1 ? match.p2 : match.p1;
   match.winner = winner;
 
+  // Is this the semi-final round? (second-to-last round, each match feeds into the final)
+  const isSemiFinal = bracket.type === 'single' && ri === rounds.length - 2 && bracket.thirdPlace;
+
   // Propagate winner forward
   if (ri + 1 < rounds.length) {
     const s = Math.floor(mi / 2);
     if (mi % 2 === 0) rounds[ri + 1][s].p1 = winner;
     else rounds[ri + 1][s].p2 = winner;
+    // Drop semi-final loser into 3rd place match
+    if (isSemiFinal && loser && bracket.thirdPlace) {
+      if (mi % 2 === 0) bracket.thirdPlace.p1 = loser;
+      else bracket.thirdPlace.p2 = loser;
+    }
   } else {
     if (section === 'upper') {
       if (bracket.type === 'single') {
@@ -174,6 +190,22 @@ export async function PATCH(req: NextRequest) {
   if (bracket.type === 'double' && bracket.lower) autoByes(bracket.lower);
   if (bracket.grandFinal?.winner) bracket.champion = bracket.grandFinal.winner;
 
+  const next = await updateState(s => ({ ...s, bracket }));
+  return NextResponse.json({ bracket: next.bracket });
+}
+
+// Handle 3rd place score update
+export async function PUT(req: NextRequest) {
+  const { p1wins, p2wins } = await req.json();
+  const state = await getState();
+  const B = state.bracket;
+  if (!B || !B.thirdPlace) return NextResponse.json({ error: 'No 3rd place match' }, { status: 400 });
+  const bracket: Bracket = JSON.parse(JSON.stringify(B));
+  const tp = bracket.thirdPlace!;
+  tp.score1 = p1wins ?? tp.score1;
+  tp.score2 = p2wins ?? tp.score2;
+  const winner = resolveWinner(tp);
+  if (winner) tp.winner = winner;
   const next = await updateState(s => ({ ...s, bracket }));
   return NextResponse.json({ bracket: next.bracket });
 }

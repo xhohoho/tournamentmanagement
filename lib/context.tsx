@@ -32,8 +32,9 @@ interface TourneyContext {
 
   generateBracket: () => Promise<{ error?: string }>;
   updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
+  updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
   resetBracket: () => Promise<void>;
-  setElimMode: (mode: 'single' | 'double') => Promise<void>;
+  setElimMode: (mode: 'single' | 'double') => void;
 
   addMap: (name: string) => Promise<{ error?: string }>;
   removeMap: (name: string) => Promise<void>;
@@ -41,6 +42,8 @@ interface TourneyContext {
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
+
+  resetAll: () => Promise<void>;
 }
 
 const Ctx = createContext<TourneyContext | null>(null);
@@ -216,7 +219,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     const res = await fetch('/api/bracket', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ elimMode }),
+      body: JSON.stringify({ elimMode: elimModeState }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
@@ -234,18 +237,24 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setBracket(data.bracket);
   };
 
+  const updateThirdPlace = async (p1wins: number, p2wins: number) => {
+    const res = await fetch('/api/bracket', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p1wins, p2wins }),
+    });
+    const data = await res.json();
+    setBracket(data.bracket);
+  };
+
   const resetBracket = async () => {
     await fetch('/api/bracket', { method: 'DELETE' });
     setBracket(null);
   };
 
-  const setElimMode = async (mode: 'single' | 'double') => {
+  // setElimMode just updates local state — no API call, no re-generate
+  const setElimMode = (mode: 'single' | 'double') => {
     setElimModeState(mode);
-    await fetch('/api/bracket', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
-    });
   };
 
   // —— Maps ——
@@ -295,16 +304,27 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
+  // —— Reset All ——
+  const resetAll = async () => {
+    await fetch('/api/reset', { method: 'DELETE' });
+    setPlayers([]);
+    setRosterState([]);
+    setTeams([]);
+    setBracket(null);
+    setStageMaps({});
+  };
+
   return (
     <Ctx.Provider value={{
-      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps,
+      players, roster, teamMode, teams, elimMode: elimModeState, bracket, maps, stageMaps,
       isAdmin, loading, setIsAdmin, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       formTeams, resetTeams, setTeamMode,
-      generateBracket, updateScore, resetBracket, setElimMode,
+      generateBracket, updateScore, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, removeSpunMap, assignStage, clearStage,
       assignLeader,
+      resetAll,
     }}>
       {children}
     </Ctx.Provider>

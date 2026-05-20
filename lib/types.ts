@@ -34,7 +34,9 @@ export interface Bracket {
   upper: BracketMatch[][];
   lower?: BracketMatch[][];
   grandFinal?: GrandFinal;
+  thirdPlace?: BracketMatch;  // single elim only, 4+ teams
   champion: string | null;
+  third?: string | null;      // 3rd place winner
 }
 
 export interface TournamentState {

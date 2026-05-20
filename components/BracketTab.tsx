@@ -5,21 +5,21 @@ import { useTourney } from '@/lib/context';
 import type { BracketMatch, GrandFinal } from '@/lib/types';
 
 export function BracketTab() {
-  const { bracket, elimMode, teams, isAdmin, setElimMode, generateBracket, updateScore, resetBracket } = useTourney();
+  const { bracket, elimMode, teams, isAdmin, setElimMode, generateBracket, updateScore, updateThirdPlace, resetBracket } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
 
-  const handleFormatSelect = async (mode: 'single' | 'double') => {
-    if (!isAdmin) return;
+  const handleGenerate = async () => {
+    if (!isAdmin || generating) return;
     setErr('');
-    await setElimMode(mode);
-    if (teams.length >= 2) {
-      setGenerating(true);
-      const result = await generateBracket();
-      setGenerating(false);
-      if (result?.error) setErr(result.error);
-    }
+    setGenerating(true);
+    const result = await generateBracket();
+    setGenerating(false);
+    if (result?.error) setErr(result.error);
   };
+
+  const hasTeams = teams.length >= 2;
+  const hasBracket = !!bracket;
 
   return (
     <div className="flex-1 flex flex-col w-full py-6 gap-5">
@@ -27,48 +27,76 @@ export function BracketTab() {
       <div>
         <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Bracket</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">
-          {isAdmin ? 'Select a format to auto-generate · Update scores to advance teams' : 'View only — admin required to edit'}
+          {isAdmin ? 'Pick a format · Generate once · Update scores to advance teams' : 'View only — admin required to edit'}
         </p>
       </div>
 
-      {/* View-only banner */}
       {!isAdmin && (
         <div className="t-surface border t-border rounded-2xl px-5 py-3 font-['DM_Mono'] text-sm t-muted flex items-center gap-2 shrink-0">
           🔒 <span>Admin access required to generate or update the bracket.</span>
         </div>
       )}
 
-      {/* Format selector — admin only */}
       {isAdmin && (
         <div className="t-surface border t-border rounded-2xl p-5 shrink-0">
           <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">Format</h2>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
             {[
-              { id: 'single', icon: '⚔️', label: 'Single Elimination', desc: "One loss and you're out." },
-              { id: 'double', icon: '🛡️', label: 'Double Elimination', desc: 'Two losses to be eliminated.' },
+              {
+                id: 'single',
+                icon: '⚔️',
+                label: 'Single Elimination',
+                desc: 'One loss = out. Losers of semis play for 3rd place.',
+              },
+              {
+                id: 'double',
+                icon: '🛡️',
+                label: 'Double Elimination',
+                desc: 'Two losses = out. Losers drop to a second bracket.',
+              },
             ].map(opt => (
               <div
                 key={opt.id}
-                className="p-5 rounded-xl border-2 text-center transition-all"
+                className="p-5 rounded-xl border-2 transition-all select-none"
                 style={{
                   borderColor: elimMode === opt.id ? 'var(--accent-red)' : 'var(--border)',
-                  background:  elimMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
-                  cursor: generating ? 'not-allowed' : 'pointer',
-                  opacity: generating ? 0.6 : 1,
+                  background: elimMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
+                  cursor: hasBracket ? 'not-allowed' : 'pointer',
+                  opacity: hasBracket ? 0.5 : 1,
                 }}
-                onClick={() => !generating && handleFormatSelect(opt.id as 'single' | 'double')}
+                onClick={() => !hasBracket && setElimMode(opt.id as 'single' | 'double')}
               >
                 <div className="text-3xl mb-2">{opt.icon}</div>
                 <div className="font-bold text-sm mb-1 t-text">{opt.label}</div>
                 <div className="font-['DM_Mono'] text-[11px] t-muted">{opt.desc}</div>
+                {hasBracket && elimMode === opt.id && (
+                  <div className="mt-2 font-['DM_Mono'] text-[10px]" style={{ color: 'var(--accent-red)' }}>● Active</div>
+                )}
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-4 flex-wrap">
-            {generating && <p className="font-['DM_Mono'] text-xs t-muted">⏳ Generating bracket…</p>}
+
+          {hasBracket && (
+            <p className="font-['DM_Mono'] text-[11px] t-dim mb-3">
+              ⚠ Format is locked once generated. Reset the bracket to change it.
+            </p>
+          )}
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {!hasBracket && (
+              <button
+                className="px-5 py-2 font-['DM_Mono'] font-bold rounded-xl text-sm text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                style={{ background: 'var(--accent-red)' }}
+                onClick={handleGenerate}
+                disabled={!hasTeams || generating}
+              >
+                {generating ? '⏳ Generating…' : '⚡ Generate Bracket'}
+              </button>
+            )}
+            {!hasTeams && <p className="font-['DM_Mono'] text-xs t-muted">⚠ Form teams first.</p>}
             {err && <p className="font-['DM_Mono'] text-xs" style={{ color: 'var(--accent-red)' }}>{err}</p>}
-            {teams.length < 2 && <p className="font-['DM_Mono'] text-xs t-muted">⚠ Form teams first to auto-generate.</p>}
-            {bracket && (
+            {hasBracket && (
               <button
                 className="ml-auto px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)]"
                 onClick={resetBracket}
@@ -80,64 +108,86 @@ export function BracketTab() {
         </div>
       )}
 
-      {/* Bracket display — always visible if exists */}
       {bracket ? (
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          <BracketDisplay />
+          <BracketDisplay onScore={updateScore} onThirdPlace={updateThirdPlace} />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
-          <p className="font-['DM_Mono'] text-sm t-dim">No bracket yet. {isAdmin ? 'Select a format above.' : 'Waiting for admin to generate.'}</p>
+          <p className="font-['DM_Mono'] text-sm t-dim">
+            {isAdmin ? 'Pick a format and click Generate.' : 'Waiting for admin to generate the bracket.'}
+          </p>
         </div>
       )}
     </div>
   );
 }
 
-function BracketDisplay() {
-  const { bracket, updateScore, stageMaps, isAdmin } = useTourney();
+function BracketDisplay({
+  onScore,
+  onThirdPlace,
+}: {
+  onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
+  onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
+}) {
+  const { bracket, stageMaps, isAdmin } = useTourney();
   if (!bracket) return null;
 
-  const badgeClass = bracket.type === 'single'
-    ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]'
-    : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]';
-  const badgeText = bracket.type === 'single' ? 'Single Elim' : 'Double Elim';
+  const isSingle = bracket.type === 'single';
   const hasLower = bracket.lower && bracket.lower.some(r => r.length > 0);
 
   return (
     <>
-      {/* Winners bracket */}
+      {/* Winners / Upper bracket */}
       <div className="t-surface border t-border rounded-xl p-5">
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">
-          Winners
-          <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${badgeClass}`}>
-            {badgeText}
+          {isSingle ? 'Bracket' : 'Winners Bracket'}
+          <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${
+            isSingle
+              ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]'
+              : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'
+          }`}>
+            {isSingle ? 'Single Elim' : 'Double Elim'}
           </span>
         </div>
         <div className="overflow-x-auto pb-2">
           <div className="flex items-start min-w-max gap-0">
-            <RoundSet rounds={bracket.upper} section="upper" stageMaps={stageMaps} onScore={updateScore} isAdmin={isAdmin} />
+            <RoundSet rounds={bracket.upper} section="upper" stageMaps={stageMaps} onScore={onScore} isAdmin={isAdmin} />
           </div>
         </div>
       </div>
 
-      {/* Losers bracket */}
-      {bracket.type === 'double' && hasLower && (
+      {/* 3rd place match — single elim only */}
+      {isSingle && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (
         <div className="t-surface border t-border rounded-xl p-5">
-          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
+          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent-gold)' }}>
+            🥉 3rd Place Match
+          </h3>
+          <ThirdPlaceDisplay match={bracket.thirdPlace} onScore={onThirdPlace} isAdmin={isAdmin} />
+        </div>
+      )}
+
+      {/* Losers bracket — double elim only */}
+      {!isSingle && hasLower && (
+        <div className="t-surface border t-border rounded-xl p-5">
+          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent)' }}>
+            Losers Bracket
+          </h3>
           <div className="overflow-x-auto pb-2">
             <div className="flex items-start min-w-max gap-0">
-              <RoundSet rounds={bracket.lower!} section="lower" stageMaps={stageMaps} onScore={updateScore} isAdmin={isAdmin} />
+              <RoundSet rounds={bracket.lower!} section="lower" stageMaps={stageMaps} onScore={onScore} isAdmin={isAdmin} />
             </div>
           </div>
         </div>
       )}
 
-      {/* Grand Final */}
-      {bracket.type === 'double' && bracket.grandFinal && (bracket.grandFinal.p1 || bracket.grandFinal.p2) && (
+      {/* Grand Final — double elim only */}
+      {!isSingle && bracket.grandFinal && (bracket.grandFinal.p1 || bracket.grandFinal.p2) && (
         <div className="t-surface border t-border rounded-xl p-5">
-          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent)' }}>🏆 Grand Final</h3>
-          <GrandFinalDisplay gf={bracket.grandFinal} onScore={updateScore} isAdmin={isAdmin} />
+          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent)' }}>
+            🏆 Grand Final
+          </h3>
+          <GrandFinalDisplay gf={bracket.grandFinal} onScore={onScore} isAdmin={isAdmin} />
         </div>
       )}
 
@@ -145,11 +195,88 @@ function BracketDisplay() {
       {bracket.champion && (
         <div className="rounded-2xl p-7 text-center border-2 border-[var(--accent-gold)] bg-gradient-to-br from-[rgba(224,144,16,0.10)] to-[rgba(232,41,74,0.07)] animate-pulse-glow">
           <div className="text-5xl mb-2">🏆</div>
-          <h2 className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>{bracket.champion}</h2>
+          <h2 className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>
+            {bracket.champion}
+          </h2>
           <p className="font-['DM_Mono'] text-xs mt-2 t-muted">Tournament Champion</p>
+          {bracket.thirdPlace?.winner && (
+            <p className="font-['DM_Mono'] text-xs mt-1 t-dim">🥉 3rd Place: {bracket.thirdPlace.winner}</p>
+          )}
         </div>
       )}
     </>
+  );
+}
+
+function ThirdPlaceDisplay({
+  match,
+  onScore,
+  isAdmin,
+}: {
+  match: BracketMatch;
+  onScore: (p1wins: number, p2wins: number) => Promise<void>;
+  isAdmin: boolean;
+}) {
+  const isDone = !!match.winner;
+  const canEdit = isAdmin && match.p1 && match.p2 && !isDone;
+
+  return (
+    <div className="w-48 t-elevated border t-border rounded-xl overflow-hidden">
+      {[
+        { player: match.p1, score: match.score1, isP1: true },
+        { player: match.p2, score: match.score2, isP1: false },
+      ].map(({ player, score, isP1 }) => {
+        const isWinner = isDone && match.winner === player;
+        const isLoser = isDone && match.winner !== player;
+        return (
+          <div
+            key={isP1 ? 'p1' : 'p2'}
+            className="flex items-center justify-between px-3 py-2 border-b t-border last:border-b-0"
+            style={{ background: isWinner ? 'rgba(224,144,16,0.10)' : undefined }}
+          >
+            <span
+              className="text-xs font-['DM_Mono'] flex-1 truncate"
+              style={{
+                color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-gold)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
+                opacity: isLoser ? 0.5 : 1,
+              }}
+            >
+              {isWinner && '🥉 '}{player ?? 'TBD'}
+            </span>
+            {(isDone || (player && match.p1 && match.p2)) && (
+              <span className="font-['Bebas_Neue'] text-base ml-2 shrink-0" style={{ color: isWinner ? 'var(--accent-gold)' : 'var(--text-dim)' }}>
+                {score}
+              </span>
+            )}
+          </div>
+        );
+      })}
+      {canEdit && (
+        <div className="px-3 py-2 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
+          <div className="flex gap-1.5 items-center">
+            <p className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-wider shrink-0">Winner</p>
+            <button
+              className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
+              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-gold)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-gold)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+              onClick={() => onScore(1, 0)}
+            >
+              {match.p1}
+            </button>
+            <button
+              className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
+              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-gold)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-gold)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+              onClick={() => onScore(0, 1)}
+            >
+              {match.p2}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -166,7 +293,7 @@ function RoundSet({ rounds, section, stageMaps, onScore, isAdmin }: {
         if (section === 'lower' && !round.length) return null;
         const isFinalRound = ri === rounds.length - 1 && round.length === 1;
         const label = isFinalRound
-          ? (section === 'upper' ? 'UB Final' : 'LB Final')
+          ? (section === 'upper' ? 'Final' : 'LB Final')
           : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
         const sk = `${section}_r${ri}`;
         const maps: string[] = Array.isArray(stageMaps[sk]) ? stageMaps[sk] as unknown as string[] : stageMaps[sk] ? [stageMaps[sk] as unknown as string] : [];
@@ -226,7 +353,7 @@ function MatchCard({ match, section, ri, mi, maps, onScore, isAdmin }: {
 
       {[{ player: match.p1, score: match.score1, isP1: true }, { player: match.p2, score: match.score2, isP1: false }].map(({ player, score, isP1 }) => {
         const isWinner = isDone && match.winner === player;
-        const isLoser  = isDone && match.winner !== player;
+        const isLoser = isDone && match.winner !== player;
         return (
           <div key={isP1 ? 'p1' : 'p2'} className="flex items-center justify-between px-3 py-2 border-b t-border last:border-b-0"
             style={{ background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}>
@@ -299,7 +426,7 @@ function GrandFinalDisplay({ gf, onScore, isAdmin }: {
       )}
       {[{ player: gf.p1, score: gf.score1, isP1: true }, { player: gf.p2, score: gf.score2, isP1: false }].map(({ player, score, isP1 }) => {
         const isWinner = isDone && gf.winner === player;
-        const isLoser  = isDone && gf.winner !== player;
+        const isLoser = isDone && gf.winner !== player;
         return (
           <div key={isP1 ? 'p1' : 'p2'} className="flex items-center justify-between px-3 py-2 border-b t-border last:border-b-0"
             style={{ background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}>

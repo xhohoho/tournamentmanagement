@@ -17,14 +17,21 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 export default function Home() {
-  const { isAdmin, setIsAdmin, players, loading } = useTourney();
+  const { isAdmin, setIsAdmin, players, loading, resetAll } = useTourney();
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
   const [dark, setDark] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
 
   const handleAdminBtn = () => {
     if (isAdmin) { setIsAdmin(false); return; }
     setAdminOpen(true);
+  };
+
+  const handleReset = async () => {
+    if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
+    await resetAll();
+    setResetConfirm(false);
   };
 
   if (loading) {
@@ -63,6 +70,18 @@ export default function Home() {
               >
                 {dark ? '☀️ Light' : '🌙 Dark'}
               </button>
+              {isAdmin && (
+                <button
+                  onClick={handleReset}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
+                    resetConfirm
+                      ? 'border-[var(--accent-red)] text-[var(--accent-red)] bg-[rgba(232,41,74,0.1)]'
+                      : 't-border-mid t-muted t-elevated hover:border-[var(--accent-red)] hover:text-[var(--accent-red)]'
+                  }`}
+                >
+                  {resetConfirm ? '⚠ Confirm Reset?' : '🔄 Reset All'}
+                </button>
+              )}
               <button
                 onClick={handleAdminBtn}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
