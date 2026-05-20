@@ -147,7 +147,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
       {!isAdmin ? (
         <div className="t-surface border t-border rounded-2xl px-5 py-4 font-['DM_Mono'] text-sm t-muted">
           🔒 Admin access required to form teams.
-          {teams.length > 0 && <TeamsGrid teams={teams} />}
+          {teams.length > 0 && <TeamsGrid teams={teams} isAdmin={isAdmin} assignLeader={assignLeader} />}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
