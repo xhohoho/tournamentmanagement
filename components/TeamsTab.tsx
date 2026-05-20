@@ -268,56 +268,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
 
               {teams.length > 0 ? (
                 <div className="space-y-4">
-                  <TeamsGrid teams={teams} />
-                  {teamMode === 'random' && isAdmin && (
-                    <div className="t-surface border t-border rounded-2xl p-5">
-                      <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">
-                        Assign Leaders
-                      </h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {teams.map(team => (
-                          <div
-                            key={team.name}
-                            className="t-elevated border t-border rounded-xl p-3.5"
-                            style={{ borderColor: team.color }}
-                          >
-                            <h4
-                              className="font-['Bebas_Neue'] text-base tracking-widest mb-2"
-                              style={{ color: team.color }}
-                            >
-                              {team.name}
-                            </h4>
-                            <select
-                              className="w-full rounded-lg px-3 py-2 text-sm outline-none border transition-colors"
-                              style={{
-                                background: 'var(--bg-hover)',
-                                borderColor: leaderAssignments[team.name] ? team.color : 'var(--border-mid)',
-                                color: 'var(--text)',
-                                cursor: 'pointer'
-                              }}
-                              value={leaderAssignments[team.name] || ''}
-                              onChange={e => {
-                                const newAssignments = { ...leaderAssignments, [team.name]: e.target.value };
-                                setLeaderAssignments(newAssignments);
-                                if (e.target.value) {
-                                  assignLeader(team.name, e.target.value);
-                                }
-                              }}
-                              onFocus={e => (e.currentTarget.style.borderColor = team.color)}
-                              onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-mid)')}
-                            >
-                              <option value="">— Pick Leader —</option>
-                              {team.members.map(p => (
-                                <option key={p} value={p}>
-                                  {p}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <TeamsGrid teams={teams} isAdmin={isAdmin} assignLeader={assignLeader} />
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -357,7 +308,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
   );
 }
 
-function TeamsGrid({ teams }: { teams: ReturnType<typeof useTourney>['teams'] }) {
+function TeamsGrid({ teams, isAdmin, assignLeader }: { teams: ReturnType<typeof useTourney>['teams']; isAdmin: boolean; assignLeader: (teamName: string, player: string) => void }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
       {teams.map((t) => (
@@ -382,6 +333,14 @@ function TeamsGrid({ teams }: { teams: ReturnType<typeof useTourney>['teams'] })
             >
               <span className="w-5">{m === t.leader ? '👑' : '·'}</span>
               {m}
+              {isAdmin && m !== t.leader && (
+                <button
+                  onClick={() => assignLeader(t.name, m)}
+                  className="ml-2 px-2 py-0.5 text-xs font-['DM_Mono'] bg-[var(--accent)] text-white rounded hover:bg-[var(--accent-dark)] transition-colors"
+                >
+                  Set Leader
+                </button>
+              )}
             </div>
           ))}
         </div>
