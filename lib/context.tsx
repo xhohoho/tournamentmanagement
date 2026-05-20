@@ -40,6 +40,7 @@ interface TourneyContext {
   removeSpunMap: (name: string) => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
+  assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
 }
 
 const Ctx = createContext<TourneyContext | null>(null);
@@ -82,7 +83,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [refresh]);
 
-  // ── Players ──
+  // —— Players ——
   const submitPlayer = async (name: string, byAdmin = false) => {
     const res = await fetch('/api/players', {
       method: 'POST',
@@ -157,7 +158,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setRosterState(data.roster);
   };
 
-  // ── Teams ──
+  // —— Teams ——
   const formTeams = async (leaders?: string[]) => {
     const res = await fetch('/api/teams', {
       method: 'POST',
@@ -179,7 +180,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
-    // Refresh local state to reflect new leader assignment
     await refresh();
     return {};
   };
@@ -199,7 +199,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setTeamModeState(mode);
   };
 
-  // ── Bracket ──
+  // —— Bracket ——
   const generateBracket = async () => {
     const res = await fetch('/api/bracket', {
       method: 'POST',
@@ -231,7 +231,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setElimModeState(mode);
   };
 
-  // ── Maps ──
+  // —— Maps ——
   const addMap = async (name: string) => {
     const res = await fetch('/api/maps', {
       method: 'POST',
@@ -255,7 +255,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
-  // Remove a map that was just spun (from the pool)
   const removeSpunMap = async (name: string) => {
     await removeMap(name);
   };
@@ -290,7 +289,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       generateBracket, updateScore, resetBracket, setElimMode,
       addMap, removeMap, removeSpunMap, assignStage, clearStage,
       assignLeader,
-    }>
+    }}>
       {children}
     </Ctx.Provider>
   );
