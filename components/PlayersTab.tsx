@@ -65,7 +65,7 @@ export function PlayersTab() {
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full max-w-7xl mx-auto px-8 py-6 gap-5">
+    <div className="flex-1 flex flex-col w-full py-6 gap-5">
 
       {/* Page header */}
       <div>

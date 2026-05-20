@@ -88,7 +88,7 @@ export function TeamsTab() {
   const rosterOk = roster.length >= 10 && roster.length % 5 === 0;
 
   return (
-    <div className="flex-1 flex flex-col w-full max-w-7xl mx-auto px-6 py-6 gap-5">
+    <div className="flex-1 flex flex-col w-full py-6 gap-5">
 
       <div>
         <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Team Formation</h1>

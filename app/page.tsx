@@ -52,7 +52,7 @@ export default function Home() {
 
         {/* Header */}
         <header className="t-header backdrop-blur-md border-b t-border sticky top-0 z-40">
-          <div className="max-w-7xl w-full mx-auto px-8 py-3 flex items-center justify-between">
+          <div className="w-full px-8 py-3 flex items-center justify-between">
             <div className="font-['Bebas_Neue'] text-2xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent">
               ⚔ TOURNEY
             </div>
@@ -80,7 +80,7 @@ export default function Home() {
 
         {/* Tab nav */}
         <nav className="t-surface border-b t-border shrink-0">
-          <div className="max-w-7xl w-full mx-auto px-8 flex overflow-x-auto">
+          <div className="w-full px-8 flex overflow-x-auto">
             {TABS.map(tab => (
               <button
                 key={tab.id}
@@ -104,10 +104,12 @@ export default function Home() {
 
         {/* Content — each tab fills the remaining viewport height */}
         <main className="flex-1 flex flex-col">
-          <div className={`flex-1 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
-          <div className={`flex-1 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab   /></div>
-          <div className={`flex-1 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab /></div>
-          <div className={`flex-1 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab    /></div>
+          <div className="flex-1 flex flex-col w-full px-8">
+            <div className={`flex-1 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
+            <div className={`flex-1 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab   /></div>
+            <div className={`flex-1 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab /></div>
+            <div className={`flex-1 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab    /></div>
+          </div>
         </main>
       </div>
 
