@@ -42,7 +42,7 @@
   --scrollbar:   #32324a;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   height: 100%;
