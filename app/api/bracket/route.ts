@@ -86,7 +86,15 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { section, ri, mi, p1wins, p2wins } = await req.json();
+  const body = await req.json();
+  const { section, ri, mi, p1wins, p2wins, action, elimMode: newElimMode } = body;
+
+  // Persist elimMode without touching the bracket
+  if (action === 'setElimMode') {
+    const next = await updateState(s => ({ ...s, elimMode: newElimMode }));
+    return NextResponse.json({ elimMode: next.elimMode });
+  }
+
   const state = await getState();
   const B = state.bracket;
   if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });

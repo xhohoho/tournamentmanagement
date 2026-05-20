@@ -2,12 +2,7 @@ import type { Team } from '@/lib/types';
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { shuffle, TEAM_COLORS } from '@/lib/utils';
-
-// Simple admin authorization – replace with your real logic
-function isAdminAuthorized(req: NextRequest): boolean {
-  const secret = process.env.ADMIN_SECRET;
-  return !!secret && req.headers.get('X-Admin-Secret') === secret;
-}
+import { verifyAdminToken } from '@/app/api/admin/auth/route';
 
 export async function GET() {
   const state = await getState();
@@ -23,15 +18,14 @@ export async function POST(req: NextRequest) {
   // New use‑case: assign leaders to already‑created teams (post‑random mode)
   // -------------------------------------------------------------------------
   if (assignments && typeof assignments === 'object' && !Array.isArray(assignments)) {
-    if (!isAdminAuthorized(req)) {
+    if (!verifyAdminToken(req)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
     // Build a map of teamName → leaderName
     const leaderAssignments = { ...assignments };
 
-    const stateCopy = await getState();
-    const currentTeams = stateCopy.teams || [];
+    const currentTeams = state.teams ?? [];
 
     // Update the `leader` field of matching teams
     const updatedTeams = currentTeams.map(team => {

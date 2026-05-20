@@ -5,7 +5,7 @@ const KV_KEY = 'tournament:state';
 
 export function defaultState(): TournamentState {
   return {
-    adminPwHash: 'admin123', // plain for now; hash on first set
+    adminPwHash: 'admin123',
     players: [],
     roster: [],
     teamMode: 'leader',

@@ -1,28 +1,7 @@
 @import "tailwindcss";
 
-/* ── Dark mode (default) ── */
+/* ── Light mode (default) ── */
 :root {
-  --bg:          #080810;
-  --bg-surface:  #0f0f1a;
-  --bg-elevated: #161625;
-  --bg-hover:    #1e1e30;
-  --border:      #252538;
-  --border-mid:  #32324a;
-  --text:        #dde0f0;
-  --text-muted:  #7878a0;
-  --text-dim:    #4a4a6a;
-  --accent:      #4d7cff;
-  --accent-red:  #ff3d5a;
-  --accent-green:#2dcc70;
-  --accent-gold: #ffb020;
-  --grad-start:  rgba(77,124,255,0.08);
-  --grad-end:    rgba(255,61,90,0.07);
-  --header-bg:   rgba(15,15,26,0.92);
-  --scrollbar:   #32324a;
-}
-
-/* ── Light mode ── */
-.light {
   --bg:          #f0f2f8;
   --bg-surface:  #ffffff;
   --bg-elevated: #f5f6fc;
@@ -42,12 +21,39 @@
   --scrollbar:   #c4c8e0;
 }
 
+/* ── Dark mode ── */
+.dark {
+  --bg:          #080810;
+  --bg-surface:  #0f0f1a;
+  --bg-elevated: #161625;
+  --bg-hover:    #1e1e30;
+  --border:      #252538;
+  --border-mid:  #32324a;
+  --text:        #dde0f0;
+  --text-muted:  #7878a0;
+  --text-dim:    #4a4a6a;
+  --accent:      #4d7cff;
+  --accent-red:  #ff3d5a;
+  --accent-green:#2dcc70;
+  --accent-gold: #ffb020;
+  --grad-start:  rgba(77,124,255,0.08);
+  --grad-end:    rgba(255,61,90,0.07);
+  --header-bg:   rgba(15,15,26,0.92);
+  --scrollbar:   #32324a;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  width: 100%;
+}
 
 body {
   background: var(--bg);
   color: var(--text);
   transition: background 0.3s ease, color 0.3s ease;
+  overflow-x: hidden;
 }
 
 @keyframes fade-up {

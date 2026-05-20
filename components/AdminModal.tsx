@@ -9,15 +9,19 @@ interface Props {
 }
 
 export function AdminModal({ open, onClose }: Props) {
-  const { isAdmin, setIsAdmin } = useTourney();
+  const { setIsAdmin } = useTourney();
   const [pw, setPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [err, setErr] = useState('');
   const [pwErr, setPwErr] = useState('');
+  const [pwOk, setPwOk] = useState('');
   const [loading, setLoading] = useState(false);
+  // Store token locally so we can send it with the change-password request
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   const submit = async () => {
     setLoading(true);
+    setErr('');
     const res = await fetch('/api/admin/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -25,9 +29,10 @@ export function AdminModal({ open, onClose }: Props) {
     });
     setLoading(false);
     if (res.ok) {
+      const data = await res.json();
+      setSessionToken(data.token ?? null);
       setIsAdmin(true);
       setPw('');
-      setErr('');
       onClose();
     } else {
       setErr('Wrong password.');
@@ -35,19 +40,18 @@ export function AdminModal({ open, onClose }: Props) {
   };
 
   const changePw = async () => {
-    if (!isAdmin) { setPwErr('Unlock first.'); return; }
-    if (!newPw.trim()) { setPwErr('Enter a password.'); return; }
+    setPwErr('');
+    setPwOk('');
+    if (!sessionToken) { setPwErr('Unlock admin first.'); return; }
+    if (!newPw.trim()) { setPwErr('Enter a new password.'); return; }
     const res = await fetch('/api/admin/auth', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentPassword: pw || '__bypass__already_admin__', newPassword: newPw }),
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': sessionToken },
+      body: JSON.stringify({ newPassword: newPw }),
     });
-    // For already-authed admin we send a special flow
-    // Actually re-verify with stored session — simplified: require re-entering current pw
-    if (!res.ok) { setPwErr('Failed — re-enter current password above first.'); return; }
+    if (!res.ok) { setPwErr('Failed to update password.'); return; }
     setNewPw('');
-    setPwErr('');
-    alert('Password updated!');
+    setPwOk('Password updated!');
   };
 
   if (!open) return null;
@@ -73,13 +77,13 @@ export function AdminModal({ open, onClose }: Props) {
 
         <div className="flex gap-3 mt-4">
           <button
-            className="flex-1 py-2.5 rounded-xl bg-[#161625] border border-[#32324a] text-[#dde0f0] font-bold text-sm hover:border-[#4d7cff] hover:text-[#4d7cff] transition-colors"
+            className="flex-1 py-2.5 rounded-xl bg-[#161625] border border-[#32324a] text-[#dde0f0] font-bold text-sm hover:border-[#4d7cff] hover:text-[#4d7cff] transition-colors cursor-pointer"
             onClick={onClose}
           >
             Cancel
           </button>
           <button
-            className="flex-1 py-2.5 rounded-xl bg-[#ffb020] text-[#1a0f00] font-bold text-sm hover:bg-[#ffa000] transition-colors disabled:opacity-40"
+            className="flex-1 py-2.5 rounded-xl bg-[#ffb020] text-[#1a0f00] font-bold text-sm hover:bg-[#ffa000] transition-colors disabled:opacity-40 cursor-pointer"
             onClick={submit}
             disabled={loading}
           >
@@ -98,13 +102,14 @@ export function AdminModal({ open, onClose }: Props) {
               onChange={e => setNewPw(e.target.value)}
             />
             <button
-              className="px-3 py-2 rounded-xl bg-[#161625] border border-[#32324a] text-[#dde0f0] font-bold text-xs hover:border-[#4d7cff] hover:text-[#4d7cff] transition-colors"
+              className="px-3 py-2 rounded-xl bg-[#161625] border border-[#32324a] text-[#dde0f0] font-bold text-xs hover:border-[#4d7cff] hover:text-[#4d7cff] transition-colors cursor-pointer"
               onClick={changePw}
             >
               Set
             </button>
           </div>
           {pwErr && <p className="text-[#ff3d5a] font-['DM_Mono'] text-xs mt-2">{pwErr}</p>}
+          {pwOk && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-green)' }}>{pwOk}</p>}
         </div>
       </div>
     </div>

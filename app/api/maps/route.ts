@@ -75,13 +75,5 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ stageMaps: next.stageMaps });
   }
 
-  if (action === 'setFormat') {
-    // Set bo1/bo3 format for a stage (just stored as metadata in stageMaps)
-    // We store as special key: stageKey__format
-    const { format } = req as unknown as { format: string };
-    void format; // format is handled bracket-side
-    return NextResponse.json({ stageMaps: (await getState()).stageMaps });
-  }
-
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }

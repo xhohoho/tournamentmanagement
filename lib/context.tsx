@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Player, Team, Bracket } from '@/lib/types';
 
 interface TourneyContext {
@@ -54,9 +54,21 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [maps, setMaps] = useState<string[]>([]);
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdminState] = useState(false);
+  const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Builds auth headers for admin-only API calls
+  const adminHeaders = useMemo(() => ({
+    'Content-Type': 'application/json',
+    ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
+  }), [adminToken]);
+
+  const setIsAdmin = (v: boolean) => {
+    setIsAdminState(v);
+    if (!v) setAdminToken(null);
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -162,7 +174,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const formTeams = async (leaders?: string[]) => {
     const res = await fetch('/api/teams', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ teamMode, leaders }),
     });
     const data = await res.json();
@@ -175,12 +187,12 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const assignLeader = async (teamId: string, playerName: string) => {
     const res = await fetch('/api/teams', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assignments: { [teamId]: playerName } })
+      headers: adminHeaders,
+      body: JSON.stringify({ assignments: { [teamId]: playerName } }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
-    await refresh();
+    setTeams(data.teams);
     return {};
   };
 
@@ -229,6 +241,11 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const setElimMode = async (mode: 'single' | 'double') => {
     setElimModeState(mode);
+    await fetch('/api/bracket', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
+    });
   };
 
   // —— Maps ——
@@ -255,9 +272,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
-  const removeSpunMap = async (name: string) => {
-    await removeMap(name);
-  };
+  // removeSpunMap just removes from pool (same as removeMap)
+  const removeSpunMap = removeMap;
 
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
     const res = await fetch('/api/maps', {
