@@ -65,7 +65,7 @@ export function PlayersTab() {
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full max-w-7xl mx-auto px-6 py-6 gap-5">
+    <div className="flex-1 flex flex-col w-full max-w-7xl mx-auto px-8 py-6 gap-5">
 
       {/* Page header */}
       <div>
@@ -76,12 +76,12 @@ export function PlayersTab() {
       </div>
 
       {/* Submit bar — always visible, anyone can queue */}
-      <div className="t-surface border t-border rounded-2xl p-4 shadow-sm shrink-0">
+      <div className="shrink-0">
         <div className="flex gap-3">
           <input
             type="text"
             className="flex-1 rounded-xl px-4 py-2.5 font-['Syne'] text-sm outline-none transition-colors border"
-            style={{ color: 'var(--text)', background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}
+            style={{ color: 'var(--text)', background: 'var(--bg-surface)', borderColor: 'var(--border-mid)' }}
             placeholder="Enter your name to join the queue…"
             maxLength={24}
             autoComplete="off"
@@ -92,7 +92,7 @@ export function PlayersTab() {
             onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
           />
           <button
-            className="px-6 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm text-white active:scale-95 transition-all cursor-pointer"
+            className="px-6 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm text-white active:scale-95 transition-all cursor-pointer shrink-0"
             style={{ background: 'var(--accent)' }}
             onClick={handleSubmit}
           >
