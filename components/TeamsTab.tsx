@@ -89,7 +89,8 @@ export function TeamsTab() {
   // Global slot index: team 0 slot 0 = 0, team 0 slot 1 = 1, team 1 slot 0 = 5, etc.
   const isVisible = (teamIdx: number, slotIdx: number) => {
     const player = shuffledPlayers.find(p => p.teamIdx === teamIdx && p.slotIdx === slotIdx);
-    return shuffledPlayers.indexOf(player) < revealCount;
+    const idx = player ? shuffledPlayers.indexOf(player) : -1;
+    return idx < revealCount;
   };
 
   return (
