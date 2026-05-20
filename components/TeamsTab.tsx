@@ -103,8 +103,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
     const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
     if (result.error) { setErr(result.error); setAnimating(false); return; }
     // If successful, enqueue each player insertion
-    const teamsWithSlots = result.teams || [];
-    teamsWithSlots.forEach((team, teamIdx) => {
+    teams.forEach((team, teamIdx) => {
       team.members.forEach((player, slotIdx) => {
         enqueueSlot(teamIdx, player);
       });
@@ -308,7 +307,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
                               onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-mid)')}
                             >
                               <option value="">— Pick Leader —</option>
-                              {roster.map(p => (
+                              {team.members.map(p => (
                                 <option key={p} value={p}>
                                   {p}
                                 </option>
@@ -341,17 +340,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
                             style={{ background: TEAM_COLORS[i % TEAM_COLORS.length] + '40' }}
                           />
                           <div className="font-['DM_Mono'] text-xs" style={{ color: TEAM_COLORS[i % TEAM_COLORS.length] }}>
-                            {roster.length > 0 ? (
-                              <AnimatedSlotName names={roster} />
-                            ) : (
-                              <div
-                                className="h-2.5 rounded-full animate-pulse"
-                                style={{
-                                  background: TEAM_COLORS[i % TEAM_COLORS.length] + '25',
-                                  width: `${50 + ((i * 5 + j) % 4) * 12}%`,
-                                }}
-                              />
-                            )}
+                            <span className="opacity-30">—</span>
                           </div>
                         </div>
                       ))}
