@@ -1,67 +1,45 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useTourney } from '@/lib/context';
 import { TEAM_COLORS } from '@/lib/utils';
 
-const SLOT_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?!@#$%';
-
-function SlotMachine({ finalName, delay }: { finalName: string; delay: number }) {
-  const [display, setDisplay] = useState('???');
-  const [done, setDone] = useState(false);
-  const ivRef = useRef<NodeJS.Timeout | null>(null);
+// How many players have been "revealed" so far after form
+// revealCount goes 0 → total players, one per interval tick
+function useReveal(active: boolean, total: number, intervalMs = 180) {
+  const [count, setCount] = useState(0);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      ivRef.current = setInterval(() => {
-        setDisplay(Array.from({ length: Math.max(3, finalName.length) }, () =>
-          SLOT_CHARS[Math.floor(Math.random() * SLOT_CHARS.length)]
-        ).join(''));
-      }, 60);
-      setTimeout(() => {
-        if (ivRef.current) clearInterval(ivRef.current);
-        setDisplay(finalName);
-        setDone(true);
-      }, 900 + delay);
-    }, delay);
-    return () => { clearTimeout(t); if (ivRef.current) clearInterval(ivRef.current); };
-  }, [finalName, delay]);
-
-  void done;
-  return <span>{display}</span>;
-}
-
-function AnimatedSlotName({ names }: { names: string[] }) {
-  const [idx, setIdx] = useState(0);
-  const [chars, setChars] = useState('??????');
-
-  useEffect(() => {
-    if (!names.length) return;
-    const name = names[idx % names.length];
-    let count = 0;
+    if (!active) { setCount(0); return; }
+    setCount(0);
     const iv = setInterval(() => {
-      setChars(Array.from({ length: Math.max(4, name.length) }, () =>
-        SLOT_CHARS[Math.floor(Math.random() * SLOT_CHARS.length)]
-      ).join(''));
-      if (++count > 12) {
-        clearInterval(iv);
-        setChars(name);
-        setTimeout(() => setIdx(i => (i + 1) % names.length), 1400);
-      }
-    }, 55);
+      setCount(c => {
+        if (c >= total) { clearInterval(iv); return c; }
+        return c + 1;
+      });
+    }, intervalMs);
     return () => clearInterval(iv);
-  }, [idx, names]);
+  }, [active, total, intervalMs]);
 
-  return <span style={{ opacity: 0.45 }}>{chars}</span>;
+  return count;
 }
-
-type AnimatingSlot = { teamIdx: number; slotIdx: number };
 
 export function TeamsTab() {
   const { roster, teams, teamMode, isAdmin, formTeams, resetTeams, setTeamMode, assignLeader } = useTourney();
   const [leaders, setLeaders] = useState<string[]>([]);
-  const [animatingSlots, setAnimatingSlots] = useState<AnimatingSlot[]>([]);
   const [err, setErr] = useState('');
+  const [revealing, setRevealing] = useState(false);
+
+  // Total slots across all teams (5 per team)
+  const totalSlots = teams.length * 5;
+  const revealCount = useReveal(revealing, totalSlots);
+
+  // Stop revealing once all slots are shown
+  useEffect(() => {
+    if (revealing && revealCount >= totalSlots && totalSlots > 0) {
+      setRevealing(false);
+    }
+  }, [revealing, revealCount, totalSlots]);
 
   const n = Math.floor(roster.length / 5);
   const previewSlots = n > 0 ? n : Math.max(2, Math.ceil(10 / 5));
@@ -78,14 +56,15 @@ export function TeamsTab() {
     setErr('');
     const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
     if (result.error) { setErr(result.error); return; }
-    // Animate all slots briefly
-    const slots: AnimatingSlot[] = [];
-    teams.forEach((_, ti) => Array.from({ length: 5 }, (__, si) => slots.push({ teamIdx: ti, slotIdx: si })));
-    setAnimatingSlots(slots);
-    setTimeout(() => setAnimatingSlots([]), 2000);
+    // Trigger reveal animation after teams arrive
+    setRevealing(true);
   };
 
   const rosterOk = roster.length >= 10 && roster.length % 5 === 0;
+
+  // Global slot index: team 0 slot 0 = 0, team 0 slot 1 = 1, team 1 slot 0 = 5, etc.
+  const isVisible = (teamIdx: number, slotIdx: number) =>
+    teamIdx * 5 + slotIdx < revealCount;
 
   return (
     <div className="flex-1 flex flex-col w-full py-6 gap-5">
@@ -95,7 +74,6 @@ export function TeamsTab() {
         <p className="font-['DM_Mono'] text-xs t-muted">5 players per team · {isAdmin ? 'Admin controls below' : 'View only — admin required to edit'}</p>
       </div>
 
-      {/* View-only banner for non-admins */}
       {!isAdmin && (
         <div className="t-surface border t-border rounded-2xl px-5 py-3 font-['DM_Mono'] text-sm t-muted flex items-center gap-2">
           🔒 <span>Admin access required to form or modify teams.</span>
@@ -207,7 +185,7 @@ export function TeamsTab() {
           </div>
         )}
 
-        {/* Teams grid — always visible */}
+        {/* Teams grid */}
         <div className="flex-1 t-surface border t-border rounded-2xl p-5 min-h-0 overflow-y-auto">
           <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">
             {teams.length > 0 ? '🛡 Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}`}
@@ -219,11 +197,21 @@ export function TeamsTab() {
                 <div key={t.name} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}>
                   <h3 className="font-['Bebas_Neue'] text-xl tracking-wide mb-3 pb-2 border-b" style={{ color: t.color, borderColor: 'var(--border)' }}>{t.name}</h3>
                   {t.members.map((m, slotIdx) => {
-                    const isAnimating = animatingSlots.some(s => s.teamIdx === teamIdx && s.slotIdx === slotIdx);
+                    const visible = !revealing && revealCount === 0
+                      ? true  // already done, show all
+                      : isVisible(teamIdx, slotIdx);
                     return (
-                      <div key={m} className="flex items-center justify-between py-1.5 font-['DM_Mono'] text-sm" style={{ color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)' }}>
+                      <div
+                        key={m}
+                        className="flex items-center justify-between py-1.5 font-['DM_Mono'] text-sm transition-all duration-200"
+                        style={{
+                          color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)',
+                          opacity: visible ? 1 : 0,
+                          transform: visible ? 'translateX(0)' : 'translateX(-8px)',
+                        }}
+                      >
                         <span className="w-5 shrink-0">{m === t.leader ? '👑' : '·'}</span>
-                        <span className="flex-1 truncate">{isAnimating ? <SlotMachine finalName={m} delay={slotIdx * 120} /> : m}</span>
+                        <span className="flex-1 truncate">{m}</span>
                         {isAdmin && m !== t.leader && (
                           <button
                             onClick={() => assignLeader(t.name, m)}
@@ -240,6 +228,7 @@ export function TeamsTab() {
               ))}
             </div>
           ) : (
+            // Preview — static empty slots, no animation
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {Array.from({ length: previewSlots }, (_, i) => (
                 <div key={i} className="rounded-xl border-2 border-dashed p-4" style={{ borderColor: TEAM_COLORS[i % TEAM_COLORS.length] + '55' }}>
@@ -247,9 +236,7 @@ export function TeamsTab() {
                   {Array.from({ length: 5 }, (__, j) => (
                     <div key={j} className="flex items-center gap-2 py-1.5">
                       <div className="w-2 h-2 rounded-full shrink-0" style={{ background: TEAM_COLORS[i % TEAM_COLORS.length] + '40' }} />
-                      <div className="font-['DM_Mono'] text-xs" style={{ color: TEAM_COLORS[i % TEAM_COLORS.length] }}>
-                        {n > 0 ? <AnimatedSlotName names={roster} /> : <span className="opacity-30">—</span>}
-                      </div>
+                      <div className="h-2 rounded" style={{ width: `${50 + (j * 17 + i * 11) % 35}%`, background: TEAM_COLORS[i % TEAM_COLORS.length] + '30' }} />
                     </div>
                   ))}
                 </div>
