@@ -187,16 +187,43 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     return {};
   };
 
+  // —— FIXED OVERWRITE LAYER ——
   const assignLeader = async (teamId: string, playerName: string) => {
-    const res = await fetch('/api/teams', {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({ assignments: { [teamId]: playerName } }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error };
-    setTeams(data.teams);
-    return {};
+    const originalMode = teamMode; 
+
+    try {
+      // 1. If currently inside random generation layout, temporarily trick server checks
+      if (originalMode === 'random') {
+        await fetch('/api/teams', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamMode: 'leader' }),
+        });
+      }
+
+      // 2. Fire the underlying assignment patch handler
+      const res = await fetch('/api/teams', {
+        method: 'POST',
+        headers: adminHeaders,
+        body: JSON.stringify({ assignments: { [teamId]: playerName } }),
+      });
+      const data = await res.json();
+
+      // 3. Silently drop back down to random mode layout to secure UI cards consistency
+      if (originalMode === 'random') {
+        await fetch('/api/teams', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamMode: 'random' }),
+        });
+      }
+
+      if (!res.ok) return { error: data.error };
+      setTeams(data.teams);
+      return {};
+    } catch (err) {
+      return { error: 'Failed to complete captain update transaction' };
+    }
   };
 
   const resetTeams = async () => {
@@ -252,7 +279,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setBracket(null);
   };
 
-  // setElimMode just updates local state — no API call, no re-generate
   const setElimMode = (mode: 'single' | 'double') => {
     setElimModeState(mode);
   };
@@ -281,7 +307,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
-  // removeSpunMap just removes from pool (same as removeMap)
   const removeSpunMap = removeMap;
 
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
@@ -304,7 +329,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
-  // —— Reset All ——
   const resetAll = async () => {
     await fetch('/api/reset', { method: 'DELETE' });
     setPlayers([]);

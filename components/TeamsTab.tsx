@@ -33,15 +33,15 @@ export function TeamsTab() {
   const totalSlots = teams.length * 5;
   const revealCount = useReveal(revealing, totalSlots);
 
-  // --- FIX: Map member names to a randomized reveal order index using useMemo ---
-  // This guarantees that every time teams change, we build a static, random reveal order.
+  // Map member names to a randomized timeline order index using useMemo
+  // This guarantees a pure, stable sequence map when teams are populated
   const revealOrderMap = useMemo(() => {
     if (teams.length === 0) return new Map<string, number>();
 
     const allMembers = teams.flatMap(t => t.members);
     const orderIndices = Array.from({ length: allMembers.length }, (_, i) => i);
     
-    // Fisher-Yates shuffle on indices to maintain purity
+    // Pure Fisher-Yates shuffle on sequential array indices
     for (let i = orderIndices.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [orderIndices[i], orderIndices[j]] = [orderIndices[j], orderIndices[i]];
@@ -55,7 +55,7 @@ export function TeamsTab() {
     return map;
   }, [teams]);
 
-  // Turn off revealing state once everything is uncovered
+  // Disable interval tracking state once everything is revealed
   useEffect(() => {
     if (revealing && revealCount >= totalSlots && totalSlots > 0) {
       setRevealing(false);
@@ -75,20 +75,18 @@ export function TeamsTab() {
 
   const handleForm = async () => {
     setErr('');
-    // Safely turn off animation tracker before pulling fresh roster data
     setRevealing(false);
     const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
     if (result.error) { setErr(result.error); return; }
-    // Start animation cascade
     setRevealing(true);
   };
 
   const rosterOk = roster.length >= 10 && roster.length % 5 === 0;
 
-  // --- FIX: Safe visibility check ---
+  // Checks visibility against our randomized timeline position map
   const isVisible = (member: string) => {
-    // If we aren't explicitly animating right now, teams should be fully visible 
-    // (e.g. data loaded from context on component mount or view-only users)
+    // If we aren't in an active animation pass, default everything to visible 
+    // (Crucial for page loads, spectators, or viewing saved setups)
     if (!revealing && revealCount === 0) return true;
     
     const assignedIndex = revealOrderMap.get(member) ?? 0;
@@ -224,7 +222,6 @@ export function TeamsTab() {
                 <div key={t.name} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}>
                   <h3 className="font-['Bebas_Neue'] text-xl tracking-wide mb-3 pb-2 border-b" style={{ color: t.color, borderColor: 'var(--border)' }}>{t.name}</h3>
                   {t.members.map((m) => {
-                    // Check visibility using the member name string key
                     const visible = isVisible(m);
                     return (
                       <div
@@ -240,7 +237,13 @@ export function TeamsTab() {
                         <span className="flex-1 truncate">{m}</span>
                         {isAdmin && m !== t.leader && (
                           <button
-                            onClick={() => assignLeader(t.name, m)}
+                            onClick={async () => {
+                              setErr('');
+                              const result = await assignLeader(t.name, m);
+                              if (result?.error) {
+                                setErr(result.error);
+                              }
+                            }}
                             className="ml-2 px-2 py-0.5 text-xs font-['DM_Mono'] bg-[var(--accent-green)] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
                             title="Make team leader"
                           >
