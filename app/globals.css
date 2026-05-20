@@ -1,19 +1,53 @@
 @import "tailwindcss";
 
+/* ── Dark mode (default) ── */
 :root {
-  --background: #080810;
-  --foreground: #dde0f0;
+  --bg:          #080810;
+  --bg-surface:  #0f0f1a;
+  --bg-elevated: #161625;
+  --bg-hover:    #1e1e30;
+  --border:      #252538;
+  --border-mid:  #32324a;
+  --text:        #dde0f0;
+  --text-muted:  #7878a0;
+  --text-dim:    #4a4a6a;
+  --accent:      #4d7cff;
+  --accent-red:  #ff3d5a;
+  --accent-green:#2dcc70;
+  --accent-gold: #ffb020;
+  --grad-start:  rgba(77,124,255,0.08);
+  --grad-end:    rgba(255,61,90,0.07);
+  --header-bg:   rgba(15,15,26,0.92);
+  --scrollbar:   #32324a;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* ── Light mode ── */
+.light {
+  --bg:          #f0f2f8;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #f5f6fc;
+  --bg-hover:    #eaecf5;
+  --border:      #dde0ef;
+  --border-mid:  #c4c8e0;
+  --text:        #1a1a2e;
+  --text-muted:  #5a5a80;
+  --text-dim:    #9090b8;
+  --accent:      #3a6bff;
+  --accent-red:  #e8294a;
+  --accent-green:#22b862;
+  --accent-gold: #e09010;
+  --grad-start:  rgba(77,124,255,0.05);
+  --grad-end:    rgba(255,61,90,0.04);
+  --header-bg:   rgba(255,255,255,0.92);
+  --scrollbar:   #c4c8e0;
 }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--text);
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 @keyframes fade-up {
@@ -34,6 +68,20 @@ body {
 }
 .animate-pulse-glow { animation: glow-pulse 2.5s ease-in-out infinite; }
 
-.scrollbar-thin::-webkit-scrollbar { width: 4px; }
-.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #32324a; border-radius: 4px; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+
+/* Theme-aware utility classes */
+.t-bg          { background: var(--bg); }
+.t-surface     { background: var(--bg-surface); }
+.t-elevated    { background: var(--bg-elevated); }
+.t-hover:hover { background: var(--bg-hover); }
+.t-border      { border-color: var(--border); }
+.t-border-mid  { border-color: var(--border-mid); }
+.t-text        { color: var(--text); }
+.t-muted       { color: var(--text-muted); }
+.t-dim         { color: var(--text-dim); }
+.t-accent      { color: var(--accent); }
+.t-header      { background: var(--header-bg); }

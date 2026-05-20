@@ -38,32 +38,24 @@ export function PlayersTab() {
 
   const toggleRoster = async (name: string) => {
     if (!isAdmin) return;
-    if (roster.includes(name)) {
-      await removeFromRoster(name);
-    } else {
-      await addToRoster(name);
-    }
+    if (roster.includes(name)) await removeFromRoster(name);
+    else await addToRoster(name);
   };
 
-  // Drag from queue to roster
   const handleDragStart = (name: string) => setDragging(name);
   const handleDropOnRoster = async (e: React.DragEvent) => {
     e.preventDefault();
     const name = e.dataTransfer.getData('text/plain') || dragging;
-    if (name && isAdmin && !roster.includes(name)) {
-      await addToRoster(name);
-    }
+    if (name && isAdmin && !roster.includes(name)) await addToRoster(name);
     setDragging(null);
   };
-
-  // Drag to reorder roster
   const handleRosterDragStart = (name: string) => setDragging(name);
   const handleRosterDrop = async (e: React.DragEvent, targetName: string) => {
     e.preventDefault();
     if (!dragging || dragging === targetName) return;
     const newRoster = [...roster];
     const fromIdx = newRoster.indexOf(dragging);
-    const toIdx = newRoster.indexOf(targetName);
+    const toIdx   = newRoster.indexOf(targetName);
     if (fromIdx === -1 || toIdx === -1) return;
     newRoster.splice(fromIdx, 1);
     newRoster.splice(toIdx, 0, dragging);
@@ -72,54 +64,80 @@ export function PlayersTab() {
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest mb-1">Player Registration</h1>
-      <p className="text-[#7878a0] font-['DM_Mono'] text-xs mb-5">
-        Anyone can submit their name to the queue · Admin selects who plays
-      </p>
+    <div className="max-w-6xl mx-auto px-6 py-8">
+
+      {/* Page header */}
+      <div className="mb-6">
+        <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Player Registration</h1>
+        <p className="font-['DM_Mono'] text-xs t-muted">
+          Anyone can submit their name to the queue · Admin selects who plays
+        </p>
+      </div>
 
       {/* Submit bar */}
-      <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl p-5 mb-4">
+      <div className="t-surface border t-border rounded-2xl p-5 mb-6 shadow-sm">
         <div className="flex gap-3">
           <input
             type="text"
-            className="flex-1 bg-[#161625] border border-[#32324a] rounded-xl px-4 py-3 text-[#dde0f0] font-['Syne'] text-sm outline-none focus:border-[#4d7cff] transition-colors"
+            className="flex-1 rounded-xl px-4 py-2.5 font-['Syne'] text-sm outline-none transition-colors border"
+            style={{
+              color: 'var(--text)',
+              background: 'var(--bg-elevated)',
+              borderColor: 'var(--border-mid)',
+            }}
             placeholder="Enter your name to join the queue…"
             maxLength={24}
             autoComplete="off"
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+            onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+            onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
           />
           <button
-            className="px-5 py-3 bg-[#4d7cff] text-white font-bold rounded-xl hover:bg-[#2d5eff] transition-all hover:-translate-y-0.5 text-sm"
+            className="px-6 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm text-white active:scale-95 transition-all"
+            style={{ background: 'var(--accent)', cursor: 'pointer' }}
             onClick={handleSubmit}
           >
             Submit
           </button>
         </div>
         {nameStatus && (
-          <p className={`mt-2 font-['DM_Mono'] text-xs ${nameStatus.ok ? 'text-[#2dcc70]' : 'text-[#ff3d5a]'}`}>
+          <p
+            className="mt-2.5 font-['DM_Mono'] text-xs"
+            style={{ color: nameStatus.ok ? 'var(--accent-green)' : 'var(--accent-red)' }}
+          >
             {nameStatus.text}
           </p>
         )}
       </div>
 
       {/* Dual panel */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {/* Queue */}
-        <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl flex flex-col min-h-[420px] max-h-[calc(100vh-220px)]">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#252538]">
-            <div className="flex items-center gap-2 font-['Bebas_Neue'] text-lg tracking-widest">
-              📋 Queue
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#ff3d5a] text-white text-[10px] font-bold">
+        {/* ── Queue ── */}
+        <div
+          className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden"
+          style={{ height: 'calc(100vh - 320px)', minHeight: '420px' }}
+        >
+          {/* Queue header */}
+          <div className="flex items-center justify-between px-5 py-3.5 border-b t-border shrink-0">
+            <div className="flex items-center gap-2.5">
+              <span>📋</span>
+              <span className="font-['Bebas_Neue'] text-lg tracking-widest t-text">Queue</span>
+              <span
+                className="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-[10px] font-bold"
+                style={{ background: 'var(--accent-red)' }}
+              >
                 {players.length}
               </span>
             </div>
             {isAdmin && players.length > 0 && (
               <button
-                className="text-[10px] font-['DM_Mono'] px-2 py-1 rounded-lg bg-[#161625] border border-[#32324a] text-[#7878a0] hover:border-[#4d7cff] hover:text-[#4d7cff] transition-colors"
+                className="font-['DM_Mono'] text-[10px] px-2.5 py-1 rounded-lg border transition-colors"
+                style={{ cursor: 'pointer', background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
+                onMouseEnter={e => { (e.currentTarget.style.color = 'var(--accent)'); (e.currentTarget.style.borderColor = 'var(--accent)'); }}
+                onMouseLeave={e => { (e.currentTarget.style.color = 'var(--text-muted)'); (e.currentTarget.style.borderColor = 'var(--border-mid)'); }}
                 onClick={clearQueue}
               >
                 Clear All
@@ -127,50 +145,73 @@ export function PlayersTab() {
             )}
           </div>
 
-          <div className="px-3 py-2 border-b border-[#252538]">
-            <input
-              type="text"
-              className="w-full bg-[#161625] border border-[#32324a] rounded-lg px-3 py-2 text-[#dde0f0] font-['DM_Mono'] text-xs outline-none focus:border-[#4d7cff] transition-colors"
-              placeholder="🔍  Search name…"
-              value={qSearch}
-              onChange={e => setQSearch(e.target.value)}
-            />
+          {/* Search */}
+          <div className="px-4 py-2.5 border-b t-border shrink-0">
+            <div
+              className="flex items-center gap-2 rounded-lg px-3 py-2 border transition-colors"
+              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}
+            >
+              <span className="text-xs" style={{ color: 'var(--text-dim)' }}>🔍</span>
+              <input
+                type="text"
+                className="flex-1 bg-transparent font-['DM_Mono'] text-xs outline-none"
+                style={{ color: 'var(--text)' }}
+                placeholder="Search name…"
+                value={qSearch}
+                onChange={e => setQSearch(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2.5 scrollbar-thin scrollbar-thumb-[#32324a]">
+          {/* List */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
             {filteredQueue.length === 0 ? (
-              <p className="text-[#4a4a6a] font-['DM_Mono'] text-xs text-center py-10">
-                {players.length === 0 ? 'No submissions yet.' : 'No matches.'}
-              </p>
+              <div className="flex items-center justify-center h-full">
+                <p className="font-['DM_Mono'] text-xs text-center" style={{ color: 'var(--text-dim)' }}>
+                  {players.length === 0 ? 'No submissions yet.' : 'No matches.'}
+                </p>
+              </div>
             ) : filteredQueue.map((p, i) => {
               const inRoster = roster.includes(p.name);
               return (
                 <div
                   key={p.name}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border mb-1.5 transition-all select-none
-                    ${isAdmin ? 'cursor-pointer' : 'cursor-default'}
-                    ${inRoster
-                      ? 'border-[#2dcc70] bg-[rgba(45,204,112,0.07)]'
-                      : 'border-[#252538] bg-[#161625] hover:border-[#32324a] hover:bg-[#1e1e30]'
-                    }`}
+                  className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all select-none"
+                  style={{
+                    cursor: isAdmin ? 'pointer' : 'default',
+                    background: inRoster ? 'rgba(45,204,112,0.07)' : 'var(--bg-elevated)',
+                    borderColor: inRoster ? 'var(--accent-green)' : 'var(--border)',
+                  }}
                   draggable={isAdmin}
                   onDragStart={e => { e.dataTransfer.setData('text/plain', p.name); handleDragStart(p.name); }}
                   onClick={() => toggleRoster(p.name)}
                 >
-                  <span className="font-['DM_Mono'] text-[10px] text-[#4a4a6a] w-4 text-right">{i + 1}</span>
-                  <span className={`flex-1 font-['DM_Mono'] text-sm font-medium ${inRoster ? 'text-[#dde0f0]' : 'text-[#dde0f0]'}`}>
-                    {p.name}
-                  </span>
-                  <span className={`text-[10px] font-['DM_Mono'] px-1.5 py-0.5 rounded border ${p.byAdmin ? 'border-[#ffb020]/40 text-[#ffb020] bg-[rgba(255,176,32,0.08)]' : 'border-[#32324a] text-[#7878a0] bg-[#1e1e30]'}`}>
+                  <span className="font-['DM_Mono'] text-[10px] w-5 text-right shrink-0" style={{ color: 'var(--text-dim)' }}>{i + 1}</span>
+                  <span className="flex-1 font-['DM_Mono'] text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{p.name}</span>
+                  <span
+                    className="text-[10px] font-['DM_Mono'] px-1.5 py-0.5 rounded border shrink-0"
+                    style={p.byAdmin
+                      ? { color: 'var(--accent-gold)', borderColor: 'rgba(255,176,32,0.3)', background: 'rgba(255,176,32,0.08)' }
+                      : { color: 'var(--text-muted)', borderColor: 'var(--border-mid)', background: 'var(--bg-elevated)' }
+                    }
+                  >
                     {p.byAdmin ? '👑' : 'usr'}
                   </span>
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border transition-all flex-shrink-0
-                    ${inRoster ? 'bg-[rgba(45,204,112,0.15)] text-[#2dcc70] border-[rgba(45,204,112,0.4)]' : 'bg-[#1e1e30] text-[#4a4a6a] border-[#32324a]'}`}>
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] border shrink-0 transition-all"
+                    style={inRoster
+                      ? { background: 'rgba(45,204,112,0.15)', color: 'var(--accent-green)', borderColor: 'rgba(45,204,112,0.4)' }
+                      : { background: 'var(--bg-elevated)', color: 'var(--text-dim)', borderColor: 'var(--border-mid)' }
+                    }
+                  >
                     {inRoster ? '✓' : '·'}
                   </div>
                   {isAdmin && (
                     <button
-                      className="text-[#4a4a6a] hover:text-[#ff3d5a] transition-colors text-sm leading-none px-1 rounded"
+                      className="text-sm leading-none shrink-0 transition-colors"
+                      style={{ cursor: 'pointer', color: 'var(--text-dim)' }}
+                      onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent-red)')}
+                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
                       onClick={e => { e.stopPropagation(); removePlayer(p.name); }}
                     >✕</button>
                   )}
@@ -179,24 +220,40 @@ export function PlayersTab() {
             })}
           </div>
 
-          <div className="px-4 py-2.5 border-t border-[#252538] flex items-center justify-between">
-            <span className="font-['DM_Mono'] text-[11px] text-[#7878a0]">Sorted by submission ↓</span>
-            {isAdmin && <span className="font-['DM_Mono'] text-[11px] text-[#ffb020]">Click to select · Drag to roster</span>}
+          {/* Footer */}
+          <div className="px-5 py-2.5 border-t t-border flex items-center justify-between shrink-0">
+            <span className="font-['DM_Mono'] text-[10px]" style={{ color: 'var(--text-dim)' }}>Sorted by submission ↓</span>
+            {isAdmin && (
+              <span className="font-['DM_Mono'] text-[10px]" style={{ color: 'var(--accent-gold)' }}>
+                Click to select · Drag to roster
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Roster */}
-        <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl flex flex-col min-h-[420px] max-h-[calc(100vh-220px)]">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#252538]">
-            <div className="flex items-center gap-2 font-['Bebas_Neue'] text-lg tracking-widest">
-              ✅ Roster
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#2dcc70] text-white text-[10px] font-bold">
+        {/* ── Roster ── */}
+        <div
+          className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden"
+          style={{ height: 'calc(100vh - 320px)', minHeight: '420px' }}
+        >
+          {/* Roster header */}
+          <div className="flex items-center justify-between px-5 py-3.5 border-b t-border shrink-0">
+            <div className="flex items-center gap-2.5">
+              <span>✅</span>
+              <span className="font-['Bebas_Neue'] text-lg tracking-widest t-text">Roster</span>
+              <span
+                className="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-[10px] font-bold transition-colors"
+                style={{ background: rosterValid ? 'var(--accent-green)' : 'var(--border-mid)' }}
+              >
                 {roster.length}
               </span>
             </div>
             {isAdmin && roster.length > 0 && (
               <button
-                className="text-[10px] font-['DM_Mono'] px-2 py-1 rounded-lg bg-[#161625] border border-[#32324a] text-[#7878a0] hover:border-[#ff3d5a] hover:text-[#ff3d5a] transition-colors"
+                className="font-['DM_Mono'] text-[10px] px-2.5 py-1 rounded-lg border transition-colors"
+                style={{ cursor: 'pointer', background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
+                onMouseEnter={e => { (e.currentTarget.style.color = 'var(--accent-red)'); (e.currentTarget.style.borderColor = 'var(--accent-red)'); }}
+                onMouseLeave={e => { (e.currentTarget.style.color = 'var(--text-muted)'); (e.currentTarget.style.borderColor = 'var(--border-mid)'); }}
                 onClick={clearRoster}
               >
                 Clear
@@ -204,48 +261,69 @@ export function PlayersTab() {
             )}
           </div>
 
+          {/* Drop area */}
           <div
-            className="flex-1 overflow-y-auto p-2.5"
+            className="flex-1 overflow-y-auto p-3 space-y-1"
             onDragOver={e => e.preventDefault()}
             onDrop={handleDropOnRoster}
           >
             {roster.length === 0 ? (
-              <div className="border-2 border-dashed border-[#32324a] rounded-xl flex items-center justify-center min-h-[80px] text-[#4a4a6a] font-['DM_Mono'] text-xs text-center p-4">
-                Drop players here or click from queue
+              <div className="h-full flex items-center justify-center">
+                <div
+                  className="rounded-2xl flex flex-col items-center justify-center gap-3 p-10 w-full border-2 border-dashed"
+                  style={{ borderColor: 'var(--border-mid)' }}
+                >
+                  <span className="text-3xl" style={{ color: 'var(--text-dim)', opacity: 0.4 }}>↓</span>
+                  <p className="font-['DM_Mono'] text-xs text-center" style={{ color: 'var(--text-dim)' }}>
+                    Drop players here or click from queue
+                  </p>
+                </div>
               </div>
             ) : (
-              <div>
-                <div className="border-2 border-dashed border-[#32324a]/40 rounded-xl flex items-center justify-center h-10 text-[#4a4a6a] font-['DM_Mono'] text-[10px] mb-2 opacity-50">
+              <>
+                <div
+                  className="rounded-xl flex items-center justify-center h-9 font-['DM_Mono'] text-[10px] border border-dashed"
+                  style={{ borderColor: 'var(--border-mid)', color: 'var(--text-dim)', opacity: 0.5 }}
+                >
                   drop zone
                 </div>
                 {roster.map((name, i) => (
                   <div
                     key={name}
-                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-[#161625] border border-[#252538] mb-1.5 cursor-grab hover:border-[#32324a] transition-all"
+                    className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all cursor-grab"
+                    style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}
                     draggable={isAdmin}
                     onDragStart={() => handleRosterDragStart(name)}
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => handleRosterDrop(e, name)}
                   >
-                    <span className="font-['DM_Mono'] text-[10px] text-[#4a4a6a] w-4 text-right">{i + 1}</span>
-                    <span className="flex-1 font-['DM_Mono'] text-sm font-medium">{name}</span>
+                    <span className="font-['DM_Mono'] text-[10px] w-5 text-right shrink-0" style={{ color: 'var(--text-dim)' }}>{i + 1}</span>
+                    <span className="flex-1 font-['DM_Mono'] text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{name}</span>
+                    <span className="font-['DM_Mono'] text-[10px] shrink-0" style={{ color: 'var(--text-dim)' }}>≡</span>
                     {isAdmin && (
                       <button
-                        className="text-[#4a4a6a] hover:text-[#ff3d5a] transition-colors text-sm leading-none px-1 rounded"
+                        className="text-sm leading-none shrink-0 transition-colors"
+                        style={{ cursor: 'pointer', color: 'var(--text-dim)' }}
+                        onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent-red)')}
+                        onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
                         onClick={() => removeFromRoster(name)}
                       >✕</button>
                     )}
                   </div>
                 ))}
-              </div>
+              </>
             )}
           </div>
 
-          <div className="px-4 py-2.5 border-t border-[#252538] flex items-center justify-between">
-            <span className={`font-['DM_Mono'] text-[11px] font-bold ${rosterValid ? 'text-[#2dcc70]' : 'text-[#ff3d5a]'}`}>
-              {roster.length} selected {rosterValid ? '✓' : ''}
+          {/* Footer */}
+          <div className="px-5 py-2.5 border-t t-border flex items-center justify-between shrink-0">
+            <span
+              className="font-['DM_Mono'] text-[10px] font-bold"
+              style={{ color: rosterValid ? 'var(--accent-green)' : 'var(--accent-red)' }}
+            >
+              {roster.length} selected {rosterValid ? '✓ Ready' : ''}
             </span>
-            <span className="font-['DM_Mono'] text-[11px] text-[#7878a0]">Need 10+ in multiples of 5</span>
+            <span className="font-['DM_Mono'] text-[10px]" style={{ color: 'var(--text-dim)' }}>Need 10+ in multiples of 5</span>
           </div>
         </div>
 

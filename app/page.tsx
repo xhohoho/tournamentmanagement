@@ -8,19 +8,19 @@ import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
 import { MapsTab } from '@/components/MapsTab';
 import type { TabId } from '@/lib/types';
-import Head from 'next/head';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'players', icon: '👥', label: 'Players' },
-  { id: 'teams', icon: '🛡', label: 'Teams' },
+  { id: 'teams',   icon: '🛡',  label: 'Teams' },
   { id: 'bracket', icon: '🏆', label: 'Bracket' },
-  { id: 'maps', icon: '🗺', label: 'Maps' },
+  { id: 'maps',    icon: '🗺',  label: 'Maps' },
 ];
 
 export default function Home() {
   const { isAdmin, setIsAdmin, players, loading } = useTourney();
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
+  const [lightMode, setLightMode] = useState(false);
 
   const handleAdminBtn = () => {
     if (isAdmin) { setIsAdmin(false); return; }
@@ -29,69 +29,93 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#080810] flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center t-bg ${lightMode ? 'light' : ''}`}>
         <div className="text-center">
-          <div className="font-['Bebas_Neue'] text-5xl tracking-widest bg-gradient-to-r from-[#ff3d5a] to-[#4d7cff] bg-clip-text text-transparent mb-4">
+          <div className="font-['Bebas_Neue'] text-5xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent mb-4">
             ⚔ TOURNEY
           </div>
-          <div className="font-['DM_Mono'] text-xs text-[#7878a0] animate-pulse">Loading…</div>
+          <div className="font-['DM_Mono'] text-xs t-muted animate-pulse">Loading…</div>
         </div>
       </div>
     );
   }
 
   return (
-    <>
-      <Head>
-        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
-      </Head>
-      <div className="relative min-h-screen">
+    <div className={`relative min-h-screen t-bg ${lightMode ? 'light' : ''}`}>
+      {/* Ambient gradients */}
       <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_20%_10%,rgba(77,124,255,0.07)_0%,transparent_70%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_80%_90%,rgba(255,61,90,0.06)_0%,transparent_70%)]" />
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 40% at 20% 10%, var(--grad-start) 0%, transparent 70%)' }} />
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 50% 40% at 80% 90%, var(--grad-end) 0%, transparent 70%)' }} />
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        <header className="flex items-center justify-between px-6 py-[14px] bg-[rgba(15,15,26,0.9)] border-b border-[#252538] backdrop-blur-md sticky top-0 z-40">
-          <div className="font-['Bebas_Neue'] text-3xl tracking-widest bg-gradient-to-r from-[#ff3d5a] to-[#4d7cff] bg-clip-text text-transparent">
-            ⚔ TOURNEY
+        {/* Header */}
+        <header className="t-header backdrop-blur-md border-b t-border sticky top-0 z-40">
+          <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+            <div className="font-['Bebas_Neue'] text-2xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent">
+              ⚔ TOURNEY
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Theme toggle */}
+              <button
+                onClick={() => setLightMode(p => !p)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:t-border hover:t-text cursor-pointer"
+                title={lightMode ? 'Switch to Dark' : 'Switch to Light'}
+              >
+                {lightMode ? '🌙 Dark' : '☀️ Light'}
+              </button>
+
+              {/* Admin toggle */}
+              <button
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
+                  isAdmin
+                    ? 'border-[var(--accent-gold)] text-[var(--accent-gold)] bg-[rgba(255,176,32,0.1)]'
+                    : 't-border-mid t-muted t-elevated hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)]'
+                }`}
+                onClick={handleAdminBtn}
+              >
+                <span>{isAdmin ? '🔓' : '🔒'}</span>
+                <span>{isAdmin ? 'Admin ✓' : 'Admin'}</span>
+              </button>
+            </div>
           </div>
-          <button
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${isAdmin ? 'border-[#ffb020] text-[#ffb020] bg-[rgba(255,176,32,0.1)]' : 'border-[#32324a] text-[#7878a0] bg-[#161625] hover:border-[#ffb020] hover:text-[#ffb020]'}`}
-            onClick={handleAdminBtn}
-          >
-            <span>{isAdmin ? '🔓' : '🔒'}</span>
-            <span>{isAdmin ? 'Admin ✓' : 'Admin'}</span>
-          </button>
         </header>
 
-        <nav className="flex flex-col md:flex-row bg-[#0f0f1a] border-b border-[#252538] overflow-x-auto px-4">
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              className={`flex items-center gap-1.5 px-4 py-3 md:px-5 md:py-3.5 font-['DM_Mono'] text-xs tracking-widest uppercase border-b-2 transition-all whitespace-nowrap w-full md:w-auto cursor-pointer ${activeTab === tab.id ? 'border-[#4d7cff] text-[#4d7cff] bg-[rgba(77,124,255,0.06)]' : 'border-transparent text-[#7878a0] hover:text-[#dde0f0] hover:bg-[rgba(255,255,255,0.03)]'}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.icon} {tab.label}
-              {tab.id === 'players' && (
-                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#ff3d5a] text-white text-[9px] font-bold ml-1">
-                  {players.length}
-                </span>
-              )}
-            </button>
-          ))}
+        {/* Tab nav */}
+        <nav className="t-surface border-b t-border">
+          <div className="max-w-6xl mx-auto px-6 flex overflow-x-auto">
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-5 py-3.5 font-['DM_Mono'] text-xs tracking-widest uppercase border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === tab.id
+                    ? 'border-[var(--accent)] text-[var(--accent)] bg-[rgba(77,124,255,0.06)]'
+                    : 'border-transparent t-muted hover:t-text hover:bg-[rgba(128,128,255,0.04)]'
+                }`}
+              >
+                {tab.icon} {tab.label}
+                {tab.id === 'players' && (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[var(--accent-red)] text-white text-[9px] font-bold">
+                    {players.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </nav>
 
+        {/* Content */}
         <main className="flex-1">
           <div className={activeTab === 'players' ? 'block' : 'hidden'}><PlayersTab /></div>
-          <div className={activeTab === 'teams' ? 'block' : 'hidden'}><TeamsTab /></div>
+          <div className={activeTab === 'teams'   ? 'block' : 'hidden'}><TeamsTab /></div>
           <div className={activeTab === 'bracket' ? 'block' : 'hidden'}><BracketTab /></div>
-          <div className={activeTab === 'maps' ? 'block' : 'hidden'}><MapsTab /></div>
+          <div className={activeTab === 'maps'    ? 'block' : 'hidden'}><MapsTab /></div>
         </main>
       </div>
 
       <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
     </div>
-  </>
-);
+  );
 }
