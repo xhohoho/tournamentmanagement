@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { shuffle, TEAM_COLORS } from '@/lib/utils';
 import type { Team } from '@/lib/types';
-import { verifyAdminToken } from './admin/auth';
+import { verifyAdminToken } from '@/app/api/admin/auth/route';
 
 // FIXED: Explicitly type 'req' as NextRequest to satisfy TypeScript
 async function authorizeAdmin(req: NextRequest): Promise<boolean> {
