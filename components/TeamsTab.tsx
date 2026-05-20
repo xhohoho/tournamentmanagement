@@ -325,20 +325,24 @@ function TeamsGrid({ teams, isAdmin, assignLeader }: { teams: ReturnType<typeof 
           <div className="flex items-center justify-between mb-3 pb-2 border-b" style={{ borderColor: 'var(--border)' }}>
             <h3 className="font-['Bebas_Neue'] text-xl tracking-wide" style={{ color: t.color }}>{t.name}</h3>
           </div>
-          {t.members.map(m => (
+
+          {t.members.map((m) => (
             <div
               key={m}
-              className="flex items-center gap-2 py-1.5 font-['DM_Mono'] text-sm"
+              className="flex items-center justify-between w-full py-1.5 font-['DM_Mono'] text-sm"
               style={{ color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)' }}
             >
               <span className="w-5">{m === t.leader ? '👑' : '·'}</span>
-              {m}
+              <div className="flex-1 truncate">{m}</div>
+
               {isAdmin && m !== t.leader && (
                 <button
                   onClick={() => assignLeader(t.name, m)}
-                  className="ml-2 px-2 py-0.5 text-xs font-['DM_Mono'] bg-[var(--accent)] text-white rounded hover:bg-[var(--accent-dark)] transition-colors"
+                  className="self-end px-2 py-0.5 text-xs font-['DM_Mono']
+                  bg-[#21b966] text-white rounded hover:bg-[#13894a] transition-colors"
+                  aria-label="Assign as leader"
                 >
-                  Set Leader
+                  ✓
                 </button>
               )}
             </div>
