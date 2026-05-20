@@ -2,15 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { shuffle, TEAM_COLORS } from '@/lib/utils';
 import type { Team } from '@/lib/types';
+import { verifyAdminToken } from './admin/auth';
 
 // FIXED: Explicitly type 'req' as NextRequest to satisfy TypeScript
 async function authorizeAdmin(req: NextRequest): Promise<boolean> {
-  const token = req.headers.get('X-Admin-Token');
-  if (!token) return false;
-
-  // Pull state to ensure database connectivity if needed, or simply validate token presence
-  const state = await getState();
-  return !!token; 
+  // 2. Leverage the exact same evaluation logic
+  return verifyAdminToken(req);
 }
 
 export async function GET() {
