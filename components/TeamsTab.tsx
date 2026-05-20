@@ -233,12 +233,16 @@ export function TeamsTab() {
                           transform: visible ? 'translateX(0)' : 'translateX(-8px)',
                         }}
                       >
+                        {/* Shows the crown if they match the leader string */}
                         <span className="w-5 shrink-0">{m === t.leader ? '👑' : '·'}</span>
                         <span className="flex-1 truncate">{m}</span>
+                        
+                        {/* The Assignment Button */}
                         {isAdmin && m !== t.leader && (
                           <button
                             onClick={async () => {
                               setErr('');
+                              // Direct call to our smart context handler using team name mapping
                               const result = await assignLeader(t.name, m);
                               if (result?.error) {
                                 setErr(result.error);
