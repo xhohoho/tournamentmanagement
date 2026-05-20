@@ -92,5 +92,6 @@ export default function Home() {
 
       <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
     </div>
-  );
+  </>
+);
 }

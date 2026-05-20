@@ -36,4 +36,4 @@ body {
 
 .scrollbar-thin::-webkit-scrollbar { width: 4px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-.scrollbar-thumb-[#32324a]::-webkit-scrollbar-thumb { background: #32324a; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #32324a; border-radius: 4px; }
