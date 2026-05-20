@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useTourney } from '@/lib/context';
 
-export function PlayersTab() {
+export function PlayersTab({ lightMode }: { lightMode?: boolean }) {
   const {
     players, roster, isAdmin,
     submitPlayer, removePlayer,
@@ -64,6 +64,7 @@ export function PlayersTab() {
   };
 
   return (
+    <div className={`min-h-[calc(100vh-120px)] t-bg ${lightMode ? 'light' : ''}`}>
     <div className="max-w-6xl mx-auto px-6 py-8">
 
       {/* Page header */}
@@ -328,6 +329,7 @@ export function PlayersTab() {
         </div>
 
       </div>
+    </div>
     </div>
   );
 }

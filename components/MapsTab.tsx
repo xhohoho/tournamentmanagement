@@ -4,8 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { WHEEL_COLORS } from '@/lib/utils';
 
-export function MapsTab() {
-  const { maps, stageMaps, bracket, addMap, removeMap, assignStage, clearStage } = useTourney();
+export function MapsTab({ lightMode }: { lightMode?: boolean }) {
+  const { maps, stageMaps, bracket, addMap, removeMap, removeSpunMap, assignStage, clearStage } = useTourney();
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -13,6 +13,15 @@ export function MapsTab() {
   const [spinning, setSpinning] = useState(false);
   const [spunMap, setSpunMap] = useState('');
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
+
+  // Normalize stageMaps values to always string[]
+  const getStageMaps = (key: string): string[] => {
+    const v = stageMaps[key];
+    if (!v) return [];
+    if (Array.isArray(v)) return v as unknown as string[];
+    return [v as unknown as string];
+  };
 
   const drawWheel = useCallback((angle: number) => {
     const canvas = canvasRef.current;
@@ -89,6 +98,12 @@ export function MapsTab() {
     setMapErr('');
   };
 
+  const handleRemoveSpun = async () => {
+    if (!spunMap) return;
+    await removeSpunMap(spunMap);
+    setSpunMap('');
+  };
+
   const getStageLabels = () => {
     if (!bracket) return [];
     const labels: { key: string; label: string }[] = [];
@@ -104,158 +119,187 @@ export function MapsTab() {
     return labels;
   };
 
-  const handleAssignSpun = async () => {
-    if (!spunMap) return;
-    const stages = getStageLabels();
-    if (!stages.length) { alert('Generate a bracket first.'); return; }
-    const choice = prompt(
-      `Assign "${spunMap}" to which stage?\n\n` +
-      stages.map((s, i) => `${i + 1}. ${s.label}${stageMaps[s.key] ? ' (has: ' + stageMaps[s.key] + ')' : ''}`).join('\n') +
-      '\n\nEnter number:'
-    );
-    const idx = parseInt(choice ?? '') - 1;
-    if (isNaN(idx) || idx < 0 || idx >= stages.length) return;
-    await assignStage(stages[idx].key, spunMap);
-  };
-
-  const usedMaps = Object.values(stageMaps);
   const stages = getStageLabels();
 
+  // All maps currently in any stage
+  const usedMaps = new Set(
+    Object.values(stageMaps).flatMap(v =>
+      Array.isArray(v) ? (v as unknown as string[]) : v ? [v as unknown as string] : []
+    )
+  );
+
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest mb-1">Map Selector</h1>
-      <p className="text-[#7878a0] font-['DM_Mono'] text-xs mb-5">Spin the wheel · Drag maps onto bracket stages</p>
+    <div className={`min-h-[calc(100vh-120px)] t-bg ${lightMode ? 'light' : ''}`}>
+      <div className="p-6 max-w-5xl mx-auto">
+        <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Map Selector</h1>
+        <p className="t-muted font-['DM_Mono'] text-xs mb-5">Spin the wheel · Drag maps onto bracket stages · Each stage supports up to 3 maps (BO3)</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
 
-        {/* Wheel */}
-        <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl p-5">
-          <h2 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4">🎡 Wheel</h2>
+          {/* Wheel */}
+          <div className="t-surface border t-border rounded-xl p-5">
+            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">🎡 Wheel</h2>
 
-          <div className="flex gap-3 mb-4">
-            <input
-              type="text"
-              className="flex-1 bg-[#161625] border border-[#32324a] rounded-xl px-4 py-2.5 text-[#dde0f0] font-['DM_Mono'] text-sm outline-none focus:border-[#4d7cff] transition-colors"
-              placeholder="Map name…"
-              value={mapInput}
-              onChange={e => setMapInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAddMap()}
-            />
-            <button
-              className="px-4 py-2.5 bg-[#4d7cff] text-white font-bold rounded-xl hover:bg-[#2d5eff] transition-all text-sm"
-              onClick={handleAddMap}
-            >
-              + Add
-            </button>
-          </div>
-          {mapErr && <p className="text-[#ff3d5a] font-['DM_Mono'] text-xs mb-3">{mapErr}</p>}
-
-          <div className="flex flex-wrap gap-2 mb-4 min-h-9">
-            {maps.map((m, i) => (
-              <span key={m} className="inline-flex items-center gap-1.5 bg-[#161625] border border-[#32324a] rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm">
-                {m}
-                <span className="cursor-pointer text-[#4a4a6a] hover:text-[#ff3d5a] transition-colors" onClick={() => removeMap(m)}>✕</span>
-              </span>
-            ))}
-          </div>
-
-          <div className="flex flex-col items-center gap-3.5">
-            <span className="text-3xl rotate-90">▶</span>
-            <canvas
-              ref={canvasRef}
-              width={280}
-              height={280}
-              className="rounded-full drop-shadow-[0_0_20px_rgba(77,124,255,0.3)]"
-            />
-            <button
-              className="px-6 py-2.5 bg-[#ff3d5a] text-white font-bold rounded-xl hover:bg-[#ff1a3a] transition-all hover:-translate-y-0.5 text-sm disabled:opacity-40 disabled:transform-none"
-              onClick={spin}
-              disabled={spinning || maps.length === 0}
-            >
-              🌀 SPIN
-            </button>
-            {spunMap && (
-              <p className="font-['Bebas_Neue'] text-2xl tracking-widest text-[#ffb020]">🎯 {spunMap}</p>
-            )}
-            {spunMap && (
+            <div className="flex gap-3 mb-4">
+              <input
+                type="text"
+                className="flex-1 t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none transition-colors"
+                style={{ '--tw-ring-color': 'var(--accent)' } as React.CSSProperties}
+                placeholder="Map name…"
+                value={mapInput}
+                onChange={e => setMapInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddMap()}
+                onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                onBlur={e => (e.target.style.borderColor = '')}
+              />
               <button
-                className="px-4 py-2 bg-[#161625] border border-[#32324a] text-[#dde0f0] font-bold rounded-xl hover:border-[#4d7cff] hover:text-[#4d7cff] transition-colors text-sm"
-                onClick={handleAssignSpun}
+                className="px-4 py-2.5 font-bold rounded-xl text-sm text-white transition-all"
+                style={{ background: 'var(--accent)', cursor: 'pointer' }}
+                onClick={handleAddMap}
               >
-                📌 Assign to Stage…
+                + Add
               </button>
-            )}
-          </div>
-        </div>
+            </div>
+            {mapErr && <p className="font-['DM_Mono'] text-xs mb-3" style={{ color: 'var(--accent-red)' }}>{mapErr}</p>}
 
-        {/* Stage assignment */}
-        <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl p-5">
-          <h2 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4">📌 Stage Assignment</h2>
-          <div className="bg-[#161625] border border-[#252538] rounded-lg px-4 py-2.5 font-['DM_Mono'] text-xs text-[#7878a0] mb-4">
-            Drag a map chip onto a stage, or spin and use "Assign to Stage".
-          </div>
-
-          {!bracket ? (
-            <p className="font-['DM_Mono'] text-xs text-[#4a4a6a] text-center py-8">Generate a bracket first.</p>
-          ) : (
-            <div className="mb-4">
-              {stages.map(s => (
-                <div
-                  key={s.key}
-                  className="flex items-center gap-3 bg-[#161625] border border-[#252538] rounded-xl px-4 py-3 mb-2"
-                >
-                  <span className="font-['DM_Mono'] text-xs text-[#7878a0] min-w-[110px] tracking-wide">{s.label}</span>
-                  <div
-                    className={`flex-1 min-h-9 border-2 border-dashed rounded-xl flex items-center justify-center font-['DM_Mono'] text-sm transition-all px-3 py-1 cursor-default
-                      ${stageMaps[s.key]
-                        ? 'border-[#b06dff] border-solid text-[#b06dff] bg-[rgba(176,109,255,0.08)]'
-                        : dragOverStage === s.key
-                          ? 'border-[#4d7cff] bg-[rgba(77,124,255,0.1)] text-[#4d7cff]'
-                          : 'border-[#32324a] text-[#4a4a6a]'
-                      }`}
-                    onDragOver={e => { e.preventDefault(); setDragOverStage(s.key); }}
-                    onDragLeave={() => setDragOverStage(null)}
-                    onDrop={async e => {
-                      e.preventDefault();
-                      setDragOverStage(null);
-                      const map = e.dataTransfer.getData('text/plain');
-                      if (map) await assignStage(s.key, map);
-                    }}
-                  >
-                    {stageMaps[s.key] ? '🗺 ' + stageMaps[s.key] : 'Drop here'}
-                  </div>
-                  {stageMaps[s.key] && (
-                    <button
-                      className="text-[#4a4a6a] hover:text-[#ff3d5a] font-bold transition-colors text-sm"
-                      onClick={() => clearStage(s.key)}
-                    >✕</button>
-                  )}
-                </div>
+            <div className="flex flex-wrap gap-2 mb-4 min-h-9">
+              {maps.map((m) => (
+                <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
+                  {m}
+                  <span className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors" onClick={() => removeMap(m)}>✕</span>
+                </span>
               ))}
             </div>
-          )}
 
-          <hr className="border-[#252538] my-4" />
-          <p className="font-['DM_Mono'] text-[11px] text-[#7878a0] tracking-widest mb-3">MAP POOL</p>
-          <div className="flex flex-wrap gap-2">
-            {maps.map(m => {
-              const used = usedMaps.includes(m);
-              return (
-                <div
-                  key={m}
-                  className={`bg-[#1e1e30] border border-[#32324a] rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all
-                    ${used ? 'opacity-35 cursor-not-allowed' : 'cursor-grab hover:border-[#4d7cff] hover:text-[#4d7cff]'}`}
-                  draggable={!used}
-                  onDragStart={e => e.dataTransfer.setData('text/plain', m)}
-                  title={used ? 'Already assigned' : 'Drag to a stage'}
-                >
-                  {m}
+            <div className="flex flex-col items-center gap-3.5">
+              <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
+              <canvas
+                ref={canvasRef}
+                width={280}
+                height={280}
+                className="rounded-full drop-shadow-[0_0_20px_rgba(77,124,255,0.3)]"
+              />
+              <button
+                className="px-6 py-2.5 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:transform-none"
+                style={{ background: 'var(--accent-red)', cursor: 'pointer' }}
+                onClick={spin}
+                disabled={spinning || maps.length === 0}
+              >
+                🌀 SPIN
+              </button>
+
+              {spunMap && (
+                <div className="flex flex-col items-center gap-2">
+                  <p className="font-['Bebas_Neue'] text-2xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>🎯 {spunMap}</p>
+                  <div className="flex gap-2">
+                    <button
+                      className="px-3 py-1.5 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors"
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-red)'; e.currentTarget.style.color = 'var(--accent-red)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
+                      onClick={handleRemoveSpun}
+                    >
+                      🗑 Remove from pool
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
-            {maps.length === 0 && (
-              <p className="font-['DM_Mono'] text-xs text-[#4a4a6a]">Add maps using the wheel panel.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Stage assignment */}
+          <div className="t-surface border t-border rounded-xl p-5">
+            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">📌 Stage Assignment</h2>
+            <div className="t-elevated border t-border-mid rounded-lg px-4 py-2.5 font-['DM_Mono'] text-xs t-muted mb-4">
+              Drag a map chip directly onto a stage row. Each stage holds up to 3 maps (BO3).
+            </div>
+
+            {!bracket ? (
+              <p className="font-['DM_Mono'] text-xs t-dim text-center py-8">Generate a bracket first.</p>
+            ) : (
+              <div className="mb-4 space-y-2">
+                {stages.map(s => {
+                  const stageMapsArr = getStageMaps(s.key);
+                  const maxSlots = 3;
+                  return (
+                    <div key={s.key} className="t-elevated border t-border rounded-xl px-4 py-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-['Bebas_Neue'] text-sm tracking-widest t-text">{s.label}</span>
+                        <span className="font-['DM_Mono'] text-[10px] t-dim">{stageMapsArr.length}/3 maps</span>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        {Array.from({ length: maxSlots }, (_, slotIdx) => {
+                          const map = stageMapsArr[slotIdx];
+                          const isOver = dragOverStage === s.key && dragOverSlot === slotIdx;
+                          return (
+                            <div
+                              key={slotIdx}
+                              className="flex-1 min-w-[80px] min-h-8 border-2 border-dashed rounded-lg flex items-center justify-center font-['DM_Mono'] text-xs transition-all px-2 py-1 relative"
+                              style={{
+                                borderColor: map ? 'var(--accent)' : isOver ? 'var(--accent-gold)' : 'var(--border-mid)',
+                                background: map ? 'rgba(77,124,255,0.08)' : isOver ? 'rgba(255,176,32,0.08)' : undefined,
+                                color: map ? 'var(--accent)' : 'var(--text-dim)',
+                                borderStyle: map ? 'solid' : 'dashed',
+                              }}
+                              onDragOver={e => { e.preventDefault(); setDragOverStage(s.key); setDragOverSlot(slotIdx); }}
+                              onDragLeave={() => { setDragOverStage(null); setDragOverSlot(null); }}
+                              onDrop={async e => {
+                                e.preventDefault();
+                                setDragOverStage(null); setDragOverSlot(null);
+                                const m = e.dataTransfer.getData('text/plain');
+                                if (m) await assignStage(s.key, m, slotIdx);
+                              }}
+                            >
+                              {map ? (
+                                <>
+                                  <span className="truncate text-[10px]">🗺 {map}</span>
+                                  <button
+                                    className="ml-1.5 shrink-0 t-dim hover:text-[var(--accent-red)] transition-colors text-sm"
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => clearStage(s.key, slotIdx)}
+                                  >✕</button>
+                                </>
+                              ) : (
+                                <span className="text-[10px]">{isOver ? '+ drop' : `Map ${slotIdx + 1}`}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
+
+            <hr className="t-border my-4" />
+            <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-3">MAP POOL</p>
+            <div className="flex flex-wrap gap-2">
+              {maps.map(m => {
+                const used = usedMaps.has(m);
+                return (
+                  <div
+                    key={m}
+                    className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all"
+                    style={{
+                      opacity: used ? 0.35 : 1,
+                      cursor: used ? 'not-allowed' : 'grab',
+                      borderColor: !used ? 'var(--border-mid)' : undefined,
+                    }}
+                    draggable={!used}
+                    onDragStart={e => e.dataTransfer.setData('text/plain', m)}
+                    title={used ? 'Already assigned' : 'Drag to a stage slot'}
+                    onMouseEnter={e => { if (!used) { e.currentTarget.style.borderColor = 'var(--accent)'; (e.currentTarget.style as CSSStyleDeclaration & { color: string }).color = 'var(--accent)'; }}}
+                    onMouseLeave={e => { if (!used) { e.currentTarget.style.borderColor = 'var(--border-mid)'; (e.currentTarget.style as CSSStyleDeclaration & { color: string }).color = ''; }}}
+                  >
+                    {m}
+                  </div>
+                );
+              })}
+              {maps.length === 0 && (
+                <p className="font-['DM_Mono'] text-xs t-dim">Add maps using the wheel panel.</p>
+              )}
+            </div>
           </div>
         </div>
       </div>

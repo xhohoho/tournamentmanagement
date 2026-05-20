@@ -1,24 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { shuffle, nextPow2 } from '@/lib/utils';
-import type { BracketMatch, Bracket } from '@/lib/types';
+import type { BracketMatch, GrandFinal, Bracket } from '@/lib/types';
 
-function buildSE(names: string[]): BracketMatch[][] {
+function emptyMatch(format: 'bo1' | 'bo3' = 'bo1'): BracketMatch {
+  return { p1: null, p2: null, winner: null, score1: 0, score2: 0, format };
+}
+
+function buildSE(names: string[], format: 'bo1' | 'bo3' = 'bo1'): BracketMatch[][] {
   const size = nextPow2(names.length);
   const seeded: (string | null)[] = [...names, ...Array(size - names.length).fill(null)];
   const r0: BracketMatch[] = [];
   for (let i = 0; i < size; i += 2) {
-    r0.push({ p1: seeded[i], p2: seeded[i + 1], winner: null });
+    r0.push({ p1: seeded[i], p2: seeded[i + 1], winner: null, score1: 0, score2: 0, format });
   }
   const rounds: BracketMatch[][] = [r0];
   let prev = r0;
   while (prev.length > 1) {
     const next: BracketMatch[] = [];
-    for (let i = 0; i < prev.length; i += 2) next.push({ p1: null, p2: null, winner: null });
+    for (let i = 0; i < prev.length; i += 2) next.push(emptyMatch(format));
     rounds.push(next);
     prev = next;
   }
   return rounds;
+}
+
+// Returns winner if score determines it (bo1: any win; bo3: first to 2)
+function resolveWinner(match: BracketMatch | GrandFinal): string | null {
+  const target = match.format === 'bo3' ? 2 : 1;
+  if (match.score1 >= target && match.p1) return match.p1;
+  if (match.score2 >= target && match.p2) return match.p2;
+  return null;
 }
 
 function autoByes(rounds: BracketMatch[][]): void {
@@ -74,46 +86,64 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { section, ri, mi, player } = await req.json();
+  const { section, ri, mi, p1wins, p2wins } = await req.json();
   const state = await getState();
   const B = state.bracket;
   if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });
 
-  // Deep clone
   const bracket: Bracket = JSON.parse(JSON.stringify(B));
 
-  let rounds: BracketMatch[][] | undefined;
-  if (section === 'upper') rounds = bracket.upper;
-  else if (section === 'lower') rounds = bracket.lower;
-  else if (section === 'gf') {
-    if (bracket.grandFinal) {
-      bracket.grandFinal.winner = player;
-      bracket.champion = player;
-    }
+  // Grand final score update
+  if (section === 'gf') {
+    const gf = bracket.grandFinal;
+    if (!gf) return NextResponse.json({ error: 'No grand final' }, { status: 400 });
+    gf.score1 = p1wins ?? gf.score1;
+    gf.score2 = p2wins ?? gf.score2;
+    const winner = resolveWinner(gf);
+    if (winner) { gf.winner = winner; bracket.champion = winner; }
     const next = await updateState(s => ({ ...s, bracket }));
     return NextResponse.json({ bracket: next.bracket });
   }
 
+  let rounds: BracketMatch[][] | undefined;
+  if (section === 'upper') rounds = bracket.upper;
+  else if (section === 'lower') rounds = bracket.lower;
   if (!rounds) return NextResponse.json({ error: 'Invalid section' }, { status: 400 });
 
   const match = rounds[ri][mi];
-  const loser = player === match.p1 ? match.p2 : match.p1;
-  match.winner = player;
+  match.score1 = p1wins ?? match.score1;
+  match.score2 = p2wins ?? match.score2;
 
-  // Propagate winner
+  const winner = resolveWinner(match);
+  if (!winner) {
+    // Scores updated but no winner yet — save and return
+    const next = await updateState(s => ({ ...s, bracket }));
+    return NextResponse.json({ bracket: next.bracket });
+  }
+
+  // Already had a winner — don't re-propagate
+  if (match.winner === winner) {
+    const next = await updateState(s => ({ ...s, bracket }));
+    return NextResponse.json({ bracket: next.bracket });
+  }
+
+  const loser = winner === match.p1 ? match.p2 : match.p1;
+  match.winner = winner;
+
+  // Propagate winner forward
   if (ri + 1 < rounds.length) {
     const s = Math.floor(mi / 2);
-    if (mi % 2 === 0) rounds[ri + 1][s].p1 = player;
-    else rounds[ri + 1][s].p2 = player;
+    if (mi % 2 === 0) rounds[ri + 1][s].p1 = winner;
+    else rounds[ri + 1][s].p2 = winner;
   } else {
     if (section === 'upper') {
       if (bracket.type === 'single') {
-        bracket.champion = player;
+        bracket.champion = winner;
       } else if (bracket.grandFinal) {
-        bracket.grandFinal.p1 = player;
+        bracket.grandFinal.p1 = winner;
       }
     } else if (section === 'lower' && bracket.grandFinal) {
-      bracket.grandFinal.p2 = player;
+      bracket.grandFinal.p2 = winner;
     }
   }
 
@@ -128,7 +158,7 @@ export async function PATCH(req: NextRequest) {
       if (!open.p1) open.p1 = loser;
       else open.p2 = loser;
     } else {
-      lr.push({ p1: loser, p2: null, winner: null });
+      lr.push({ p1: loser, p2: null, winner: null, score1: 0, score2: 0, format: match.format });
     }
   }
 

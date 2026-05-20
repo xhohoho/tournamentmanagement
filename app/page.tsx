@@ -108,10 +108,10 @@ export default function Home() {
 
         {/* Content */}
         <main className="flex-1">
-          <div className={activeTab === 'players' ? 'block' : 'hidden'}><PlayersTab /></div>
-          <div className={activeTab === 'teams'   ? 'block' : 'hidden'}><TeamsTab /></div>
-          <div className={activeTab === 'bracket' ? 'block' : 'hidden'}><BracketTab /></div>
-          <div className={activeTab === 'maps'    ? 'block' : 'hidden'}><MapsTab /></div>
+          <div className={activeTab === 'players' ? 'block' : 'hidden'}><PlayersTab lightMode={lightMode} /></div>
+          <div className={activeTab === 'teams'   ? 'block' : 'hidden'}><TeamsTab   lightMode={lightMode} /></div>
+          <div className={activeTab === 'bracket' ? 'block' : 'hidden'}><BracketTab lightMode={lightMode} /></div>
+          <div className={activeTab === 'maps'    ? 'block' : 'hidden'}><MapsTab    lightMode={lightMode} /></div>
         </main>
       </div>
 

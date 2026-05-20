@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="bg-[#080810] text-[#dde0f0] min-h-screen overflow-x-hidden">
+      <body className="min-h-screen overflow-x-hidden">
         <TourneyProvider>
           {children}
         </TourneyProvider>

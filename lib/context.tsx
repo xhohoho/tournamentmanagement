@@ -1,10 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import type { Player, Team, Bracket, TabId } from '@/lib/types';
+import type { Player, Team, Bracket } from '@/lib/types';
 
 interface TourneyContext {
-  // State
   players: Player[];
   roster: string[];
   teamMode: 'leader' | 'random';
@@ -12,15 +11,13 @@ interface TourneyContext {
   elimMode: 'single' | 'double';
   bracket: Bracket | null;
   maps: string[];
-  stageMaps: Record<string, string>;
+  stageMaps: Record<string, string[]>;
   isAdmin: boolean;
   loading: boolean;
 
-  // Actions
   setIsAdmin: (v: boolean) => void;
   refresh: () => Promise<void>;
 
-  // Players
   submitPlayer: (name: string, byAdmin?: boolean) => Promise<{ error?: string }>;
   removePlayer: (name: string) => Promise<void>;
   addToRoster: (name: string) => Promise<void>;
@@ -29,22 +26,20 @@ interface TourneyContext {
   clearQueue: () => Promise<void>;
   clearRoster: () => Promise<void>;
 
-  // Teams
   formTeams: (leaders?: string[]) => Promise<{ error?: string }>;
   resetTeams: () => Promise<void>;
   setTeamMode: (mode: 'leader' | 'random') => Promise<void>;
 
-  // Bracket
   generateBracket: () => Promise<{ error?: string }>;
-  advancePlayer: (section: string, ri: number, mi: number, player: string) => Promise<void>;
+  updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   resetBracket: () => Promise<void>;
   setElimMode: (mode: 'single' | 'double') => Promise<void>;
 
-  // Maps
   addMap: (name: string) => Promise<{ error?: string }>;
   removeMap: (name: string) => Promise<void>;
-  assignStage: (stageKey: string, mapName: string) => Promise<void>;
-  clearStage: (stageKey: string) => Promise<void>;
+  removeSpunMap: (name: string) => Promise<void>;
+  assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
+  clearStage: (stageKey: string, slot?: number) => Promise<void>;
 }
 
 const Ctx = createContext<TourneyContext | null>(null);
@@ -57,7 +52,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [elimMode, setElimModeState] = useState<'single' | 'double'>('single');
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [maps, setMaps] = useState<string[]>([]);
-  const [stageMaps, setStageMaps] = useState<Record<string, string>>({});
+  const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -75,13 +70,12 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setMaps(data.maps ?? []);
       setStageMaps(data.stageMaps ?? {});
     } catch {
-      // network error, keep existing state
+      // keep existing state on network error
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial load + poll every 4s for multi-user updates
   useEffect(() => {
     refresh();
     pollRef.current = setInterval(refresh, 4000);
@@ -205,11 +199,11 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     return {};
   };
 
-  const advancePlayer = async (section: string, ri: number, mi: number, player: string) => {
+  const updateScore = async (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => {
     const res = await fetch('/api/bracket', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ section, ri, mi, player }),
+      body: JSON.stringify({ section, ri, mi, p1wins, p2wins }),
     });
     const data = await res.json();
     setBracket(data.bracket);
@@ -248,21 +242,26 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
-  const assignStage = async (stageKey: string, mapName: string) => {
+  // Remove a map that was just spun (from the pool)
+  const removeSpunMap = async (name: string) => {
+    await removeMap(name);
+  };
+
+  const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
     const res = await fetch('/api/maps', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'assignStage', stageKey, mapName }),
+      body: JSON.stringify({ action: 'assignStage', stageKey, mapName, slot }),
     });
     const data = await res.json();
     setStageMaps(data.stageMaps);
   };
 
-  const clearStage = async (stageKey: string) => {
+  const clearStage = async (stageKey: string, slot?: number) => {
     const res = await fetch('/api/maps', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clearStage', stageKey }),
+      body: JSON.stringify({ action: 'clearStage', stageKey, slot }),
     });
     const data = await res.json();
     setStageMaps(data.stageMaps);
@@ -275,8 +274,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       formTeams, resetTeams, setTeamMode,
-      generateBracket, advancePlayer, resetBracket, setElimMode,
-      addMap, removeMap, assignStage, clearStage,
+      generateBracket, updateScore, resetBracket, setElimMode,
+      addMap, removeMap, removeSpunMap, assignStage, clearStage,
     }}>
       {children}
     </Ctx.Provider>

@@ -25,31 +25,62 @@ export async function DELETE(req: NextRequest) {
   const next = await updateState(s => ({
     ...s,
     maps: s.maps.filter(m => m !== name),
+    // Remove from any stage slot arrays too
     stageMaps: Object.fromEntries(
-      Object.entries(s.stageMaps).filter(([, v]) => v !== name)
+      Object.entries(s.stageMaps).map(([k, v]) => [
+        k,
+        Array.isArray(v) ? (v as string[]).filter(m => m !== name) : (v === name ? [] : [v as unknown as string]),
+      ]).filter(([, v]) => (v as string[]).length > 0)
     ),
   }));
   return NextResponse.json({ maps: next.maps, stageMaps: next.stageMaps });
 }
 
 export async function PATCH(req: NextRequest) {
-  const { action, stageKey, mapName } = await req.json();
+  const { action, stageKey, mapName, slot } = await req.json();
 
   if (action === 'assignStage') {
-    const next = await updateState(s => ({
-      ...s,
-      stageMaps: { ...s.stageMaps, [stageKey]: mapName },
-    }));
+    // slot = 0|1|2 for BO3; default 0 (append to array up to 3)
+    const next = await updateState(s => {
+      const current: string[] = Array.isArray(s.stageMaps[stageKey])
+        ? [...(s.stageMaps[stageKey] as unknown as string[])]
+        : s.stageMaps[stageKey] ? [s.stageMaps[stageKey] as unknown as string] : [];
+      if (slot !== undefined && slot !== null) {
+        current[slot] = mapName;
+      } else {
+        // append if not already present and under 3
+        if (!current.includes(mapName) && current.length < 3) current.push(mapName);
+      }
+      return { ...s, stageMaps: { ...s.stageMaps, [stageKey]: current } };
+    });
     return NextResponse.json({ stageMaps: next.stageMaps });
   }
 
   if (action === 'clearStage') {
     const next = await updateState(s => {
       const sm = { ...s.stageMaps };
-      delete sm[stageKey];
+      if (slot !== undefined && slot !== null) {
+        // Clear a specific map slot
+        const current = Array.isArray(sm[stageKey])
+          ? [...(sm[stageKey] as unknown as string[])]
+          : sm[stageKey] ? [sm[stageKey] as unknown as string] : [];
+        current.splice(slot, 1);
+        if (current.length === 0) delete sm[stageKey];
+        else sm[stageKey] = current as unknown as string[];
+      } else {
+        delete sm[stageKey];
+      }
       return { ...s, stageMaps: sm };
     });
     return NextResponse.json({ stageMaps: next.stageMaps });
+  }
+
+  if (action === 'setFormat') {
+    // Set bo1/bo3 format for a stage (just stored as metadata in stageMaps)
+    // We store as special key: stageKey__format
+    const { format } = req as unknown as { format: string };
+    void format; // format is handled bracket-side
+    return NextResponse.json({ stageMaps: (await getState()).stageMaps });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
