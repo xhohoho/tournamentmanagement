@@ -147,7 +147,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
       {!isAdmin ? (
         <div className="t-surface border t-border rounded-2xl px-5 py-4 font-['DM_Mono'] text-sm t-muted">
           🔒 Admin access required to form teams.
-          {teams.length > 0 && <TeamsGrid teams={teams} isAdmin={isAdmin} assignLeader={assignLeader} />}
+          {teams.length > 0 && <TeamsGrid teams={teams} isAdmin={isAdmin} assignLeader={assignLeader} animatingSlots={animatingSlots} />}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -268,7 +268,7 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
 
               {teams.length > 0 ? (
                 <div className="space-y-4">
-                  <TeamsGrid teams={teams} isAdmin={isAdmin} assignLeader={assignLeader} />
+                  <TeamsGrid teams={teams} isAdmin={isAdmin} assignLeader={assignLeader} animatingSlots={animatingSlots} />
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -337,7 +337,10 @@ function TeamsGrid({ teams, isAdmin, assignLeader }: { teams: ReturnType<typeof 
 
               {isAdmin && m !== t.leader && (
                 <button
-                  onClick={() => assignLeader(t.name, m)}
+                  onClick={() => {
+                    console.log('Assign leader clicked for', t.name, m);
+                    assignLeader(t.name, m);
+                  }}
                   className="self-end px-2 py-0.5 text-xs font-['DM_Mono']
                   bg-[#21b966] text-white rounded hover:bg-[#13894a] transition-colors"
                   aria-label="Assign as leader"
