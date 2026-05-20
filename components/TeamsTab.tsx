@@ -254,7 +254,6 @@ export function TeamsTab() {
               ))}
             </div>
           ) : (
-            {/* Preview UI */}
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {Array.from({ length: previewSlots }, (_, i) => (
                 <div key={i} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: TEAM_COLORS[i % TEAM_COLORS.length], borderTopWidth: 3 }}>
