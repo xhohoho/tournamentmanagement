@@ -14,7 +14,7 @@ export function BracketTab({ lightMode }: { lightMode?: boolean }) {
     await setElimMode(mode);
     if (teams.length >= 2) {
       setGenerating(true);
-      const result = await generateBracket(mode);
+      const result = await generateBracket();
       setGenerating(false);
       if (result?.error) setErr(result.error);
     }
