@@ -65,7 +65,7 @@ export default function Home() {
           </button>
         </header>
 
-        <nav className="flex flex-col md:flex-row bg-[#0f0f1a] border-b border-[#252538] overflow-x-auto px-4>
+        <nav className="flex flex-col md:flex-row bg-[#0f0f1a] border-b border-[#252538] overflow-x-auto px-4">
           {TABS.map(tab => (
             <button
               key={tab.id}
