@@ -52,7 +52,7 @@ export default function Home() {
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        <header className="flex items-center justify-between px-6 py-[14px] bg-[rgba(15,15,26,0.9)] border-b border-[#252538] blur-[12px] sticky top-0 z-40">
+        <header className="flex items-center justify-between px-6 py-[14px] bg-[rgba(15,15,26,0.9)] border-b border-[#252538] backdrop-blur-md sticky top-0 z-40">
           <div className="font-['Bebas_Neue'] text-3xl tracking-widest bg-gradient-to-r from-[#ff3d5a] to-[#4d7cff] bg-clip-text text-transparent">
             ⚔ TOURNEY
           </div>
@@ -82,7 +82,7 @@ export default function Home() {
           ))}
         </nav>
 
-        <main className="flex-1 flex-grow">
+        <main className="flex-1">
           <div className={activeTab === 'players' ? 'block' : 'hidden'}><PlayersTab /></div>
           <div className={activeTab === 'teams' ? 'block' : 'hidden'}><TeamsTab /></div>
           <div className={activeTab === 'bracket' ? 'block' : 'hidden'}><BracketTab /></div>

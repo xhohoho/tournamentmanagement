@@ -109,7 +109,7 @@ export function PlayersTab() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         {/* Queue */}
-        <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl flex flex-col min-h-[420px] max-h-[72vh]">
+        <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl flex flex-col min-h-[420px] max-h-[calc(100vh-220px)]">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#252538]">
             <div className="flex items-center gap-2 font-['Bebas_Neue'] text-lg tracking-widest">
               📋 Queue
@@ -186,7 +186,7 @@ export function PlayersTab() {
         </div>
 
         {/* Roster */}
-        <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl flex flex-col min-h-[420px] max-h-[72vh]">
+        <div className="bg-[#0f0f1a] border border-[#252538] rounded-xl flex flex-col min-h-[420px] max-h-[calc(100vh-220px)]">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#252538]">
             <div className="flex items-center gap-2 font-['Bebas_Neue'] text-lg tracking-widest">
               ✅ Roster
