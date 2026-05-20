@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { shuffle, TEAM_COLORS } from '@/lib/utils';
 
+// Simple admin authorization – replace with your real logic
+function isAdminAuthorized(req: NextRequest): boolean {
+  const secret = process.env.ADMIN_SECRET;
+  return secret && req.headers.get('X-Admin-Secret') === secret;
+}
+
 export async function GET() {
   const state = await getState();
   return NextResponse.json({ teams: state.teams, teamMode: state.teamMode });
@@ -17,7 +23,7 @@ export async function POST(req: NextRequest) {
   // New use‑case: assign leaders to already‑created teams (post‑random mode)
   // -------------------------------------------------------------------------
   if (assignments && typeof assignments === 'object' && !Array.isArray(assignments)) {
-    if (!isAdminLoggedIn()) {
+    if (!isAdminAuthorized(req)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
