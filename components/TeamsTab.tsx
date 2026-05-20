@@ -93,16 +93,6 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
     return roster.filter(p => !picked.includes(p));
   };
 
-  const resetTeams = async () => {
-    setErr('');
-    setAnimatingSlots([]);
-    setRevealedCount(0);
-    setLeaderAssignments({});
-    if (isAdmin) {
-      // Clear any pending animations and reset state
-      setAnimating(false);
-    }
-  };
 
   const handleForm = async () => {
     if (!isAdmin) return;
