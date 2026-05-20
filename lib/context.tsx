@@ -16,6 +16,7 @@ interface TourneyContext {
   loading: boolean;
 
   setIsAdmin: (v: boolean) => void;
+  setAdminToken: (token: string | null) => void;
   refresh: () => Promise<void>;
 
   submitPlayer: (name: string, byAdmin?: boolean) => Promise<{ error?: string }>;
@@ -71,6 +72,10 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const setIsAdmin = (v: boolean) => {
     setIsAdminState(v);
     if (!v) setAdminToken(null);
+  };
+
+  const setAdminTokenPublic = (token: string | null) => {
+    setAdminToken(token);
   };
 
   const refresh = useCallback(async () => {
@@ -338,7 +343,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps,
-      isAdmin, loading, setIsAdmin, refresh,
+      isAdmin, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       formTeams, resetTeams, setTeamMode,

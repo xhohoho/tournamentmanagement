@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function AdminModal({ open, onClose }: Props) {
-  const { setIsAdmin } = useTourney();
+  const { setIsAdmin, setAdminToken } = useTourney();
   const [pw, setPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [err, setErr] = useState('');
@@ -30,7 +30,9 @@ export function AdminModal({ open, onClose }: Props) {
     setLoading(false);
     if (res.ok) {
       const data = await res.json();
-      setSessionToken(data.token ?? null);
+      const token = data.token ?? null;
+      setSessionToken(token);
+      setAdminToken(token);  // persist token in context so adminHeaders include it
       setIsAdmin(true);
       setPw('');
       onClose();
