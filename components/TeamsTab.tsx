@@ -125,6 +125,17 @@ export function TeamsTab({ lightMode }: { lightMode?: boolean }) {
     });
   });
 
+  // Initialize leaderAssignments from existing teams
+  useEffect(() => {
+    const initialAssignments: Record<string, string> = {};
+    teams.forEach(team => {
+      if (team.leader) {
+        initialAssignments[team.name] = team.leader;
+      }
+    });
+    setLeaderAssignments(initialAssignments);
+  }, [teams]);
+
   return (
     <div className={`min-h-[calc(100vh-120px)] t-bg ${lightMode ? 'light' : ''}`}>
     <div className="max-w-6xl mx-auto px-6 py-8">

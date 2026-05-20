@@ -289,7 +289,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       formTeams, resetTeams, setTeamMode,
       generateBracket, updateScore, resetBracket, setElimMode,
       addMap, removeMap, removeSpunMap, assignStage, clearStage,
-    }}>
+      assignLeader,
+    }>
       {children}
     </Ctx.Provider>
   );
