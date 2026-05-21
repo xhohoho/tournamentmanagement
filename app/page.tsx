@@ -134,12 +134,44 @@ export default function Home() {
         </nav>
 
         {/* Content — each tab fills the remaining viewport height */}
-        <main className="flex-1 flex flex-col">
-          <div className="flex-1 flex flex-col w-full px-8">
-            <div className={`flex-1 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
-            <div className={`flex-1 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab   /></div>
-            <div className={`flex-1 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab /></div>
-            <div className={`flex-1 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={setSpunMap} /></div>
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col w-full px-8 overflow-hidden">
+            {/* Players */}
+            <div
+              className={`
+                flex-1 flex flex-col h-full overflow-y-auto
+                ${activeTab === 'players' ? '' : 'hidden'}
+              `}
+            >
+              <PlayersTab />
+            </div>
+            {/* Teams */}
+            <div
+              className={`
+                flex-1 flex flex-col h-full overflow-y-auto
+                ${activeTab === 'teams' ? '' : 'hidden'}
+              `}
+            >
+              <TeamsTab />
+            </div>
+            {/* Bracket */}
+            <div
+              className={`
+                flex-1 flex flex-col h-full overflow-y-auto
+                ${activeTab === 'bracket' ? '' : 'hidden'}
+              `}
+            >
+              <BracketTab />
+            </div>
+            {/* Maps */}
+            <div
+              className={`
+                flex-1 flex flex-col h-full overflow-y-auto
+                ${activeTab === 'maps' ? '' : 'hidden'}
+              `}
+            >
+              <MapsTab spunMap={spunMap} onSpunMap={setSpunMap} />
+            </div>
           </div>
         </main>
       </div>
