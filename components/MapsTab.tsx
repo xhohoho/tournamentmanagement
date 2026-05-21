@@ -69,7 +69,7 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
 
   const spin = () => {
     if (spinning || !maps.length) return;
-    setSpinning(true); setSpunMap('');
+    setSpinning(true); onSpunMap('');
     const extra = (5 + Math.random() * 6) * Math.PI * 2 + Math.random() * Math.PI * 2;
     const dur = 3200 + Math.random() * 1200;
     const t0 = performance.now(), a0 = angleRef.current;
