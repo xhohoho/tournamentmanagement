@@ -87,10 +87,14 @@ export function PlayersTab() {
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full py-6 gap-5">
+    /* 
+      FIX: Added h-[calc(100dvh-140px)] and max-h-full to prevent layout spilling.
+      Adjust the "140px" up or down to account for the height of your global navigation bar if needed.
+    */
+    <div className="flex-1 flex flex-col w-full py-6 gap-5 h-[calc(100dvh-140px)] max-h-full min-h-0 overflow-hidden">
 
       {/* Page header */}
-      <div>
+      <div className="shrink-0">
         <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Player Registration</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">
           Anyone can submit their name · {isAdmin ? 'Click or drag to manage roster' : 'Admin selects who plays'}
@@ -146,10 +150,10 @@ export function PlayersTab() {
       </div>
 
       {/* Dual panel — fills remaining space */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0 overflow-hidden">
 
         {/* ── Queue ── */}
-        <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden">
+        <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden h-full min-h-0">
           <div className="flex items-center justify-between px-5 py-3 border-b t-border shrink-0">
             <div className="flex items-center gap-2">
               <span>📋</span>
@@ -184,7 +188,7 @@ export function PlayersTab() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          <div className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0">
             {filteredQueue.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <p className="font-['DM_Mono'] text-xs t-dim text-center">
@@ -247,7 +251,7 @@ export function PlayersTab() {
         </div>
 
         {/* ── Roster ── */}
-        <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden">
+        <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden h-full min-h-0">
           <div className="flex items-center justify-between px-5 py-3 border-b t-border shrink-0">
             <div className="flex items-center gap-2">
               <span>✅</span>
@@ -273,7 +277,7 @@ export function PlayersTab() {
           </div>
 
           <div
-            className="flex-1 overflow-y-auto p-3 space-y-1"
+            className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0"
             onDragOver={e => e.preventDefault()}
             onDrop={handleDropOnRoster}
           >
