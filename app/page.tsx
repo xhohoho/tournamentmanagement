@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTourney } from '@/lib/context';
 import { AdminModal } from '@/components/AdminModal';
 import { PlayersTab } from '@/components/PlayersTab';
@@ -17,10 +17,22 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 export default function Home() {
-  const { isAdmin, setIsAdmin, players, loading, resetAll } = useTourney();
+  const { isAdmin, setIsAdmin, players, roster, loading, resetAll } = useTourney();
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
+  const [spunMap, setSpunMap] = useState('');
   const [dark, setDark] = useState(false);
+
+  // Persist dark mode preference across page refreshes
+  useEffect(() => {
+    const stored = localStorage.getItem('darkMode');
+    if (stored === 'true') setDark(true);
+  }, []);
+
+  const toggleDark = () => setDark(prev => {
+    localStorage.setItem('darkMode', String(!prev));
+    return !prev;
+  });
   const [resetConfirm, setResetConfirm] = useState(false);
 
   const handleAdminBtn = () => {
@@ -65,7 +77,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setDark(p => !p)}
+                onClick={() => toggleDark()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--border)] hover:t-text cursor-pointer"
               >
                 {dark ? '☀️ Light' : '🌙 Dark'}
@@ -111,9 +123,9 @@ export default function Home() {
                 }`}
               >
                 {tab.icon} {tab.label}
-                {tab.id === 'players' && players.length > 0 && (
+                {tab.id === 'players' && (players.length > 0 || roster.length > 0) && (
                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[var(--accent-red)] text-white text-[9px] font-bold">
-                    {players.length}
+                    {roster.length > 0 ? roster.length : players.length}
                   </span>
                 )}
               </button>
@@ -127,7 +139,7 @@ export default function Home() {
             <div className={`flex-1 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
             <div className={`flex-1 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab   /></div>
             <div className={`flex-1 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab /></div>
-            <div className={`flex-1 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab    /></div>
+            <div className={`flex-1 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={setSpunMap} /></div>
           </div>
         </main>
       </div>

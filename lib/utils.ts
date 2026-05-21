@@ -18,8 +18,11 @@ export const TEAM_COLORS = [
   '#b06dff', '#ff7040', '#00c9d4', '#ff4daa',
 ];
 
-export const WHEEL_COLORS = [
-  '#ff3d5a', '#4d7cff', '#ffb020', '#2dcc70',
-  '#b06dff', '#ff7040', '#00c9d4', '#ff4daa',
-  '#78c6ff', '#ffd966',
-];
+export const WHEEL_COLORS = [...TEAM_COLORS, '#78c6ff', '#ffd966'];
+
+/** Normalise a stageMaps value to a string array, handling legacy scalar strings from KV. */
+export function parseStageMaps(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value as string[];
+  return [value as string];
+}

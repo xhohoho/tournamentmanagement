@@ -39,7 +39,8 @@ export interface Bracket {
   third?: string | null;      // 3rd place winner
 }
 
-export interface TournamentState {
+/** Full state stored in KV — never sent to the client as-is. */
+export interface ServerState {
   adminPwHash: string;
   players: Player[];
   roster: string[];
@@ -50,5 +51,17 @@ export interface TournamentState {
   maps: string[];
   stageMaps: Record<string, string[]>; // key -> up to 3 map names (BO3)
 }
+
+/**
+ * Public state returned from /api/state — identical to ServerState
+ * but with sensitive server-only fields omitted.
+ */
+export type ClientState = Omit<ServerState, 'adminPwHash'>;
+
+/**
+ * @deprecated Use ServerState instead. Kept as an alias so existing
+ * server-side code that imports TournamentState continues to compile.
+ */
+export type TournamentState = ServerState;
 
 export type TabId = 'players' | 'teams' | 'bracket' | 'maps';

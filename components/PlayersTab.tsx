@@ -3,9 +3,28 @@
 import { useState, useMemo } from 'react';
 import { useTourney } from '@/lib/context';
 
+/** Reusable loading skeleton for tab content. */
+function TabSkeleton({ lines = 4 }: { lines?: number }) {
+  return (
+    <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
+      <div className="h-10 w-48 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="h-4 w-72 rounded-lg" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {[0, 1].map(col => (
+          <div key={col} className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-3">
+            {Array.from({ length: lines }, (_, i) => (
+              <div key={i} className="h-10 rounded-xl" style={{ background: 'var(--bg-elevated)', opacity: 1 - i * 0.12 }} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function PlayersTab() {
   const {
-    players, roster, isAdmin,
+    players, roster, isAdmin, loading,
     submitPlayer, removePlayer,
     addToRoster, removeFromRoster,
     setRoster, clearQueue, clearRoster,
@@ -15,6 +34,7 @@ export function PlayersTab() {
   const [nameStatus, setNameStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const [qSearch, setQSearch] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
+  const [addAsAdmin, setAddAsAdmin] = useState(false);
 
   const filteredQueue = useMemo(() =>
     players.filter(p => p.name.toLowerCase().includes(qSearch.toLowerCase())),
@@ -23,10 +43,12 @@ export function PlayersTab() {
 
   const rosterValid = roster.length >= 10 && roster.length % 5 === 0;
 
+  if (loading) return <TabSkeleton lines={6} />;
+
   const handleSubmit = async () => {
     const name = nameInput.trim();
     if (!name) return;
-    const result = await submitPlayer(name);
+    const result = await submitPlayer(name, isAdmin && addAsAdmin);
     if (result.error) {
       setNameStatus({ text: `❌ ${result.error}`, ok: false });
     } else {
@@ -91,12 +113,29 @@ export function PlayersTab() {
             onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
             onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
           />
+          {isAdmin && (
+            <button
+              className="px-3 py-2.5 font-['DM_Mono'] text-xs rounded-xl border transition-all cursor-pointer shrink-0"
+              style={{
+                borderColor: addAsAdmin ? 'var(--accent-gold)' : 'var(--border-mid)',
+                color: addAsAdmin ? 'var(--accent-gold)' : 'var(--text-muted)',
+                background: addAsAdmin ? 'rgba(224,144,16,0.08)' : 'var(--bg-elevated)',
+              }}
+              onClick={() => setAddAsAdmin(p => !p)}
+              title={addAsAdmin ? 'Adding as Admin (👑)' : 'Toggle to add as Admin'}
+            >
+              👑
+            </button>
+          )}
           <button
-            className="px-6 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm text-white active:scale-95 transition-all cursor-pointer shrink-0"
-            style={{ background: 'var(--accent)' }}
+            className="px-6 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm active:scale-95 transition-all cursor-pointer shrink-0"
+            style={{
+              background: isAdmin && addAsAdmin ? 'var(--accent-gold)' : 'var(--accent)',
+              color: isAdmin && addAsAdmin ? '#1a0f00' : 'white',
+            }}
             onClick={handleSubmit}
           >
-            Submit
+            {isAdmin && addAsAdmin ? '👑 Add' : 'Submit'}
           </button>
         </div>
         {nameStatus && (
@@ -165,6 +204,7 @@ export function PlayersTab() {
                   }}
                   draggable={isAdmin}
                   onDragStart={e => { e.dataTransfer.setData('text/plain', p.name); handleDragStart(p.name); }}
+                  onDragEnd={() => setDragging(null)}
                   onClick={() => toggleRoster(p.name)}
                 >
                   <span className="font-['DM_Mono'] text-[10px] w-5 text-right shrink-0 t-dim">{i + 1}</span>
@@ -264,6 +304,7 @@ export function PlayersTab() {
                     }}
                     draggable={isAdmin}
                     onDragStart={() => handleDragStart(name)}
+                    onDragEnd={() => setDragging(null)}
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => handleRosterDrop(e, name)}
                   >

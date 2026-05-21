@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { Player, Team, Bracket } from '@/lib/types';
 
 interface TourneyContext {
@@ -13,6 +13,7 @@ interface TourneyContext {
   maps: string[];
   stageMaps: Record<string, string[]>;
   isAdmin: boolean;
+  adminToken: string | null;
   loading: boolean;
 
   setIsAdmin: (v: boolean) => void;
@@ -27,19 +28,19 @@ interface TourneyContext {
   clearQueue: () => Promise<void>;
   clearRoster: () => Promise<void>;
 
-  formTeams: (leaders?: string[]) => Promise<{ error?: string }>;
+  formTeams: (leaders?: string[]) => Promise<{ error?: string; teams?: Team[] }>;
   resetTeams: () => Promise<void>;
   setTeamMode: (mode: 'leader' | 'random') => Promise<void>;
 
   generateBracket: () => Promise<{ error?: string }>;
   updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
+  undoMatch: (section: string, ri: number, mi: number) => Promise<void>;
   updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
   resetBracket: () => Promise<void>;
-  setElimMode: (mode: 'single' | 'double') => void;
+  setElimMode: (mode: 'single' | 'double') => Promise<void>;
 
   addMap: (name: string) => Promise<{ error?: string }>;
   removeMap: (name: string) => Promise<void>;
-  removeSpunMap: (name: string) => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
@@ -61,7 +62,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdminState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Builds auth headers for admin-only API calls
   const adminHeaders = useMemo(() => ({
@@ -71,7 +71,16 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const setIsAdmin = (v: boolean) => {
     setIsAdminState(v);
-    if (!v) setAdminToken(null);
+    if (!v) {
+      // Revoke the token server-side so it's invalidated in KV immediately
+      if (adminToken) {
+        fetch('/api/admin/auth', {
+          method: 'DELETE',
+          headers: { 'X-Admin-Token': adminToken },
+        }).catch(() => {/* best-effort */});
+      }
+      setAdminToken(null);
+    }
   };
 
   const setAdminTokenPublic = (token: string | null) => {
@@ -99,8 +108,44 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refresh();
-    pollRef.current = setInterval(refresh, 4000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+
+    // Use Server-Sent Events when available; fall back to polling on error.
+    let es: EventSource | null = null;
+    let pollFallback: NodeJS.Timeout | null = null;
+
+    const connect = () => {
+      if (typeof EventSource === 'undefined') {
+        pollFallback = setInterval(refresh, 4000);
+        return;
+      }
+      es = new EventSource('/api/state/stream');
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setPlayers(data.players ?? []);
+          setRosterState(data.roster ?? []);
+          setTeamModeState(data.teamMode ?? 'leader');
+          setTeams(data.teams ?? []);
+          setElimModeState(data.elimMode ?? 'single');
+          setBracket(data.bracket ?? null);
+          setMaps(data.maps ?? []);
+          setStageMaps(data.stageMaps ?? {});
+        } catch { /* ignore malformed frames */ }
+        setLoading(false);
+      };
+      es.onerror = () => {
+        // SSE failed or not yet implemented — fall back to polling
+        es?.close();
+        es = null;
+        if (!pollFallback) pollFallback = setInterval(refresh, 4000);
+      };
+    };
+
+    connect();
+    return () => {
+      es?.close();
+      if (pollFallback) clearInterval(pollFallback);
+    };
   }, [refresh]);
 
   // —— Players ——
@@ -119,7 +164,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const removePlayer = async (name: string) => {
     const res = await fetch('/api/players', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ name }),
     });
     const data = await res.json();
@@ -130,7 +175,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const addToRoster = async (name: string) => {
     const res = await fetch('/api/players', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ action: 'addToRoster', name }),
     });
     const data = await res.json();
@@ -140,7 +185,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const removeFromRoster = async (name: string) => {
     const res = await fetch('/api/players', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ action: 'removeFromRoster', name }),
     });
     const data = await res.json();
@@ -150,7 +195,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const setRoster = async (names: string[]) => {
     const res = await fetch('/api/players', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ action: 'setRoster', roster: names }),
     });
     const data = await res.json();
@@ -160,7 +205,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const clearQueue = async () => {
     const res = await fetch('/api/players', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ action: 'clearQueue' }),
     });
     const data = await res.json();
@@ -171,7 +216,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const clearRoster = async () => {
     const res = await fetch('/api/players', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ action: 'clearRoster' }),
     });
     const data = await res.json();
@@ -189,7 +234,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     if (!res.ok) return { error: data.error };
     setTeams(data.teams);
     setBracket(null);
-    return {};
+    return { teams: data.teams };
   };
 
   // —— FIXED OVERWRITE LAYER ——
@@ -229,7 +274,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetTeams = async () => {
-    await fetch('/api/teams', { method: 'DELETE' });
+    await fetch('/api/teams', { method: 'DELETE', headers: adminHeaders });
     setTeams([]);
     setBracket(null);
   };
@@ -237,7 +282,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const setTeamMode = async (mode: 'leader' | 'random') => {
     await fetch('/api/teams', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ teamMode: mode }),
     });
     setTeamModeState(mode);
@@ -247,7 +292,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const generateBracket = async () => {
     const res = await fetch('/api/bracket', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ elimMode }),
     });
     const data = await res.json();
@@ -259,8 +304,18 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const updateScore = async (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => {
     const res = await fetch('/api/bracket', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ section, ri, mi, p1wins, p2wins }),
+    });
+    const data = await res.json();
+    setBracket(data.bracket);
+  };
+
+  const undoMatch = async (section: string, ri: number, mi: number) => {
+    const res = await fetch('/api/bracket', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'undoMatch', section, ri, mi }),
     });
     const data = await res.json();
     setBracket(data.bracket);
@@ -269,7 +324,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const updateThirdPlace = async (p1wins: number, p2wins: number) => {
     const res = await fetch('/api/bracket', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ p1wins, p2wins }),
     });
     const data = await res.json();
@@ -277,19 +332,24 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetBracket = async () => {
-    await fetch('/api/bracket', { method: 'DELETE' });
+    await fetch('/api/bracket', { method: 'DELETE', headers: adminHeaders });
     setBracket(null);
   };
 
-  const setElimMode = (mode: 'single' | 'double') => {
-    setElimModeState(mode);
+  const setElimMode = async (mode: 'single' | 'double') => {
+    setElimModeState(mode); // optimistic update
+    await fetch('/api/bracket', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
+    });
   };
 
   // —— Maps ——
   const addMap = async (name: string) => {
     const res = await fetch('/api/maps', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ name }),
     });
     const data = await res.json();
@@ -301,7 +361,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const removeMap = async (name: string) => {
     const res = await fetch('/api/maps', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ name }),
     });
     const data = await res.json();
@@ -309,12 +369,10 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
-  const removeSpunMap = removeMap;
-
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
     const res = await fetch('/api/maps', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ action: 'assignStage', stageKey, mapName, slot }),
     });
     const data = await res.json();
@@ -324,7 +382,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const clearStage = async (stageKey: string, slot?: number) => {
     const res = await fetch('/api/maps', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders,
       body: JSON.stringify({ action: 'clearStage', stageKey, slot }),
     });
     const data = await res.json();
@@ -332,7 +390,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetAll = async () => {
-    await fetch('/api/reset', { method: 'DELETE' });
+    await fetch('/api/reset', { method: 'DELETE', headers: adminHeaders });
     setPlayers([]);
     setRosterState([]);
     setTeams([]);
@@ -343,12 +401,12 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps,
-      isAdmin, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
+      isAdmin, adminToken, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       formTeams, resetTeams, setTeamMode,
-      generateBracket, updateScore, updateThirdPlace, resetBracket, setElimMode,
-      addMap, removeMap, removeSpunMap, assignStage, clearStage,
+      generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
+      addMap, removeMap, assignStage, clearStage,
       assignLeader,
       resetAll,
     }}>

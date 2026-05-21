@@ -9,15 +9,13 @@ interface Props {
 }
 
 export function AdminModal({ open, onClose }: Props) {
-  const { setIsAdmin, setAdminToken } = useTourney();
+  const { setIsAdmin, setAdminToken, adminToken } = useTourney();
   const [pw, setPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [err, setErr] = useState('');
   const [pwErr, setPwErr] = useState('');
   const [pwOk, setPwOk] = useState('');
   const [loading, setLoading] = useState(false);
-  // Store token locally so we can send it with the change-password request
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   const submit = async () => {
     setLoading(true);
@@ -31,7 +29,6 @@ export function AdminModal({ open, onClose }: Props) {
     if (res.ok) {
       const data = await res.json();
       const token = data.token ?? null;
-      setSessionToken(token);
       setAdminToken(token);  // persist token in context so adminHeaders include it
       setIsAdmin(true);
       setPw('');
@@ -44,11 +41,11 @@ export function AdminModal({ open, onClose }: Props) {
   const changePw = async () => {
     setPwErr('');
     setPwOk('');
-    if (!sessionToken) { setPwErr('Unlock admin first.'); return; }
+    if (!adminToken) { setPwErr('Unlock admin first.'); return; }
     if (!newPw.trim()) { setPwErr('Enter a new password.'); return; }
     const res = await fetch('/api/admin/auth', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': sessionToken },
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
       body: JSON.stringify({ newPassword: newPw }),
     });
     if (!res.ok) { setPwErr('Failed to update password.'); return; }

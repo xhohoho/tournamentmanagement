@@ -2,25 +2,29 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
-import { WHEEL_COLORS } from '@/lib/utils';
+import { WHEEL_COLORS, parseStageMaps } from '@/lib/utils';
 
-export function MapsTab() {
-  const { maps, stageMaps, bracket, isAdmin, addMap, removeMap, removeSpunMap, assignStage, clearStage } = useTourney();
+export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (map: string) => void }) {
+  const { maps, stageMaps, bracket, isAdmin, loading, addMap, removeMap, assignStage, clearStage } = useTourney();
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const angleRef = useRef(0);
   const [spinning, setSpinning] = useState(false);
-  const [spunMap, setSpunMap] = useState('');
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
 
-  const getStageMaps = (key: string): string[] => {
-    const v = stageMaps[key];
-    if (!v) return [];
-    if (Array.isArray(v)) return v as unknown as string[];
-    return [v as unknown as string];
-  };
+  const getStageMaps = (key: string): string[] => parseStageMaps(stageMaps[key]);
+
+  if (loading) return (
+    <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
+      <div className="h-10 w-40 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="rounded-2xl" style={{ background: 'var(--bg-elevated)' }} />
+        <div className="rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 0.6 }} />
+      </div>
+    </div>
+  );
 
   const drawWheel = useCallback((angle: number) => {
     const canvas = canvasRef.current;
@@ -76,8 +80,10 @@ export function MapsTab() {
       if (t < 1) { requestAnimationFrame(tick); return; }
       setSpinning(false);
       const slice = (Math.PI * 2) / maps.length;
-      const norm = ((-angleRef.current % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-      setSpunMap(maps[Math.floor(norm / slice) % maps.length]);
+      // Pointer is at 6 o'clock (π/2). Offset norm by π/2 so the picked slice
+      // matches where the pointer actually sits, not the 12 o'clock origin.
+      const norm = ((-angleRef.current + Math.PI / 2) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      onSpunMap(maps[Math.floor(norm / slice) % maps.length]);
     };
     requestAnimationFrame(tick);
   };
@@ -108,9 +114,7 @@ export function MapsTab() {
   const stages = getStageLabels();
 
   const usedMaps = new Set(
-    Object.values(stageMaps).flatMap(v =>
-      Array.isArray(v) ? (v as unknown as string[]) : v ? [v as unknown as string] : []
-    )
+    Object.values(stageMaps).flatMap(v => parseStageMaps(v))
   );
 
   return (
@@ -193,7 +197,7 @@ export function MapsTab() {
                     className="px-3 py-1.5 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer"
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-red)'; e.currentTarget.style.color = 'var(--accent-red)'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
-                    onClick={async () => { await removeSpunMap(spunMap); setSpunMap(''); }}
+                    onClick={async () => { await removeMap(spunMap); onSpunMap(''); }}
                   >
                     🗑 Remove from pool
                   </button>

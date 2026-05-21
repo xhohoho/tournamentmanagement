@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
+import { verifyAdminToken } from '@/app/api/admin/auth/route';
+
+const ADMIN_ACTIONS = new Set(['addToRoster', 'removeFromRoster', 'setRoster', 'clearQueue', 'clearRoster']);
 
 // GET /api/players
 export async function GET() {
@@ -7,11 +10,12 @@ export async function GET() {
   return NextResponse.json({ players: state.players, roster: state.roster });
 }
 
-// POST /api/players - add player to queue
+// POST /api/players — add player to queue (open to all)
 export async function POST(req: NextRequest) {
   const { name, byAdmin } = await req.json();
   const trimmed = name?.trim();
   if (!trimmed) return NextResponse.json({ error: 'Name required' }, { status: 400 });
+  if (trimmed.length > 24) return NextResponse.json({ error: 'Name must be 24 characters or fewer' }, { status: 400 });
 
   const state = await getState();
   const lo = trimmed.toLowerCase();
@@ -26,8 +30,11 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ players: next.players });
 }
 
-// DELETE /api/players - remove player by name (admin)
+// DELETE /api/players — remove player by name (admin only)
 export async function DELETE(req: NextRequest) {
+  if (!await verifyAdminToken(req)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
   const { name } = await req.json();
   const next = await updateState(s => ({
     ...s,
@@ -37,9 +44,16 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ players: next.players, roster: next.roster });
 }
 
-// PATCH /api/players - update roster
+// PATCH /api/players — roster management (admin-only actions)
 export async function PATCH(req: NextRequest) {
-  const { action, name, roster } = await req.json();
+  const body = await req.json();
+  const { action, name, roster } = body;
+
+  if (ADMIN_ACTIONS.has(action)) {
+    if (!await verifyAdminToken(req)) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+  }
 
   if (action === 'setRoster' && Array.isArray(roster)) {
     const next = await updateState(s => ({ ...s, roster }));

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTourney } from '@/lib/context';
 import { TEAM_COLORS } from '@/lib/utils';
 
@@ -24,24 +24,24 @@ function useReveal(active: boolean, total: number, intervalMs = 120) {
 }
 
 export function TeamsTab() {
-  const { roster, teams, teamMode, isAdmin, formTeams, resetTeams, setTeamMode, assignLeader } = useTourney();
+  const { roster, teams, teamMode, isAdmin, loading, formTeams, resetTeams, setTeamMode, assignLeader } = useTourney();
   const [leaders, setLeaders] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [revealing, setRevealing] = useState(false);
+  const [forming, setForming] = useState(false);
 
   // Total slots across all teams (5 per team)
   const totalSlots = teams.length * 5;
   const revealCount = useReveal(revealing, totalSlots);
 
-  // Map member names to a randomized timeline order index using useMemo
-  // This guarantees a pure, stable sequence map when teams are populated
-  const revealOrderMap = useMemo(() => {
-    if (teams.length === 0) return new Map<string, number>();
+  // Seeded once on formTeams success — stored in a ref so polling never reshuffles it
+  const revealOrderMap = useRef<Map<string, number>>(new Map());
 
-    const allMembers = teams.flatMap(t => t.members);
+  const seedRevealOrder = (newTeams: typeof teams) => {
+    const allMembers = newTeams.flatMap(t => t.members);
     const orderIndices = Array.from({ length: allMembers.length }, (_, i) => i);
-    
-    // Pure Fisher-Yates shuffle on sequential array indices
+
+    // Pure Fisher-Yates shuffle
     for (let i = orderIndices.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [orderIndices[i], orderIndices[j]] = [orderIndices[j], orderIndices[i]];
@@ -51,9 +51,8 @@ export function TeamsTab() {
     allMembers.forEach((member, index) => {
       map.set(member, orderIndices[index]);
     });
-
-    return map;
-  }, [teams]);
+    revealOrderMap.current = map;
+  };
 
   // Disable interval tracking state once everything is revealed
   useEffect(() => {
@@ -76,8 +75,11 @@ export function TeamsTab() {
   const handleForm = async () => {
     setErr('');
     setRevealing(false);
+    setForming(true);
     const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
+    setForming(false);
     if (result.error) { setErr(result.error); return; }
+    if (result.teams) seedRevealOrder(result.teams);
     setRevealing(true);
   };
 
@@ -89,9 +91,17 @@ export function TeamsTab() {
     // (Crucial for page loads, spectators, or viewing saved setups)
     if (!revealing && revealCount === 0) return true;
     
-    const assignedIndex = revealOrderMap.get(member) ?? 0;
+    const assignedIndex = revealOrderMap.current.get(member) ?? 0;
     return assignedIndex < revealCount;
   };
+
+  if (loading) return (
+    <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
+      <div className="h-10 w-32 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="h-4 w-64 rounded-lg" style={{ background: 'var(--bg-elevated)' }} />
+      {[...Array(3)].map((_, i) => <div key={i} className="h-32 rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 1 - i * 0.2 }} />)}
+    </div>
+  );
 
   return (
     <div className="flex-1 flex flex-col w-full py-6 gap-5">
@@ -156,9 +166,9 @@ export function TeamsTab() {
                   className="flex-1 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
                   onClick={handleForm}
-                  disabled={!rosterOk}
+                  disabled={!rosterOk || forming}
                 >
-                  ✨ Form Teams
+                  {forming ? '⏳ Forming…' : '✨ Form Teams'}
                 </button>
                 <button
                   className="px-4 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm border transition-all t-muted cursor-pointer"
@@ -237,22 +247,21 @@ export function TeamsTab() {
                         <span className="w-5 shrink-0">{m === t.leader ? '👑' : '·'}</span>
                         <span className="flex-1 truncate">{m}</span>
                         
-                        {/* The Assignment Button */}
-                        {isAdmin && m !== t.leader && (
-                          <button
-                            onClick={async () => {
-                              setErr('');
-                              // Direct call to our smart context handler using team name mapping
-                              const result = await assignLeader(t.name, m);
-                              if (result?.error) {
-                                setErr(result.error);
-                              }
-                            }}
-                            className="ml-2 px-2 py-0.5 text-xs font-['DM_Mono'] bg-[var(--accent-green)] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
-                            title="Make team leader"
-                          >
-                            ✓
-                          </button>
+                        {/* The Assignment Button — shows ✓ to assign, or 🔄 change indicator on current leader */}
+                        {isAdmin && (
+                          m === t.leader ? (
+                            <span className="ml-2 px-2 py-0.5 text-[10px] font-['DM_Mono'] rounded" style={{ color: 'var(--accent-gold)', opacity: 0.7 }} title="Current leader — click another to reassign">👑</span>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                setErr('');
+                                const result = await assignLeader(t.name, m);
+                                if (result?.error) setErr(result.error);
+                              }}
+                              className="ml-2 px-2 py-0.5 text-xs font-['DM_Mono'] bg-[var(--accent-green)] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
+                              title="Make team leader"
+                            >✓</button>
+                          )
                         )}
                       </div>
                     );

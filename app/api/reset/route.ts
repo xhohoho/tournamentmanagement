@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { updateState } from '@/lib/kv';
+import { verifyAdminToken } from '@/app/api/admin/auth/route';
 
 // DELETE /api/reset — wipe everything except admin password and maps
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
+  if (!await verifyAdminToken(req)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
   const next = await updateState(s => ({
     ...s,
     players: [],

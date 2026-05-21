@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
+import { parseStageMaps } from '@/lib/utils';
+import { verifyAdminToken } from '@/app/api/admin/auth/route';
 
 export async function GET() {
   const state = await getState();
@@ -7,6 +9,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!await verifyAdminToken(req)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
   const { name } = await req.json();
   const trimmed = name?.trim();
   if (!trimmed) return NextResponse.json({ error: 'Map name required' }, { status: 400 });
@@ -21,6 +26,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!await verifyAdminToken(req)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
   const { name } = await req.json();
   const next = await updateState(s => ({
     ...s,
@@ -29,7 +37,7 @@ export async function DELETE(req: NextRequest) {
     stageMaps: Object.fromEntries(
       Object.entries(s.stageMaps).map(([k, v]) => [
         k,
-        Array.isArray(v) ? (v as string[]).filter(m => m !== name) : (v === name ? [] : [v as unknown as string]),
+        parseStageMaps(v).filter(m => m !== name),
       ]).filter(([, v]) => (v as string[]).length > 0)
     ),
   }));
@@ -37,14 +45,15 @@ export async function DELETE(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  if (!await verifyAdminToken(req)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
   const { action, stageKey, mapName, slot } = await req.json();
 
   if (action === 'assignStage') {
     // slot = 0|1|2 for BO3; default 0 (append to array up to 3)
     const next = await updateState(s => {
-      const current: string[] = Array.isArray(s.stageMaps[stageKey])
-        ? [...(s.stageMaps[stageKey] as unknown as string[])]
-        : s.stageMaps[stageKey] ? [s.stageMaps[stageKey] as unknown as string] : [];
+      const current: string[] = [...parseStageMaps(s.stageMaps[stageKey])];
       if (slot !== undefined && slot !== null) {
         current[slot] = mapName;
       } else {
@@ -61,9 +70,7 @@ export async function PATCH(req: NextRequest) {
       const sm = { ...s.stageMaps };
       if (slot !== undefined && slot !== null) {
         // Clear a specific map slot
-        const current = Array.isArray(sm[stageKey])
-          ? [...(sm[stageKey] as unknown as string[])]
-          : sm[stageKey] ? [sm[stageKey] as unknown as string] : [];
+        const current = [...parseStageMaps(sm[stageKey])];
         current.splice(slot, 1);
         if (current.length === 0) delete sm[stageKey];
         else sm[stageKey] = current as unknown as string[];

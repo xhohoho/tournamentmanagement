@@ -42,6 +42,13 @@
   --scrollbar:   #32324a;
 }
 
+/* Font family aliases pointing at the CSS variables injected by next/font/google */
+:root {
+  --ff-bebas:   var(--font-bebas, 'Bebas Neue', sans-serif);
+  --ff-dm-mono: var(--font-dm-mono, 'DM Mono', monospace);
+  --ff-syne:    var(--font-syne, 'Syne', sans-serif);
+}
+
 /* Base overrides — intentional, not covered by preflight */
 body {
   overflow-x: hidden;

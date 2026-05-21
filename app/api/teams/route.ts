@@ -4,54 +4,33 @@ import { shuffle, TEAM_COLORS } from '@/lib/utils';
 import type { Team } from '@/lib/types';
 import { verifyAdminToken } from '@/app/api/admin/auth/route';
 
-// FIXED: Explicitly type 'req' as NextRequest to satisfy TypeScript
-async function authorizeAdmin(req: NextRequest): Promise<boolean> {
-  // 2. Leverage the exact same evaluation logic
-  return verifyAdminToken(req);
-}
-
 export async function GET() {
   const state = await getState();
   return NextResponse.json({ teams: state.teams, teamMode: state.teamMode });
 }
 
 export async function POST(req: NextRequest) {
-  const { teamMode, leaders, assignments } = await req.json();
+  if (!await verifyAdminToken(req)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
+
+  const body = await req.json();
   const state = await getState();
   const roster = state.roster;
 
-  // -------------------------------------------------------------------------
-  // New use‑case: assign leaders to already‑created teams (post‑random mode)
-  // -------------------------------------------------------------------------
-  if (assignments && typeof assignments === 'object' && !Array.isArray(assignments)) {
-    
-    // FIXED: Handled with await since authorizeAdmin is an async function
-    const isAdminAuthenticated = await authorizeAdmin(req);
-    if (!isAdminAuthenticated) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
-
-    // Build a map of teamName → leaderName
-    const leaderAssignments = { ...assignments };
+  // Assign leaders to already-created teams (fully-random mode)
+  if (body.assignments && typeof body.assignments === 'object' && !Array.isArray(body.assignments)) {
+    const { assignments } = body;
     const currentTeams = state.teams ?? [];
-
-    // Update the `leader` field of matching teams
-    const updatedTeams = currentTeams.map(team => {
-      if (leaderAssignments[team.name]) {
-        return { ...team, leader: leaderAssignments[team.name] };
-      }
-      return team;
-    });
-
-    // Persist the updated teams
+    const updatedTeams = currentTeams.map(team =>
+      assignments[team.name] ? { ...team, leader: assignments[team.name] } : team
+    );
     await updateState(s => ({ ...s, teams: updatedTeams }));
-
     return NextResponse.json({ teams: updatedTeams });
   }
 
-  // -------------------------------------------------------------------------
-  // Existing behaviour: (re)create teams based on roster & mode
-  // -------------------------------------------------------------------------
+  // (Re)create teams based on roster & mode
+  const { teamMode, leaders } = body;
   if (roster.length < 10 || roster.length % 5 !== 0) {
     return NextResponse.json({ error: 'Need 10+ roster players in multiples of 5' }, { status: 400 });
   }
@@ -77,7 +56,7 @@ export async function POST(req: NextRequest) {
     if (invalidLeader) {
       return NextResponse.json({ error: `"${invalidLeader}" is not in the roster` }, { status: 400 });
     }
-    const pool = shuffle(roster.filter(p => !leaders.includes(p)));
+    const pool = shuffle(roster.filter((p: string) => !leaders.includes(p)));
     let pi = 0;
     for (let i = 0; i < n; i++) {
       const members = [leaders[i]];
@@ -95,12 +74,18 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ teams: next.teams });
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
+  if (!await verifyAdminToken(req)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
   const next = await updateState(s => ({ ...s, teams: [], bracket: null }));
   return NextResponse.json({ teams: next.teams });
 }
 
 export async function PATCH(req: NextRequest) {
+  if (!await verifyAdminToken(req)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
   const { teamMode } = await req.json();
   const next = await updateState(s => ({ ...s, teamMode }));
   return NextResponse.json({ teamMode: next.teamMode });

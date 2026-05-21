@@ -2,12 +2,107 @@
 
 import { useState } from 'react';
 import { useTourney } from '@/lib/context';
+import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal } from '@/lib/types';
 
+// ─── Shared sub-components ────────────────────────────────────────────────────
+
+function PlayerRow({ player, score, isWinner, isLoser, showScore }: {
+  player: string | null;
+  score: number;
+  isWinner: boolean;
+  isLoser: boolean;
+  showScore: boolean;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between px-3 py-2 border-b t-border last:border-b-0"
+      style={{ background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}
+    >
+      <span
+        className="text-xs font-['DM_Mono'] flex-1 truncate"
+        style={{
+          color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
+          fontStyle: !player ? 'italic' : undefined,
+          opacity: isLoser ? 0.5 : 1,
+        }}
+      >
+        {isWinner && '✓ '}{player ?? (isLoser ? 'TBD' : 'BYE')}
+      </span>
+      {showScore && (
+        <span
+          className="font-['Bebas_Neue'] text-base ml-2 shrink-0"
+          style={{ color: isWinner ? 'var(--accent-green)' : 'var(--text-dim)' }}
+        >
+          {score}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ScoreControls({ isBo3, p1, p2, onScore }: {
+  isBo3: boolean;
+  p1: string | null;
+  p2: string | null;
+  onScore: (s1: number, s2: number) => void;
+}) {
+  return (
+    <div className="px-3 py-2 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
+      {isBo3 ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-wider">Score (BO3)</p>
+          <div className="flex gap-1 flex-wrap">
+            {(['2-0', '2-1', '0-2', '1-2'] as const).map(label => {
+              const [s1, s2] = label.split('-').map(Number);
+              return (
+                <button
+                  key={label}
+                  className="px-2 py-1 rounded font-['DM_Mono'] text-[10px] font-bold border transition-all cursor-pointer"
+                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                  onClick={() => onScore(s1, s2)}
+                >{label}</button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-1.5 items-center">
+          <p className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-wider shrink-0">Winner</p>
+          <button
+            className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
+            style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-green)' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+            onClick={() => onScore(1, 0)}
+          >{p1}</button>
+          <button
+            className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
+            style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-green)' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+            onClick={() => onScore(0, 1)}
+          >{p2}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BracketTab() {
-  const { bracket, elimMode, teams, isAdmin, setElimMode, generateBracket, updateScore, updateThirdPlace, resetBracket } = useTourney();
+  const { bracket, elimMode, teams, isAdmin, loading, setElimMode, generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
+
+  if (loading) return (
+    <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
+      <div className="h-10 w-36 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="h-40 rounded-2xl" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="h-64 rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 0.6 }} />
+    </div>
+  );
 
   const handleGenerate = async () => {
     if (!isAdmin || generating) return;
@@ -110,7 +205,7 @@ export function BracketTab() {
 
       {bracket ? (
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          <BracketDisplay onScore={updateScore} onThirdPlace={updateThirdPlace} />
+          <BracketDisplay onScore={updateScore} onUndo={undoMatch} onThirdPlace={updateThirdPlace} />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
@@ -125,9 +220,11 @@ export function BracketTab() {
 
 function BracketDisplay({
   onScore,
+  onUndo,
   onThirdPlace,
 }: {
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
+  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
 }) {
   const { bracket, stageMaps, isAdmin } = useTourney();
@@ -152,7 +249,7 @@ function BracketDisplay({
         </div>
         <div className="overflow-x-auto pb-2">
           <div className="flex items-start min-w-max gap-0">
-            <RoundSet rounds={bracket.upper} section="upper" stageMaps={stageMaps} onScore={onScore} isAdmin={isAdmin} />
+            <RoundSet rounds={bracket.upper} section="upper" stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
           </div>
         </div>
       </div>
@@ -175,7 +272,7 @@ function BracketDisplay({
           </h3>
           <div className="overflow-x-auto pb-2">
             <div className="flex items-start min-w-max gap-0">
-              <RoundSet rounds={bracket.lower!} section="lower" stageMaps={stageMaps} onScore={onScore} isAdmin={isAdmin} />
+              <RoundSet rounds={bracket.lower!} section="lower" stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
             </div>
           </div>
         </div>
@@ -222,69 +319,38 @@ function ThirdPlaceDisplay({
 
   return (
     <div className="w-48 t-elevated border t-border rounded-xl overflow-hidden">
-      {[
-        { player: match.p1, score: match.score1, isP1: true },
-        { player: match.p2, score: match.score2, isP1: false },
-      ].map(({ player, score, isP1 }) => {
+      {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
         const isWinner = isDone && match.winner === player;
-        const isLoser = isDone && match.winner !== player;
+        const isLoser  = isDone && match.winner !== player;
         return (
-          <div
-            key={isP1 ? 'p1' : 'p2'}
-            className="flex items-center justify-between px-3 py-2 border-b t-border last:border-b-0"
-            style={{ background: isWinner ? 'rgba(224,144,16,0.10)' : undefined }}
-          >
-            <span
-              className="text-xs font-['DM_Mono'] flex-1 truncate"
-              style={{
-                color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-gold)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
-                opacity: isLoser ? 0.5 : 1,
-              }}
-            >
-              {isWinner && '🥉 '}{player ?? 'TBD'}
-            </span>
-            {(isDone || (player && match.p1 && match.p2)) && (
-              <span className="font-['Bebas_Neue'] text-base ml-2 shrink-0" style={{ color: isWinner ? 'var(--accent-gold)' : 'var(--text-dim)' }}>
-                {score}
-              </span>
-            )}
-          </div>
+          <PlayerRow
+            key={idx}
+            player={isWinner ? `🥉 ${player}` : player}
+            score={score}
+            isWinner={isWinner}
+            isLoser={isLoser}
+            showScore={isDone || !!(player && match.p1 && match.p2)}
+          />
         );
       })}
       {canEdit && (
-        <div className="px-3 py-2 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
-          <div className="flex gap-1.5 items-center">
-            <p className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-wider shrink-0">Winner</p>
-            <button
-              className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
-              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-gold)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-gold)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-              onClick={() => onScore(1, 0)}
-            >
-              {match.p1}
-            </button>
-            <button
-              className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
-              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-gold)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-gold)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-              onClick={() => onScore(0, 1)}
-            >
-              {match.p2}
-            </button>
-          </div>
-        </div>
+        <ScoreControls
+          isBo3={match.format === 'bo3'}
+          p1={match.p1}
+          p2={match.p2}
+          onScore={(s1, s2) => onScore(s1, s2)}
+        />
       )}
     </div>
   );
 }
 
-function RoundSet({ rounds, section, stageMaps, onScore, isAdmin }: {
+function RoundSet({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
   rounds: BracketMatch[][];
   section: string;
   stageMaps: Record<string, string[]>;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
+  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
   return (
@@ -296,7 +362,7 @@ function RoundSet({ rounds, section, stageMaps, onScore, isAdmin }: {
           ? (section === 'upper' ? 'Final' : 'LB Final')
           : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
         const sk = `${section}_r${ri}`;
-        const maps: string[] = Array.isArray(stageMaps[sk]) ? stageMaps[sk] as unknown as string[] : stageMaps[sk] ? [stageMaps[sk] as unknown as string] : [];
+        const maps: string[] = parseStageMaps(stageMaps[sk]);
         const spacing = Math.pow(2, ri);
 
         return (
@@ -307,7 +373,7 @@ function RoundSet({ rounds, section, stageMaps, onScore, isAdmin }: {
             <div className="flex flex-col">
               {round.map((match, mi) => (
                 <div key={mi} className="flex items-center" style={{ margin: `${spacing * 7}px 0` }}>
-                  <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} onScore={onScore} isAdmin={isAdmin} />
+                  <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
                   <div className="w-4 h-0.5 flex-shrink-0" style={{ background: 'var(--border-mid)' }} />
                 </div>
               ))}
@@ -319,16 +385,18 @@ function RoundSet({ rounds, section, stageMaps, onScore, isAdmin }: {
   );
 }
 
-function MatchCard({ match, section, ri, mi, maps, onScore, isAdmin }: {
+function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
   match: BracketMatch;
   section: string; ri: number; mi: number;
   maps: string[];
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
+  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
   const isBo3 = match.format === 'bo3';
   const isDone = !!match.winner;
   const canEdit = isAdmin && match.p1 && match.p2 && !isDone;
+  const canUndo = isAdmin && isDone;
 
   return (
     <div className="w-48 t-elevated border t-border rounded-xl overflow-hidden flex-shrink-0">
@@ -350,57 +418,40 @@ function MatchCard({ match, section, ri, mi, maps, onScore, isAdmin }: {
           </span>
         </div>
       )}
-
-      {[{ player: match.p1, score: match.score1, isP1: true }, { player: match.p2, score: match.score2, isP1: false }].map(({ player, score, isP1 }) => {
+      {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
         const isWinner = isDone && match.winner === player;
-        const isLoser = isDone && match.winner !== player;
+        const isLoser  = isDone && match.winner !== player;
         return (
-          <div key={isP1 ? 'p1' : 'p2'} className="flex items-center justify-between px-3 py-2 border-b t-border last:border-b-0"
-            style={{ background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}>
-            <span className="text-xs font-['DM_Mono'] flex-1 truncate"
-              style={{ color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)', fontStyle: !player ? 'italic' : undefined, opacity: isLoser ? 0.5 : 1 }}>
-              {isWinner && '✓ '}{player ?? (match.winner ? 'TBD' : 'BYE')}
-            </span>
-            {(isDone || (player && match.p1 && match.p2)) && (
-              <span className="font-['Bebas_Neue'] text-base ml-2 shrink-0" style={{ color: isWinner ? 'var(--accent-green)' : 'var(--text-dim)' }}>{score}</span>
-            )}
-          </div>
+          <PlayerRow
+            key={idx}
+            player={player}
+            score={score}
+            isWinner={isWinner}
+            isLoser={isLoser}
+            showScore={isDone || !!(player && match.p1 && match.p2)}
+          />
         );
       })}
-
       {canEdit && (
-        <div className="px-3 py-2 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
-          {isBo3 ? (
-            <div className="flex flex-col gap-1.5">
-              <p className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-wider">Score (BO3)</p>
-              <div className="flex gap-1 flex-wrap">
-                {(['2-0', '2-1', '0-2', '1-2'] as const).map(label => {
-                  const [s1, s2] = label.split('-').map(Number);
-                  return (
-                    <button key={label} className="px-2 py-1 rounded font-['DM_Mono'] text-[10px] font-bold border transition-all cursor-pointer"
-                      style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                      onClick={() => onScore(section, ri, mi, s1, s2)}>{label}</button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-1.5 items-center">
-              <p className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-wider shrink-0">Winner</p>
-              <button className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
-                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-green)' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-                onClick={() => onScore(section, ri, mi, 1, 0)}>{match.p1}</button>
-              <button className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
-                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-green)' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-                onClick={() => onScore(section, ri, mi, 0, 1)}>{match.p2}</button>
-            </div>
-          )}
+        <ScoreControls
+          isBo3={isBo3}
+          p1={match.p1}
+          p2={match.p2}
+          onScore={(s1, s2) => onScore(section, ri, mi, s1, s2)}
+        />
+      )}
+      {canUndo && (
+        <div className="px-3 py-1.5 border-t t-border flex justify-end" style={{ background: 'var(--bg-hover)' }}>
+          <button
+            className="font-['DM_Mono'] text-[9px] px-2 py-1 rounded border transition-all cursor-pointer"
+            style={{ borderColor: 'var(--border-mid)', color: 'var(--text-dim)' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-red)'; e.currentTarget.style.color = 'var(--accent-red)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.color = 'var(--text-dim)'; }}
+            onClick={() => onUndo(section, ri, mi)}
+            title="Undo result"
+          >
+            ↩ Undo
+          </button>
         </div>
       )}
     </div>
@@ -424,52 +475,27 @@ function GrandFinalDisplay({ gf, onScore, isAdmin }: {
             style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
         </div>
       )}
-      {[{ player: gf.p1, score: gf.score1, isP1: true }, { player: gf.p2, score: gf.score2, isP1: false }].map(({ player, score, isP1 }) => {
+      {[{ player: gf.p1, score: gf.score1 }, { player: gf.p2, score: gf.score2 }].map(({ player, score }, idx) => {
         const isWinner = isDone && gf.winner === player;
-        const isLoser = isDone && gf.winner !== player;
+        const isLoser  = isDone && gf.winner !== player;
         return (
-          <div key={isP1 ? 'p1' : 'p2'} className="flex items-center justify-between px-3 py-2 border-b t-border last:border-b-0"
-            style={{ background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}>
-            <span className="text-xs font-['DM_Mono'] flex-1 truncate"
-              style={{ color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)', opacity: isLoser ? 0.5 : 1 }}>
-              {isWinner && '✓ '}{player ?? 'TBD'}
-            </span>
-            {(isDone || (player && gf.p1 && gf.p2)) && (
-              <span className="font-['Bebas_Neue'] text-base ml-2 shrink-0" style={{ color: isWinner ? 'var(--accent-green)' : 'var(--text-dim)' }}>{score}</span>
-            )}
-          </div>
+          <PlayerRow
+            key={idx}
+            player={player}
+            score={score}
+            isWinner={isWinner}
+            isLoser={isLoser}
+            showScore={isDone || !!(player && gf.p1 && gf.p2)}
+          />
         );
       })}
       {canEdit && (
-        <div className="px-3 py-2 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
-          {isBo3 ? (
-            <div className="flex flex-col gap-1.5">
-              <p className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-wider">Score (BO3)</p>
-              <div className="flex gap-1 flex-wrap">
-                {(['2-0', '2-1', '0-2', '1-2'] as const).map(label => {
-                  const [s1, s2] = label.split('-').map(Number);
-                  return (
-                    <button key={label} className="px-2 py-1 rounded font-['DM_Mono'] text-[10px] font-bold border transition-all cursor-pointer"
-                      style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                      onClick={() => onScore('gf', 0, 0, s1, s2)}>{label}</button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-1.5 items-center">
-              <p className="font-['DM_Mono'] text-[9px] t-dim uppercase shrink-0">Winner</p>
-              <button className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
-                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-green)' }}
-                onClick={() => onScore('gf', 0, 0, 1, 0)}>{gf.p1}</button>
-              <button className="flex-1 px-2 py-1 rounded font-['DM_Mono'] text-[10px] border transition-all truncate cursor-pointer"
-                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-green)' }}
-                onClick={() => onScore('gf', 0, 0, 0, 1)}>{gf.p2}</button>
-            </div>
-          )}
-        </div>
+        <ScoreControls
+          isBo3={isBo3}
+          p1={gf.p1}
+          p2={gf.p2}
+          onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)}
+        />
       )}
     </div>
   );
