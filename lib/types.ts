@@ -26,6 +26,11 @@ export interface GrandFinal {
   score1: number;
   score2: number;
   format: 'bo1' | 'bo3';
+  /** True when the lower-bracket finalist won GF1, triggering a reset match (GF2). */
+  isReset?: boolean;
+  /** Scores for the reset match (GF2). */
+  resetScore1?: number;
+  resetScore2?: number;
 }
 
 export interface Bracket {

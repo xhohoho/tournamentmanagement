@@ -176,6 +176,32 @@ export async function PATCH(req: NextRequest) {
     if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });
     const bracket: Bracket = JSON.parse(JSON.stringify(B));
 
+    // Undo grand final (GF2 reset first, then GF1)
+    if (section === 'gf') {
+      const gf = bracket.grandFinal;
+      if (!gf) return NextResponse.json({ error: 'No grand final' }, { status: 400 });
+      if (gf.isReset && (gf.resetScore1 ?? 0) === 0 && (gf.resetScore2 ?? 0) === 0) {
+        // Undo the reset itself (revert to GF1 state where LB finalist won)
+        gf.isReset = false;
+        gf.resetScore1 = 0;
+        gf.resetScore2 = 0;
+      } else if (gf.isReset) {
+        // Undo GF2 result only
+        gf.winner = null;
+        bracket.champion = null;
+        gf.resetScore1 = 0;
+        gf.resetScore2 = 0;
+      } else {
+        // Undo GF1
+        gf.winner = null;
+        gf.score1 = 0;
+        gf.score2 = 0;
+        bracket.champion = null;
+      }
+      const next = await updateState(s => ({ ...s, bracket }));
+      return NextResponse.json({ bracket: next.bracket });
+    }
+
     let rounds: BracketMatch[][] | undefined;
     if (section === 'upper') rounds = bracket.upper;
     else if (section === 'lower') rounds = bracket.lower;
@@ -249,10 +275,39 @@ export async function PATCH(req: NextRequest) {
   if (section === 'gf') {
     const gf = bracket.grandFinal;
     if (!gf) return NextResponse.json({ error: 'No grand final' }, { status: 400 });
-    gf.score1 = p1wins ?? gf.score1;
-    gf.score2 = p2wins ?? gf.score2;
-    const winner = resolveWinner(gf);
-    if (winner) { gf.winner = winner; bracket.champion = winner; }
+
+    if (gf.isReset) {
+      // ── GF2: bracket-reset match ──────────────────────────────────────────
+      gf.resetScore1 = p1wins ?? gf.resetScore1 ?? 0;
+      gf.resetScore2 = p2wins ?? gf.resetScore2 ?? 0;
+      const target = gf.format === 'bo3' ? 2 : 1;
+      if ((gf.resetScore1 ?? 0) >= target && gf.p1) {
+        gf.winner = gf.p1;
+        bracket.champion = gf.p1;
+      } else if ((gf.resetScore2 ?? 0) >= target && gf.p2) {
+        gf.winner = gf.p2;
+        bracket.champion = gf.p2;
+      }
+    } else {
+      // ── GF1 ──────────────────────────────────────────────────────────────
+      gf.score1 = p1wins ?? gf.score1;
+      gf.score2 = p2wins ?? gf.score2;
+      const winner = resolveWinner(gf);
+      if (winner) {
+        // p1 is the upper-bracket finalist (0 losses), p2 is the lower-bracket finalist (1 loss)
+        if (winner === gf.p1) {
+          // Upper bracket wins → tournament over, no reset needed
+          gf.winner = winner;
+          bracket.champion = winner;
+        } else {
+          // Lower bracket wins → both have 1 loss now → bracket reset (GF2)
+          gf.isReset = true;
+          gf.resetScore1 = 0;
+          gf.resetScore2 = 0;
+          // Do NOT set gf.winner or bracket.champion yet
+        }
+      }
+    }
     const next = await updateState(s => ({ ...s, bracket }));
     return NextResponse.json({ bracket: next.bracket });
   }
