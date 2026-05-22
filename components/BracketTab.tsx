@@ -6,13 +6,12 @@ import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal } from '@/lib/types';
 
 const CARD_W = 210;
-const CARD_H = 72;         // visual height of the two player rows
-const CARD_H_INPUT = 116;  // full card height when ScoreInput is visible (adds ~44px)
+const CARD_H = 72;
 const COL_GAP = 72;
 const COL_W = CARD_W + COL_GAP;
 
 function getSpacing(colIdx: number): number {
-  return (CARD_H_INPUT + 20) * Math.pow(2, colIdx);
+  return (CARD_H + 20) * Math.pow(2, colIdx);
 }
 
 function getMatchTop(colIdx: number, matchIdx: number): number {
@@ -24,81 +23,37 @@ function getMatchTop(colIdx: number, matchIdx: number): number {
   return (topA + topB) / 2 - CARD_H / 2;
 }
 
-// ── ScoreInput — inline score entry row for admin ────────────────────────────
-interface ScoreInputProps {
-  isBo3: boolean;
-  p1: string | null;
-  p2: string | null;
-  onScore: (s1: number, s2: number) => void;
-}
-function ScoreInput({ isBo3, p1, p2, onScore }: ScoreInputProps) {
-  const [s1, setS1] = useState('');
-  const [s2, setS2] = useState('');
-  const [err, setErr] = useState('');
-
-  const submit = () => {
-    const n1 = parseInt(s1, 10);
-    const n2 = parseInt(s2, 10);
-    if (isNaN(n1) || isNaN(n2) || n1 < 0 || n2 < 0) {
-      setErr('Enter valid scores');
-      return;
-    }
-    if (isBo3) {
-      // BO3: winner must reach 2; only valid results are 2-0, 2-1, 0-2, 1-2
-      const valid = (n1 === 2 && (n2 === 0 || n2 === 1)) || (n2 === 2 && (n1 === 0 || n1 === 1));
-      if (!valid) { setErr('BO3: valid scores are 2-0, 2-1, 0-2, 1-2'); return; }
-    } else {
-      // BO1: exactly one team wins, other gets 0
-      if (!((n1 === 1 && n2 === 0) || (n1 === 0 && n2 === 1))) {
-        setErr('BO1: enter 1-0 or 0-1'); return;
-      }
-    }
-    setErr('');
-    onScore(n1, n2);
-    setS1(''); setS2('');
-  };
-
-  return (
-    <div className="flex flex-col gap-1 px-3 py-2 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
-      <div className="flex items-center gap-1.5">
-        <span className="font-['DM_Mono'] text-[9px] t-dim truncate flex-1">{p1 ?? 'P1'}</span>
-        <input
-          type="number" min={0} max={isBo3 ? 2 : 1}
-          value={s1}
-          onChange={e => { setS1(e.target.value); setErr(''); }}
-          className="w-10 text-center font-['DM_Mono'] text-xs rounded border t-border bg-transparent t-text focus:outline-none"
-          placeholder="0"
-          onClick={e => e.stopPropagation()}
-        />
-        <span className="font-['DM_Mono'] text-[10px] t-dim">:</span>
-        <input
-          type="number" min={0} max={isBo3 ? 2 : 1}
-          value={s2}
-          onChange={e => { setS2(e.target.value); setErr(''); }}
-          className="w-10 text-center font-['DM_Mono'] text-xs rounded border t-border bg-transparent t-text focus:outline-none"
-          placeholder="0"
-          onClick={e => e.stopPropagation()}
-        />
-        <span className="font-['DM_Mono'] text-[9px] t-dim truncate flex-1 text-right">{p2 ?? 'P2'}</span>
-        <button
-          className="px-2 py-0.5 rounded font-['DM_Mono'] text-[9px] font-bold cursor-pointer"
-          style={{ background: 'var(--accent)', color: '#fff' }}
-          onClick={e => { e.stopPropagation(); submit(); }}
-        >OK</button>
-      </div>
-      {err && <p className="font-['DM_Mono'] text-[9px]" style={{ color: 'var(--accent-red)' }}>{err}</p>}
-    </div>
-  );
-}
-
-// ── PlayerRow ─────────────────────────────────────────────────────────────────
-function PlayerRow({ player, score, isWinner, isLoser, showScore }: {
+// ── PlayerRow — with optional inline score editing for admin ─────────────────
+function PlayerRow({
+  player, score, isWinner, isLoser, showScore,
+  canEdit, isBo3, otherScore, onCommit,
+}: {
   player: string | null;
   score: number;
   isWinner: boolean;
   isLoser: boolean;
   showScore: boolean;
+  canEdit?: boolean;
+  isBo3?: boolean;
+  otherScore?: number;  // the opponent's score, used to validate
+  onCommit?: (newScore: number) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const startEdit = () => {
+    if (!canEdit) return;
+    setDraft(String(score));
+    setEditing(true);
+  };
+
+  const commit = () => {
+    setEditing(false);
+    const n = parseInt(draft, 10);
+    if (isNaN(n) || n < 0) return;
+    onCommit?.(n);
+  };
+
   return (
     <div
       className="flex items-center justify-between px-3 border-b t-border last:border-b-0"
@@ -115,9 +70,35 @@ function PlayerRow({ player, score, isWinner, isLoser, showScore }: {
         {isWinner && '✓ '}{player ?? (isLoser ? 'TBD' : 'BYE')}
       </span>
       {showScore && (
-        <span className="font-['Bebas_Neue'] text-base ml-2 shrink-0" style={{ color: isWinner ? 'var(--accent-green)' : 'var(--text-dim)' }}>
-          {score}
-        </span>
+        editing ? (
+          <input
+            autoFocus
+            type="number"
+            min={0}
+            max={isBo3 ? 2 : 1}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+            className="w-8 text-center font-['Bebas_Neue'] text-base rounded border bg-transparent focus:outline-none"
+            style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+          />
+        ) : (
+          <span
+            className="font-['Bebas_Neue'] text-base ml-2 shrink-0 rounded px-1"
+            style={{
+              color: isWinner ? 'var(--accent-green)' : 'var(--text-dim)',
+              cursor: canEdit ? 'text' : 'default',
+              outline: canEdit ? '1px dashed var(--border-mid)' : 'none',
+              minWidth: 20,
+              textAlign: 'center',
+            }}
+            title={canEdit ? 'Click to edit score' : undefined}
+            onClick={startEdit}
+          >
+            {score}
+          </span>
+        )
       )}
     </div>
   );
@@ -351,7 +332,7 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
   if (validRounds.length === 0) return null;
 
   const firstRound = validRounds[0];
-  const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H_INPUT + 32;
+  const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H + 32;
   const totalWidth = validRounds.length * COL_W - COL_GAP + 40;
   const stroke = 'var(--border-mid)';
 
@@ -432,10 +413,26 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
+  const [s1, setS1] = useState(match.score1);
+  const [s2, setS2] = useState(match.score2);
   const isBo3 = match.format === 'bo3';
   const isDone = !!match.winner;
   const canEdit = isAdmin && !!match.p1 && !!match.p2 && !isDone;
   const canUndo = isAdmin && isDone;
+  const target = isBo3 ? 2 : 1;
+
+  // Keep local state in sync when match updates from server
+  if (s1 !== match.score1 && !canEdit) setS1(match.score1);
+  if (s2 !== match.score2 && !canEdit) setS2(match.score2);
+
+  const trySubmit = (n1: number, n2: number) => {
+    // Valid: one side must reach target, other must be less
+    const p1wins = (n1 >= target && n2 < target);
+    const p2wins = (n2 >= target && n1 < target);
+    if (p1wins || p2wins) {
+      onScore(section, ri, mi, n1, n2);
+    }
+  };
 
   return (
     <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
@@ -455,18 +452,28 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
             style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
         </div>
       )}
-      {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
-        const isWinner = isDone && match.winner === player;
-        const isLoser = isDone && match.winner !== player;
-        return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
-      })}
+      <PlayerRow
+        player={match.p1} score={isDone ? match.score1 : s1}
+        isWinner={isDone && match.winner === match.p1}
+        isLoser={isDone && match.winner !== match.p1}
+        showScore={isDone || !!(match.p1 && match.p2)}
+        canEdit={canEdit} isBo3={isBo3} otherScore={s2}
+        onCommit={n => { setS1(n); trySubmit(n, s2); }}
+      />
+      <PlayerRow
+        player={match.p2} score={isDone ? match.score2 : s2}
+        isWinner={isDone && match.winner === match.p2}
+        isLoser={isDone && match.winner !== match.p2}
+        showScore={isDone || !!(match.p1 && match.p2)}
+        canEdit={canEdit} isBo3={isBo3} otherScore={s1}
+        onCommit={n => { setS2(n); trySubmit(s1, n); }}
+      />
       {canEdit && (
-        <ScoreInput
-          isBo3={isBo3}
-          p1={match.p1}
-          p2={match.p2}
-          onScore={(s1, s2) => onScore(section, ri, mi, s1, s2)}
-        />
+        <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
+          <p className="font-['DM_Mono'] text-[9px] t-dim text-center">
+            {isBo3 ? 'Click score → type 0–2, Enter to confirm' : 'Click score → type 1 for winner, Enter'}
+          </p>
+        </div>
       )}
       {canUndo && (
         <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
@@ -487,25 +494,36 @@ function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
   onUndo: () => Promise<void>;
   isAdmin: boolean;
 }) {
+  const [s1, setS1] = useState(match.score1);
+  const [s2, setS2] = useState(match.score2);
+  const isBo3 = match.format === 'bo3';
   const isDone = !!match.winner;
   const canEdit = isAdmin && !!match.p1 && !!match.p2 && !isDone;
   const canUndo = isAdmin && isDone;
+  const target = isBo3 ? 2 : 1;
+
+  const trySubmit = (n1: number, n2: number) => {
+    if ((n1 >= target && n2 < target) || (n2 >= target && n1 < target)) onScore(n1, n2);
+  };
 
   return (
     <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
-      {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
-        const isWinner = isDone && match.winner === player;
-        const isLoser = isDone && match.winner !== player;
-        return <PlayerRow key={idx} player={isWinner ? `🥉 ${player}` : player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
-      })}
-      {canEdit && (
-        <ScoreInput
-          isBo3={match.format === 'bo3'}
-          p1={match.p1}
-          p2={match.p2}
-          onScore={(s1, s2) => onScore(s1, s2)}
-        />
-      )}
+      <PlayerRow
+        player={match.p1} score={isDone ? match.score1 : s1}
+        isWinner={isDone && match.winner === match.p1}
+        isLoser={isDone && match.winner !== match.p1}
+        showScore={isDone || !!(match.p1 && match.p2)}
+        canEdit={canEdit} isBo3={isBo3} otherScore={s2}
+        onCommit={n => { setS1(n); trySubmit(n, s2); }}
+      />
+      <PlayerRow
+        player={match.p2} score={isDone ? match.score2 : s2}
+        isWinner={isDone && match.winner === match.p2}
+        isLoser={isDone && match.winner !== match.p2}
+        showScore={isDone || !!(match.p1 && match.p2)}
+        canEdit={canEdit} isBo3={isBo3} otherScore={s1}
+        onCommit={n => { setS2(n); trySubmit(s1, n); }}
+      />
       {canUndo && (
         <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
           <button
@@ -526,6 +544,14 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
   isAdmin: boolean;
 }) {
   const isBo3 = gf.format === 'bo3';
+  const [gf1s1, setGf1s1] = useState(gf.score1);
+  const [gf1s2, setGf1s2] = useState(gf.score2);
+  const [gf2s1, setGf2s1] = useState(gf.resetScore1 ?? 0);
+  const [gf2s2, setGf2s2] = useState(gf.resetScore2 ?? 0);
+  const target = isBo3 ? 2 : 1;
+  const trySubmitGf = (n1: number, n2: number) => {
+    if ((n1 >= target && n2 < target) || (n2 >= target && n1 < target)) onScore('gf', 0, 0, n1, n2);
+  };
   const gf1Done = !!(gf.winner || gf.isReset);
   const gf2Done = !!(gf.isReset && gf.winner);
   const canEditGf1 = isAdmin && gf.p1 && gf.p2 && !gf1Done;
@@ -544,18 +570,26 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
                 style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
             </div>
           )}
-          {[{ player: gf.p1, score: gf.score1 }, { player: gf.p2, score: gf.score2 }].map(({ player, score }, idx) => {
-            const isWinner = !gf.isReset && !!gf.winner && gf.winner === player;
-            const isLoser = !gf.isReset && !!gf.winner && gf.winner !== player;
-            return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={gf1Done || !!(player && gf.p1 && gf.p2)} />;
-          })}
+          <PlayerRow
+            player={gf.p1} score={gf1Done ? gf.score1 : gf1s1}
+            isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p1}
+            isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p1}
+            showScore={gf1Done || !!(gf.p1 && gf.p2)}
+            canEdit={!!canEditGf1} isBo3={isBo3} otherScore={gf1s2}
+            onCommit={n => { setGf1s1(n); trySubmitGf(n, gf1s2); }}
+          />
+          <PlayerRow
+            player={gf.p2} score={gf1Done ? gf.score2 : gf1s2}
+            isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p2}
+            isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p2}
+            showScore={gf1Done || !!(gf.p1 && gf.p2)}
+            canEdit={!!canEditGf1} isBo3={isBo3} otherScore={gf1s1}
+            onCommit={n => { setGf1s2(n); trySubmitGf(gf1s1, n); }}
+          />
           {gf.isReset && (
             <div className="px-3 py-1.5 border-t t-border text-center" style={{ background: 'rgba(58,107,255,0.06)' }}>
               <span className="font-['DM_Mono'] text-[9px] font-bold" style={{ color: 'var(--accent)' }}>🔄 BRACKET RESET — play GF2</span>
             </div>
-          )}
-          {canEditGf1 && (
-            <ScoreInput isBo3={isBo3} p1={gf.p1} p2={gf.p2} onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)} />
           )}
         </div>
       </div>
@@ -571,14 +605,22 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
                   style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
               </div>
             )}
-            {[{ player: gf.p1, score: gf.resetScore1 ?? 0 }, { player: gf.p2, score: gf.resetScore2 ?? 0 }].map(({ player, score }, idx) => {
-              const isWinner = gf2Done && gf.winner === player;
-              const isLoser = gf2Done && gf.winner !== player;
-              return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={gf2Done || !!(player && gf.p1 && gf.p2)} />;
-            })}
-            {canEditGf2 && (
-              <ScoreInput isBo3={isBo3} p1={gf.p1} p2={gf.p2} onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)} />
-            )}
+            <PlayerRow
+              player={gf.p1} score={gf2Done ? (gf.resetScore1 ?? 0) : gf2s1}
+              isWinner={gf2Done && gf.winner === gf.p1}
+              isLoser={gf2Done && gf.winner !== gf.p1}
+              showScore={gf2Done || !!(gf.p1 && gf.p2)}
+              canEdit={!!canEditGf2} isBo3={isBo3} otherScore={gf2s2}
+              onCommit={n => { setGf2s1(n); trySubmitGf(n, gf2s2); }}
+            />
+            <PlayerRow
+              player={gf.p2} score={gf2Done ? (gf.resetScore2 ?? 0) : gf2s2}
+              isWinner={gf2Done && gf.winner === gf.p2}
+              isLoser={gf2Done && gf.winner !== gf.p2}
+              showScore={gf2Done || !!(gf.p1 && gf.p2)}
+              canEdit={!!canEditGf2} isBo3={isBo3} otherScore={gf2s1}
+              onCommit={n => { setGf2s2(n); trySubmitGf(gf2s1, n); }}
+            />
           </div>
         </div>
       )}
