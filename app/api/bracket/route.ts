@@ -135,7 +135,8 @@ export async function POST(req: NextRequest) {
   if (!await verifyAdminToken(req)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   }
-  const { elimMode } = await req.json();
+  const { elimMode, matchFormat = 'bo1' } = await req.json();
+  const fmt: 'bo1' | 'bo3' = matchFormat === 'bo3' ? 'bo3' : 'bo1';
   const state = await getState();
 
   if (state.teams.length < 2) {
@@ -146,15 +147,15 @@ export async function POST(req: NextRequest) {
   let bracket: Bracket;
 
   if (elimMode === 'single') {
-    const upperRaw = buildSE(names);
+    const upperRaw = buildSE(names, fmt);
     const upper = autoByes(upperRaw);
-    const thirdPlace = names.length >= 4 ? emptyMatch() : undefined;
+    const thirdPlace = names.length >= 4 ? emptyMatch(fmt) : undefined;
     bracket = { type: 'single', upper, thirdPlace, champion: null };
   } else {
-    const { upper: upperRaw, lower: lowerRaw } = buildDE(names);
+    const { upper: upperRaw, lower: lowerRaw } = buildDE(names, fmt);
     const upper = autoByes(upperRaw);
     const lower = autoByes(lowerRaw);
-    bracket = { type: 'double', upper, lower, grandFinal: emptyMatch(), champion: null };
+    bracket = { type: 'double', upper, lower, grandFinal: emptyMatch(fmt), champion: null };
   }
 
   const next = await updateState(s => ({ ...s, bracket, elimMode }));

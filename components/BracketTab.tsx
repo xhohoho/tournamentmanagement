@@ -117,6 +117,7 @@ export function BracketTab() {
   const { bracket, elimMode, teams, isAdmin, loading, setElimMode, generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [matchFormat, setMatchFormat] = useState<'bo1' | 'bo3'>('bo1');
 
   if (loading) return (
     <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
@@ -130,7 +131,7 @@ export function BracketTab() {
     if (!isAdmin || generating) return;
     setErr('');
     setGenerating(true);
-    const result = await generateBracket();
+    const result = await generateBracket(matchFormat);
     setGenerating(false);
     if (result?.error) setErr(result.error);
   };
@@ -151,14 +152,16 @@ export function BracketTab() {
         <div className="t-surface border t-border rounded-2xl p-4 shrink-0">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="font-['Bebas_Neue'] text-base tracking-widest t-text shrink-0">Format</span>
-            <div className="flex gap-2 flex-1 min-w-0">
+
+            {/* Elim mode */}
+            <div className="flex gap-2">
               {[
                 { id: 'single', icon: '⚔️', label: 'Single Elim', desc: 'One loss = out' },
                 { id: 'double', icon: '🛡️', label: 'Double Elim', desc: 'Two losses = out' },
               ].map(opt => (
                 <div
                   key={opt.id}
-                  className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border-2 transition-all select-none flex-1"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none"
                   style={{
                     borderColor: elimMode === opt.id ? 'var(--accent-red)' : 'var(--border)',
                     background: elimMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
@@ -167,12 +170,12 @@ export function BracketTab() {
                   }}
                   onClick={() => !hasBracket && setElimMode(opt.id as 'single' | 'double')}
                 >
-                  <span className="text-xl shrink-0">{opt.icon}</span>
-                  <div className="min-w-0">
-                    <div className="font-['DM_Mono'] text-xs font-bold t-text truncate">
+                  <span className="text-base shrink-0">{opt.icon}</span>
+                  <div>
+                    <div className="font-['DM_Mono'] text-xs font-bold t-text">
                       {opt.label}
                       {hasBracket && elimMode === opt.id && (
-                        <span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>● Active</span>
+                        <span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>●</span>
                       )}
                     </div>
                     <div className="font-['DM_Mono'] text-[10px] t-muted">{opt.desc}</div>
@@ -180,7 +183,41 @@ export function BracketTab() {
                 </div>
               ))}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+
+            {/* Separator */}
+            <div className="h-8 w-px" style={{ background: 'var(--border-mid)' }} />
+
+            {/* Match format */}
+            <div className="flex gap-2">
+              {[
+                { id: 'bo1', label: 'BO1', desc: 'Best of 1' },
+                { id: 'bo3', label: 'BO3', desc: 'Best of 3' },
+              ].map(opt => (
+                <div
+                  key={opt.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none"
+                  style={{
+                    borderColor: matchFormat === opt.id ? 'var(--accent-gold)' : 'var(--border)',
+                    background: matchFormat === opt.id ? 'rgba(224,144,16,0.07)' : 'var(--bg-elevated)',
+                    cursor: hasBracket ? 'not-allowed' : 'pointer',
+                    opacity: hasBracket && matchFormat !== opt.id ? 0.45 : 1,
+                  }}
+                  onClick={() => !hasBracket && setMatchFormat(opt.id as 'bo1' | 'bo3')}
+                >
+                  <div>
+                    <div className="font-['DM_Mono'] text-xs font-bold" style={{ color: matchFormat === opt.id ? 'var(--accent-gold)' : 'var(--text)' }}>
+                      {opt.label}
+                      {hasBracket && matchFormat === opt.id && (
+                        <span className="ml-1.5 font-normal t-dim">●</span>
+                      )}
+                    </div>
+                    <div className="font-['DM_Mono'] text-[10px] t-muted">{opt.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto shrink-0">
               {!hasBracket ? (
                 <button
                   className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
@@ -208,7 +245,7 @@ export function BracketTab() {
 
       {bracket ? (
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          <BracketDisplay onScore={updateScore} onUndo={undoMatch} onThirdPlace={updateThirdPlace} />
+          <BracketDisplay onScore={updateScore} onThirdPlace={updateThirdPlace} />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
@@ -222,9 +259,8 @@ export function BracketTab() {
 }
 
 // ─── BracketDisplay ───────────────────────────────────────────────────────────
-function BracketDisplay({ onScore, onUndo, onThirdPlace }: {
+function BracketDisplay({ onScore, onThirdPlace }: {
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
-  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
 }) {
   const { bracket, stageMaps, isAdmin } = useTourney();
@@ -247,7 +283,7 @@ function BracketDisplay({ onScore, onUndo, onThirdPlace }: {
           </span>
         </div>
         <div className="overflow-x-auto overflow-y-visible pb-4">
-          <BracketGrid rounds={bracket.upper} section="upper" stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+          <BracketGrid rounds={bracket.upper} section="upper" stageMaps={stageMaps} onScore={onScore} isAdmin={isAdmin} />
         </div>
       </div>
 
@@ -262,7 +298,7 @@ function BracketDisplay({ onScore, onUndo, onThirdPlace }: {
         <div className="t-surface border t-border rounded-xl p-5">
           <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
           <div className="overflow-x-auto overflow-y-visible pb-4">
-            <BracketGrid rounds={bracket.lower!} section="lower" stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+            <BracketGrid rounds={bracket.lower!} section="lower" stageMaps={stageMaps} onScore={onScore} isAdmin={isAdmin} />
           </div>
         </div>
       )}
@@ -289,12 +325,11 @@ function BracketDisplay({ onScore, onUndo, onThirdPlace }: {
 }
 
 // ─── BracketGrid ──────────────────────────────────────────────────────────────
-function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
+function BracketGrid({ rounds, section, stageMaps, onScore, isAdmin }: {
   rounds: BracketMatch[][];
   section: string;
   stageMaps: Record<string, string[]>;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
-  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
   const validRounds = rounds.map((r, i) => ({ round: r, ri: i })).filter(({ round }) => round.length > 0);
@@ -370,7 +405,7 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
                   {label}
                 </div>
               )}
-              <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+              <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} onScore={onScore} isAdmin={isAdmin} />
             </div>
           );
         });
@@ -380,18 +415,16 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
 }
 
 // ─── MatchCard ────────────────────────────────────────────────────────────────
-function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
+function MatchCard({ match, section, ri, mi, maps, onScore, isAdmin }: {
   match: BracketMatch;
   section: string; ri: number; mi: number;
   maps: string[];
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
-  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
   const isBo3   = match.format === 'bo3';
   const isDone  = !!match.winner;
   const canEdit = isAdmin && match.p1 && match.p2 && !isDone;
-  const canUndo = isAdmin && isDone;
 
   return (
     <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
@@ -417,17 +450,6 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
         return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
       })}
       {canEdit && <ScoreControls isBo3={isBo3} p1={match.p1} p2={match.p2} onScore={(s1, s2) => onScore(section, ri, mi, s1, s2)} />}
-      {canUndo && (
-        <div className="px-3 py-1.5 border-t t-border flex justify-end" style={{ background: 'var(--bg-hover)' }}>
-          <button
-            className="font-['DM_Mono'] text-[9px] px-2 py-1 rounded border transition-all cursor-pointer"
-            style={{ borderColor: 'var(--border-mid)', color: 'var(--text-dim)' }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-red)'; e.currentTarget.style.color = 'var(--accent-red)'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.color = 'var(--text-dim)'; }}
-            onClick={() => onUndo(section, ri, mi)}
-          >↩ Undo</button>
-        </div>
-      )}
     </div>
   );
 }

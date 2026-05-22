@@ -41,7 +41,7 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
       ctx.font = '14px DM Mono, monospace';
       ctx.textAlign = 'center';
       ctx.fillText('Add maps', cx, cx + 5);
-      return;
+    return;
     }
 
     const slice = (Math.PI * 2) / maps.length;
@@ -80,9 +80,13 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
       if (t < 1) { requestAnimationFrame(tick); return; }
       setSpinning(false);
       const slice = (Math.PI * 2) / maps.length;
-      // Pointer is at 6 o'clock (π/2). Offset norm by π/2 so the picked slice
-      // matches where the pointer actually sits, not the 12 o'clock origin.
-      const norm = ((-angleRef.current + Math.PI / 2) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      // Pointer is at 12 o'clock = -π/2 in canvas coords (3 o'clock = 0).
+      // The wheel drew slice i starting at: angle + i * slice.
+      // We need the slice index where the pointer angle falls inside [start, end).
+      // Pointer canvas angle = -π/2, so relative to wheel start: (-π/2 - angle)
+      // Normalise to [0, 2π) then divide by slice size.
+      const pointerAngle = -Math.PI / 2;
+      const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       onSpunMap(maps[Math.floor(norm / slice) % maps.length]);
     };
     requestAnimationFrame(tick);
@@ -130,7 +134,7 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
 
         {/* Wheel panel */}
-        <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4">
+        <div className="t-surface border t-border rounded-2xl p-4 flex flex-col gap-3 overflow-y-auto">
           <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎡 Wheel</h2>
 
           {isAdmin && (
@@ -170,11 +174,11 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
             {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'No maps yet.' : 'No maps added.'}</p>}
           </div>
 
-          <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-2">
             <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
-            <canvas ref={canvasRef} width={260} height={260} className="rounded-full drop-shadow-sm" />
+            <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm" />
             <button
-              className="px-6 py-2.5 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               style={{ background: 'var(--accent-red)' }}
               onClick={spin}
               disabled={spinning || maps.length === 0}

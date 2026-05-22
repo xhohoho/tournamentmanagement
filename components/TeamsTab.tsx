@@ -214,66 +214,95 @@ export function TeamsTab() {
           </div>
         )}
 
-        {/* Teams grid */}
-        <div className="flex-1 t-surface border t-border rounded-2xl p-5 min-h-0 overflow-y-auto">
-          <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">
+        {/* Teams grid — always fills the available height, no scroll */}
+        <div className="flex-1 t-surface border t-border rounded-2xl p-4 min-h-0 overflow-hidden flex flex-col">
+          <h2 className="font-['Bebas_Neue'] text-lg tracking-widest t-text mb-3 shrink-0">
             {teams.length > 0 ? '🛡 Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}`}
           </h2>
 
           {teams.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div
+              className="flex-1 min-h-0"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${Math.min(teams.length, Math.ceil(Math.sqrt(teams.length * 1.5)))}, minmax(0, 1fr))`,
+                gap: '10px',
+                alignContent: 'stretch',
+              }}
+            >
               {teams.map((t) => (
-                <div key={t.name} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}>
-                  <h3 className="font-['Bebas_Neue'] text-xl tracking-wide mb-3 pb-2 border-b" style={{ color: t.color, borderColor: 'var(--border)' }}>{t.name}</h3>
-                  {t.members.map((m) => {
-                    const visible = isVisible(m);
-                    return (
-                      <div
-                        key={m}
-                        className="flex items-center justify-between py-1.5 font-['DM_Mono'] text-sm transition-all duration-200"
-                        style={{
-                          color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)',
-                          opacity: visible ? 1 : 0,
-                          transform: visible ? 'translateX(0)' : 'translateX(-8px)',
-                        }}
-                      >
-                        {/* Shows the crown if they match the leader string */}
-                        <span className="w-5 shrink-0">{m === t.leader ? '👑' : '·'}</span>
-                        <span className="flex-1 truncate">{m}</span>
-                        
-                        {/* The Assignment Button — shows ✓ to assign, or 🔄 change indicator on current leader */}
-                        {isAdmin && (
-                          m === t.leader ? (
-                            <span className="ml-2 px-2 py-0.5 text-[10px] font-['DM_Mono'] rounded" style={{ color: 'var(--accent-gold)', opacity: 0.7 }} title="Current leader — click another to reassign">👑</span>
-                          ) : (
-                            <button
-                              onClick={async () => {
-                                setErr('');
-                                const result = await assignLeader(t.name, m);
-                                if (result?.error) setErr(result.error);
-                              }}
-                              className="ml-2 px-2 py-0.5 text-xs font-['DM_Mono'] bg-[var(--accent-green)] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
-                              title="Make team leader"
-                            >✓</button>
-                          )
-                        )}
-                      </div>
-                    );
-                  })}
+                <div
+                  key={t.name}
+                  className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
+                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}
+                >
+                  <h3
+                    className="font-['Bebas_Neue'] tracking-wide px-3 pt-2 pb-1.5 border-b shrink-0"
+                    style={{ color: t.color, borderColor: 'var(--border)', fontSize: 'clamp(12px, 1.1vw, 18px)' }}
+                  >{t.name}</h3>
+                  <div className="flex-1 flex flex-col justify-around px-2 py-1">
+                    {t.members.map((m) => {
+                      const visible = isVisible(m);
+                      return (
+                        <div
+                          key={m}
+                          className="flex items-center gap-1 transition-all duration-200"
+                          style={{
+                            color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)',
+                            opacity: visible ? 1 : 0,
+                            transform: visible ? 'translateX(0)' : 'translateX(-8px)',
+                            fontSize: 'clamp(9px, 0.75vw, 13px)',
+                          }}
+                        >
+                          <span className="shrink-0 w-4">{m === t.leader ? '👑' : '·'}</span>
+                          <span className="flex-1 truncate font-['DM_Mono']">{m}</span>
+                          {isAdmin && (
+                            m === t.leader ? (
+                              <span className="shrink-0 opacity-60" style={{ color: 'var(--accent-gold)', fontSize: 10 }}>👑</span>
+                            ) : (
+                              <button
+                                onClick={async () => { setErr(''); const r = await assignLeader(t.name, m); if (r?.error) setErr(r.error); }}
+                                className="shrink-0 px-1 py-0.5 font-['DM_Mono'] bg-[var(--accent-green)] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
+                                style={{ fontSize: 9 }}
+                                title="Make team leader"
+                              >✓</button>
+                            )
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div
+              className="flex-1 min-h-0"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${Math.min(previewSlots, Math.ceil(Math.sqrt(previewSlots * 1.5)))}, minmax(0, 1fr))`,
+                gap: '10px',
+                alignContent: 'stretch',
+              }}
+            >
               {Array.from({ length: previewSlots }, (_, i) => (
-                <div key={i} className="rounded-xl border p-4" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: TEAM_COLORS[i % TEAM_COLORS.length], borderTopWidth: 3 }}>
-                  <h3 className="font-['Bebas_Neue'] text-xl tracking-wide mb-3 pb-2 border-b" style={{ color: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: 'var(--border)' }}>Team {i + 1}</h3>
-                  {Array.from({ length: 5 }, (__, j) => (
-                    <div key={j} className="flex items-center justify-between py-1.5 font-['DM_Mono'] text-sm transition-all duration-200" style={{ opacity: 1 }}>
-                      <span className="w-5 shrink-0">·</span>
-                      <div className="flex-1 h-2 rounded" style={{ background: 'var(--bg-hover)' }} />
-                    </div>
-                  ))}
+                <div
+                  key={i}
+                  className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
+                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: TEAM_COLORS[i % TEAM_COLORS.length], borderTopWidth: 3 }}
+                >
+                  <h3
+                    className="font-['Bebas_Neue'] tracking-wide px-3 pt-2 pb-1.5 border-b shrink-0"
+                    style={{ color: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: 'var(--border)', fontSize: 'clamp(12px, 1.1vw, 18px)' }}
+                  >Team {i + 1}</h3>
+                  <div className="flex-1 flex flex-col justify-around px-2 py-1">
+                    {Array.from({ length: 5 }, (__, j) => (
+                      <div key={j} className="flex items-center gap-1 py-0.5">
+                        <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>·</span>
+                        <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

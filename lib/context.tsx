@@ -32,7 +32,7 @@ interface TourneyContext {
   resetTeams: () => Promise<void>;
   setTeamMode: (mode: 'leader' | 'random') => Promise<void>;
 
-  generateBracket: () => Promise<{ error?: string }>;
+  generateBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string }>;
   updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   undoMatch: (section: string, ri: number, mi: number) => Promise<void>;
   updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
@@ -268,11 +268,11 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   // —— Bracket ——
-  const generateBracket = async () => {
+  const generateBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
     const res = await fetch('/api/bracket', {
       method: 'POST',
       headers: adminHeaders,
-      body: JSON.stringify({ elimMode }),
+      body: JSON.stringify({ elimMode, matchFormat }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
