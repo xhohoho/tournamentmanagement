@@ -558,7 +558,7 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
 
   const isBo3 = gf.format === 'bo3';
   const gf1Done = !!(gf.winner || gf.isReset);
-  const gf2Done = gf.isReset && !!gf.winner;
+  const gf2Done = !!(gf.isReset && gf.winner);
   const canEditGf1 = isAdmin && gf.p1 && gf.p2 && !gf1Done;
   const canEditGf2 = isAdmin && gf.isReset && !gf.winner;
   const canUndo = isAdmin && (gf1Done || gf2Done);
