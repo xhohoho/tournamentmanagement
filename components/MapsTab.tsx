@@ -18,7 +18,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
   const [spinning, setSpinning] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
-  // Spin results queue — managed by parent, each spin appends
+  
   // Default maps — persisted in localStorage per-session for admin
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
@@ -68,7 +68,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       ctx.font = '14px DM Mono, monospace';
       ctx.textAlign = 'center';
       ctx.fillText('Add maps', cx, cx + 5);
-    return;
+      return;
     }
 
     const slice = (Math.PI * 2) / maps.length;
@@ -111,7 +111,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = maps[Math.floor(norm / slice) % maps.length];
       onSpunMap(result);
-      // Append to spin results queue — parent handles accumulation
+      // Parent handles pushing this result to the spinResults array
     };
     requestAnimationFrame(tick);
   };
@@ -163,10 +163,10 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
 
           {isAdmin && (
             <>
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 <input
                   type="text"
-                  className="flex-1 t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none transition-colors"
+                  className="flex-1 min-w-[150px] t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none transition-colors"
                   placeholder="Map name…"
                   value={mapInput}
                   onChange={e => setMapInput(e.target.value)}
@@ -175,7 +175,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                   onBlur={e => (e.target.style.borderColor = '')}
                 />
                 <button
-                  className="px-4 py-2.5 font-bold rounded-xl text-sm text-white transition-all cursor-pointer"
+                  className="shrink-0 px-4 py-2.5 font-bold rounded-xl text-sm text-white transition-all cursor-pointer whitespace-nowrap"
                   style={{ background: 'var(--accent)' }}
                   onClick={handleAddMap}
                 >
@@ -191,18 +191,18 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
                 {m}
                 {isAdmin && (
-                  <span className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors" onClick={() => removeMap(m)}>✕</span>
+                  <span className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0" onClick={() => removeMap(m)}>✕</span>
                 )}
               </span>
             ))}
             {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'No maps yet.' : 'No maps added.'}</p>}
           </div>
 
-        <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-2">
             <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
-            <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm" />
+            <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
             <button
-              className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
               style={{ background: 'var(--accent-red)' }}
               onClick={spin}
               disabled={spinning || maps.length === 0}
@@ -211,11 +211,11 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
             </button>
 
             {spunMap && (
-              <div className="flex flex-col items-center gap-2 w-full">
-                <p className="font-['Bebas_Neue'] text-2xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>🎯 {spunMap}</p>
+              <div className="flex flex-col items-center gap-2 w-full max-w-[220px] mx-auto mt-2">
+                <p className="font-['Bebas_Neue'] text-2xl tracking-widest text-center break-words" style={{ color: 'var(--accent-gold)' }}>🎯 {spunMap}</p>
                 {isAdmin && (
                   <button
-                    className="w-full px-3 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer"
+                    className="w-full shrink-0 whitespace-nowrap px-3 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer"
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-red)'; e.currentTarget.style.color = 'var(--accent-red)'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
                     onClick={async () => { await removeMap(spunMap); setRemovedFromPool(prev => [...prev, spunMap]); onSpunMap(''); }}
@@ -230,29 +230,30 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
 
         {/* Spin Results panel */}
         <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4 overflow-y-auto">
-          <div className="flex items-center justify-between">
-            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results</h2>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
             {isAdmin && spinResults.length > 0 && (
               <button
-                className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer"
+                className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer whitespace-nowrap"
                 onClick={() => onSpinResultsChange([])}
               >clear all</button>
             )}
           </div>
+          
           {/* Spin results queue — each round in bracket consumes one */}
           <div className="flex flex-col gap-1.5">
             {spinResults.length === 0 ? (
               <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue for rounds.</p>
             ) : (
               spinResults.map((m, i) => (
-                <div key={i} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{i + 1}</span>
-                    <span className="font-['DM_Mono'] text-sm t-text">🗺 {m}</span>
+                <div key={i} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{i + 1}</span>
+                    <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
                   </div>
                   {isAdmin && (
                     <button
-                      className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors"
+                      className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors px-2 py-1"
                       onClick={() => onSpinResultsChange(spinResults.filter((_, idx) => idx !== i))}
                     >✕</button>
                   )}
@@ -262,7 +263,9 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
           </div>
 
           <hr className="t-border" />
-          <h3 className="font-['Bebas_Neue'] text-lg tracking-widest t-text">📌 Stage Assignment</h3>
+          
+          {/* Renamed from "Stage Assignment" to "Spin Results Assignment" to clarify intent */}
+          <h3 className="font-['Bebas_Neue'] text-lg tracking-widest t-text">📌 Spin Results Assignment</h3>
 
           {!bracket ? (
             <p className="font-['DM_Mono'] text-xs t-dim text-center py-4">Generate a bracket first.</p>
@@ -272,9 +275,9 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                 const stageMapsArr = getStageMaps(s.key);
                 return (
                   <div key={s.key} className="t-elevated border t-border rounded-xl px-4 py-3">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                       <span className="font-['Bebas_Neue'] text-sm tracking-widest t-text">{s.label}</span>
-                      <span className="font-['DM_Mono'] text-[10px] t-dim">{stageMapsArr.length}/3</span>
+                      <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim">{stageMapsArr.length}/3</span>
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       {Array.from({ length: 3 }, (_, slotIdx) => {
@@ -299,7 +302,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                             } : undefined}
                           >
                             {map ? (
-                              <>
+                              <div className="flex items-center justify-center overflow-hidden">
                                 <span className="truncate text-[10px]">🗺 {map}</span>
                                 {isAdmin && (
                                   <button
@@ -307,9 +310,9 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                                     onClick={() => clearStage(s.key, slotIdx)}
                                   >✕</button>
                                 )}
-                              </>
+                              </div>
                             ) : (
-                              <span className="text-[10px]">{isOver ? '+ drop' : `Map ${slotIdx + 1}`}</span>
+                              <span className="text-[10px] whitespace-nowrap">{isOver ? '+ drop' : `Map ${slotIdx + 1}`}</span>
                             )}
                           </div>
                         );
@@ -330,7 +333,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               return (
                 <div
                   key={m}
-                  className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5"
+                  className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5 shrink-0"
                   style={{ opacity: used ? 0.35 : 1, cursor: used || !isAdmin ? 'default' : 'grab' }}
                   draggable={!used && isAdmin}
                   onDragStart={e => e.dataTransfer.setData('text/plain', m)}
@@ -338,11 +341,11 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                   onMouseEnter={e => { if (!used && isAdmin) { e.currentTarget.style.borderColor = 'var(--accent)'; }}}
                   onMouseLeave={e => { if (!used && isAdmin) { e.currentTarget.style.borderColor = ''; }}}
                 >
-                  {m}
+                  <span className="truncate max-w-[120px]">{m}</span>
                   {isAdmin && (
                     <button
                       title={isDefault ? 'Remove from defaults' : 'Set as default map (restored after reset)'}
-                      className="transition-colors cursor-pointer text-xs leading-none"
+                      className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
                       style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
                       onClick={e => { e.stopPropagation(); toggleDefault(m); }}
                     >★</button>
@@ -367,7 +370,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                 {removedFromPool.filter(m => !maps.includes(m)).map(m => (
                   <button
                     key={m}
-                    className="flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm cursor-pointer transition-colors"
+                    className="shrink-0 flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm cursor-pointer transition-colors whitespace-nowrap"
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; e.currentTarget.style.color = 'var(--accent-green)'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
                     onClick={() => handleRestoreMap(m)}

@@ -11,20 +11,6 @@ const COL_GAP = 72;
 const COL_W = CARD_W + COL_GAP;
 
 function getSpacing(colIdx: number): number {
-  // Build a global round-index map for spin results assignment.
-  // Upper rounds go first (0, 1, 2...), then lower rounds, then GF.
-  // Each unique round gets one spin result from the queue by index.
-  const upperRoundCount = bracket.upper.length;
-  const lowerRoundCount = bracket.lower ? bracket.lower.filter(r => r.length > 0).length : 0;
-
-  const getSpinMap = (section: string, ri: number): string | null => {
-    let idx: number;
-    if (section === 'upper') idx = ri;
-    else if (section === 'lower') idx = upperRoundCount + ri;
-    else idx = upperRoundCount + lowerRoundCount; // gf
-    return spinResults[idx] ?? null;
-  };
-
   return (CARD_H + 28) * Math.pow(2, colIdx); // Much tighter vertical spacing!
 }
 
@@ -197,9 +183,20 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
   const isSingle = bracket.type === 'single';
   const hasLower = bracket.lower && bracket.lower.some(r => r.length > 0);
 
-  // Extract the global format to display in the header
   const isBo3 = bracket.upper[0]?.[0]?.format === 'bo3';
   const globalFormat = isBo3 ? 'Best of 3' : 'Best of 1';
+
+  // Build a global round-index map for spin results assignment INSIDE the component where `bracket` exists.
+  const upperRoundCount = bracket.upper.length;
+  const lowerRoundCount = bracket.lower ? bracket.lower.filter(r => r.length > 0).length : 0;
+
+  const getSpinMap = (section: string, ri: number): string | null => {
+    let idx: number;
+    if (section === 'upper') idx = ri;
+    else if (section === 'lower') idx = upperRoundCount + ri;
+    else idx = upperRoundCount + lowerRoundCount; // gf
+    return spinResults[idx] ?? null;
+  };
 
   return (
     <>
@@ -210,7 +207,6 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
             <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${isSingle ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>
               {isSingle ? 'Single Elim' : 'Double Elim'}
             </span>
-            {/* Global Match Format Badge */}
             <span className="text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase bg-[rgba(224,144,16,0.1)] text-[var(--accent-gold)] border-[rgba(224,144,16,0.3)]">
               {globalFormat}
             </span>
@@ -388,7 +384,7 @@ function MatchCard({ match, section, ri, mi, maps, isSpinFallback, onScore, onUn
       {maps.length > 0 && (
         <div className="absolute bottom-[100%] right-2 mb-1 flex gap-1 z-10">
           {maps.map((m, i) => (
-            <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']" style={{ background: isSpinFallback ? 'rgba(224,144,16,0.12)' : 'rgba(176,109,255,0.12)', color: isSpinFallback ? 'var(--accent-gold)' : '#b06dff', border: `1px solid ${isSpinFallback ? 'rgba(224,144,16,0.3)' : 'rgba(176,109,255,0.3)'}` }}>
+            <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] whitespace-nowrap" style={{ background: isSpinFallback ? 'rgba(224,144,16,0.12)' : 'rgba(176,109,255,0.12)', color: isSpinFallback ? 'var(--accent-gold)' : '#b06dff', border: `1px solid ${isSpinFallback ? 'rgba(224,144,16,0.3)' : 'rgba(176,109,255,0.3)'}` }}>
               {isSpinFallback ? '🎯' : '🗺'} {m}
             </div>
           ))}
