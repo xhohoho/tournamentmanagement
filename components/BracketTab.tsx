@@ -469,9 +469,9 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
         onCommit={n => { setS2(n); trySubmit(s1, n); }}
       />
       {canEdit && (
-        <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
-          <p className="font-['DM_Mono'] text-[9px] t-dim text-center">
-            {isBo3 ? 'Click score → type 0–2, Enter to confirm' : 'Click score → type 1 for winner, Enter'}
+        <div className="px-3 py-0.5" style={{ background: 'var(--bg-hover)' }}>
+          <p className="font-['DM_Mono'] text-[8px] t-dim text-center">
+            {isBo3 ? 'click score → 0–2' : 'click score → 1 or 0'}
           </p>
         </div>
       )}

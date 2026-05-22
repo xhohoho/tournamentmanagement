@@ -13,8 +13,9 @@ function emptyMatch(format: 'bo1' | 'bo3' = 'bo1'): BracketMatch {
 /** Returns the winning team name if the match is decided, else null. */
 function resolveWinner(match: BracketMatch | GrandFinal): string | null {
   const target = match.format === 'bo3' ? 2 : 1;
-  if (match.score1 >= target && match.p1) return match.p1;
-  if (match.score2 >= target && match.p2) return match.p2;
+  // Exactly one side must reach target; the other must be strictly less
+  if (match.score1 === target && match.score2 < target && match.p1) return match.p1;
+  if (match.score2 === target && match.score1 < target && match.p2) return match.p2;
   return null;
 }
 
@@ -170,8 +171,8 @@ export async function POST(req: NextRequest) {
   } else {
     const { upper: upperRaw, lower: lowerRaw } = buildDE(names, fmt);
     const upper = autoByes(upperRaw);
-    const lower = autoByes(lowerRaw);
-    bracket = { type: 'double', upper, lower, grandFinal: emptyMatch(fmt), champion: null };
+    // Don't autoBye the lower bracket at generation time — LB slots fill as UB rounds complete
+    bracket = { type: 'double', upper, lower: lowerRaw, grandFinal: emptyMatch(fmt), champion: null };
   }
 
   const next = await updateState(s => ({ ...s, bracket, elimMode }));
