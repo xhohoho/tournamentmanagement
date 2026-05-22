@@ -22,6 +22,11 @@ export function PlayersTab() {
     [players, qSearch]
   );
 
+  const filteredRoster = useMemo(() =>
+    roster.filter(name => name.toLowerCase().includes(qSearch.toLowerCase())),
+    [roster, qSearch]
+  );
+
   const rosterValid = roster.length >= 10 && roster.length % 5 === 0;
 
   if (loading) return (
@@ -139,6 +144,24 @@ export function PlayersTab() {
         )}
       </div>
 
+      {/* Shared search bar — filters both Queue and Roster */}
+      <div className="shrink-0 flex items-center gap-2 rounded-lg px-3 py-2 border" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}>
+        <span className="text-sm t-dim">🔍</span>
+        <input
+          type="text"
+          className="flex-1 bg-transparent font-['DM_Mono'] text-xs outline-none t-text"
+          placeholder="Search queue &amp; roster…"
+          value={qSearch}
+          onChange={e => setQSearch(e.target.value)}
+        />
+        {qSearch && (
+          <button
+            className="font-['DM_Mono'] text-[10px] t-dim hover:t-text transition-colors cursor-pointer"
+            onClick={() => setQSearch('')}
+          >✕</button>
+        )}
+      </div>
+
       {/* Dual panel — fills all remaining height */}
       <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
 
@@ -154,17 +177,6 @@ export function PlayersTab() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {/* Inline search */}
-              <div className="flex items-center gap-1 rounded-md px-2 py-1 border" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}>
-                <span className="text-[10px] t-dim">🔍</span>
-                <input
-                  type="text"
-                  className="bg-transparent font-['DM_Mono'] text-[10px] outline-none t-text w-20"
-                  placeholder="Search…"
-                  value={qSearch}
-                  onChange={e => setQSearch(e.target.value)}
-                />
-              </div>
               {isAdmin && players.length > 0 && (
                 <button
                   className="font-['DM_Mono'] text-[9px] px-2 py-1 rounded-md border transition-colors cursor-pointer"
@@ -282,7 +294,7 @@ export function PlayersTab() {
                     drop zone
                   </div>
                 )}
-                {roster.map((name, i) => (
+                {filteredRoster.map((name, i) => (
                   <div
                     key={name}
                     className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all group"
@@ -297,7 +309,7 @@ export function PlayersTab() {
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => handleRosterDrop(e, name)}
                   >
-                    <span className="font-['DM_Mono'] text-[9px] w-4 text-right shrink-0 t-dim">{i + 1}</span>
+                    <span className="font-['DM_Mono'] text-[9px] w-4 text-right shrink-0 t-dim">{roster.indexOf(name) + 1}</span>
                     <span className="flex-1 font-['DM_Mono'] text-[11px] font-medium truncate t-text">{name}</span>
                     {isAdmin && <span className="font-['DM_Mono'] text-[9px] shrink-0 t-dim opacity-0 group-hover:opacity-100">≡</span>}
                     {isAdmin && (
@@ -311,6 +323,11 @@ export function PlayersTab() {
                     )}
                   </div>
                 ))}
+                {qSearch && filteredRoster.length === 0 && roster.length > 0 && (
+                  <div className="col-span-2 flex items-center justify-center py-4">
+                    <p className="font-['DM_Mono'] text-xs t-dim">No matches in roster.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
