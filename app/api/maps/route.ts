@@ -35,17 +35,13 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   }
   const { name } = await req.json();
+  
   const next = await updateState(s => ({
     ...s,
+    // ONLY remove from the wheel maps pool. Leave the bracket's stageMaps completely alone!
     maps: s.maps.filter(m => m !== name),
-    // Remove from any stage slot arrays too
-    stageMaps: Object.fromEntries(
-      Object.entries(s.stageMaps).map(([k, v]) => [
-        k,
-        parseStageMaps(v).filter(m => m !== name),
-      ]).filter(([, v]) => (v as string[]).length > 0)
-    ),
   }));
+  
   return NextResponse.json({ maps: next.maps, stageMaps: next.stageMaps });
 }
 
