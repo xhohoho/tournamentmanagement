@@ -23,7 +23,6 @@ export default function Home() {
   const [spunMap, setSpunMap] = useState('');
   const [dark, setDark] = useState(false);
 
-  // Persist dark mode preference across page refreshes
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
     if (stored === 'true') setDark(true);
@@ -33,6 +32,7 @@ export default function Home() {
     localStorage.setItem('darkMode', String(!prev));
     return !prev;
   });
+
   const [resetConfirm, setResetConfirm] = useState(false);
 
   const handleAdminBtn = () => {
@@ -60,24 +60,26 @@ export default function Home() {
   }
 
   return (
-    <div className={`${dark ? 'dark' : ''} t-bg`}>
+    /* h-screen + overflow-hidden = page never grows, no outer scroll */
+    <div className={`${dark ? 'dark' : ''} t-bg h-screen overflow-hidden flex flex-col`}>
+
       {/* Ambient gradients */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 40% at 20% 10%, var(--grad-start) 0%, transparent 70%)' }} />
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 50% 40% at 80% 90%, var(--grad-end) 0%, transparent 70%)' }} />
       </div>
 
-      <div className="relative z-10 flex flex-col min-h-screen">
+      <div className="relative z-10 flex flex-col h-full min-h-0">
 
-        {/* Header */}
-        <header className="t-header backdrop-blur-md border-b t-border sticky top-0 z-40">
+        {/* Header — fixed height */}
+        <header className="t-header backdrop-blur-md border-b t-border shrink-0 z-40">
           <div className="w-full px-8 py-3 flex items-center justify-between">
             <div className="font-['Bebas_Neue'] text-2xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent">
               ⚔ TOURNEY
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => toggleDark()}
+                onClick={toggleDark}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--border)] hover:t-text cursor-pointer"
               >
                 {dark ? '☀️ Light' : '🌙 Dark'}
@@ -109,14 +111,14 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Tab nav */}
+        {/* Tab nav — fixed height */}
         <nav className="t-surface border-b t-border shrink-0">
           <div className="w-full px-8 flex overflow-x-auto">
             {TABS.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-5 py-3.5 font-['DM_Mono'] text-xs tracking-widest uppercase border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+                className={`flex items-center gap-2 px-5 py-3 font-['DM_Mono'] text-xs tracking-widest uppercase border-b-2 transition-all whitespace-nowrap cursor-pointer ${
                   activeTab === tab.id
                     ? 'border-[var(--accent)] text-[var(--accent)] bg-[rgba(77,124,255,0.06)]'
                     : 'border-transparent t-muted hover:t-text hover:bg-[rgba(128,128,255,0.04)]'
@@ -133,45 +135,13 @@ export default function Home() {
           </div>
         </nav>
 
-        {/* Content — each tab fills the remaining viewport height */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 flex flex-col w-full px-8 overflow-hidden">
-            {/* Players */}
-            <div
-              className={`
-                flex-1 flex flex-col h-full overflow-y-auto
-                ${activeTab === 'players' ? '' : 'hidden'}
-              `}
-            >
-              <PlayersTab />
-            </div>
-            {/* Teams */}
-            <div
-              className={`
-                flex-1 flex flex-col h-full overflow-y-auto
-                ${activeTab === 'teams' ? '' : 'hidden'}
-              `}
-            >
-              <TeamsTab />
-            </div>
-            {/* Bracket */}
-            <div
-              className={`
-                flex-1 flex flex-col h-full overflow-y-auto
-                ${activeTab === 'bracket' ? '' : 'hidden'}
-              `}
-            >
-              <BracketTab />
-            </div>
-            {/* Maps */}
-            <div
-              className={`
-                flex-1 flex flex-col h-full overflow-y-auto
-                ${activeTab === 'maps' ? '' : 'hidden'}
-              `}
-            >
-              <MapsTab spunMap={spunMap} onSpunMap={setSpunMap} />
-            </div>
+        {/* Main — flex-1 + min-h-0 = fills exactly what's left, no overflow */}
+        <main className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col px-8">
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={setSpunMap} /></div>
           </div>
         </main>
       </div>
