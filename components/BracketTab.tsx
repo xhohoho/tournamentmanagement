@@ -5,13 +5,14 @@ import { useTourney } from '@/lib/context';
 import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal } from '@/lib/types';
 
-const CARD_W = 192;
-const CARD_H = 72;
-const COL_GAP = 56;
+const CARD_W = 210;
+const CARD_H = 72;         // visual height of the two player rows
+const CARD_H_INPUT = 116;  // full card height when ScoreInput is visible (adds ~44px)
+const COL_GAP = 72;
 const COL_W = CARD_W + COL_GAP;
 
 function getSpacing(colIdx: number): number {
-  return (CARD_H + 16) * Math.pow(2, colIdx);
+  return (CARD_H_INPUT + 20) * Math.pow(2, colIdx);
 }
 
 function getMatchTop(colIdx: number, matchIdx: number): number {
@@ -154,7 +155,7 @@ export function BracketTab() {
       <div>
         <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Bracket</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">
-          {isAdmin ? 'Pick a format · Generate once · Click a match to enter the score' : 'View only — admin required to edit'}
+          {isAdmin ? 'Pick a format · Generate once · Enter scores directly on each match card' : 'View only — admin required to edit'}
         </p>
       </div>
 
@@ -350,9 +351,13 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
   if (validRounds.length === 0) return null;
 
   const firstRound = validRounds[0];
-  const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H;
-  const totalWidth = validRounds.length * COL_W - COL_GAP + 28;
+  const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H_INPUT + 32;
+  const totalWidth = validRounds.length * COL_W - COL_GAP + 40;
   const stroke = 'var(--border-mid)';
+
+  // Connector lines anchor to the middle of the player-rows portion (top CARD_H px)
+  // which is stable regardless of whether the ScoreInput row is shown.
+  const cardCentreY = (colIdx: number, mi: number) => getMatchTop(colIdx, mi) + CARD_H / 2;
 
   return (
     <div style={{ position: 'relative', width: totalWidth, height: totalHeight, minWidth: totalWidth }}>
@@ -366,9 +371,9 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
             const cardRight = colIdx * COL_W + CARD_W;
             const nextCardLeft = nextColIdx * COL_W;
             const midX = cardRight + COL_GAP / 2;
-            const myCentreY = getMatchTop(colIdx, mi) + CARD_H / 2;
-            const partnerCentreY = getMatchTop(colIdx, partnerMi) + CARD_H / 2;
-            const targetCentreY = getMatchTop(nextColIdx, Math.floor(mi / 2)) + CARD_H / 2;
+            const myCentreY = cardCentreY(colIdx, mi);
+            const partnerCentreY = cardCentreY(colIdx, partnerMi);
+            const targetCentreY = cardCentreY(nextColIdx, Math.floor(mi / 2));
             return (
               <g key={`conn-${colIdx}-${mi}`}>
                 <line x1={cardRight} y1={myCentreY} x2={midX} y2={myCentreY} stroke={stroke} strokeWidth={1.5} />
@@ -383,7 +388,7 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
           const lastColIdx = validRounds.length - 1;
           if (validRounds[lastColIdx].round.length !== 1) return null;
           const cardRight = lastColIdx * COL_W + CARD_W;
-          const centreY = getMatchTop(lastColIdx, 0) + CARD_H / 2;
+          const centreY = cardCentreY(lastColIdx, 0);
           return <line x1={cardRight} y1={centreY} x2={cardRight + 20} y2={centreY} stroke={stroke} strokeWidth={1.5} />;
         })()}
       </svg>
