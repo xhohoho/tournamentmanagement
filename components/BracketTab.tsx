@@ -6,12 +6,12 @@ import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal } from '@/lib/types';
 
 const CARD_W = 210;
-const CARD_H = 72; // Strictly locked height!
+const CARD_H = 100; // Increased strictly to 100px to perfectly fit the slots row!
 const COL_GAP = 72;
 const COL_W = CARD_W + COL_GAP;
 
 function getSpacing(colIdx: number): number {
-  return (CARD_H + 28) * Math.pow(2, colIdx); // Much tighter vertical spacing!
+  return (CARD_H + 28) * Math.pow(2, colIdx); 
 }
 
 function getMatchTop(section: string, colIdx: number, matchIdx: number): number {
@@ -111,7 +111,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const hasBracket = !!bracket;
 
   return (
-    <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
+    <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0 relative">
       <div>
         <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Bracket</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">{isAdmin ? 'Pick a format · Generate once · Enter scores directly on each match card' : 'View only — admin required to edit'}</p>
@@ -158,12 +158,36 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
       )}
 
       {bracket ? (
-        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          <BracketDisplay onScore={updateScore} onThirdPlace={updateThirdPlace} onUndo={undoMatch} spinResults={spinResults} />
+        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto relative">
+          <BracketDisplay onScore={updateScore} onThirdPlace={updateThirdPlace} onUndo={undoMatch} />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <p className="font-['DM_Mono'] text-sm t-dim">{isAdmin ? 'Pick a format and click Generate.' : 'Waiting for admin to generate the bracket.'}</p>
+        </div>
+      )}
+
+      {/* Floating Map Assignment Sidebar */}
+      {isAdmin && hasBracket && spinResults.length > 0 && (
+        <div className="absolute bottom-6 right-6 t-surface border t-border rounded-xl shadow-2xl w-56 z-50 flex flex-col max-h-[50vh] animate-in slide-in-from-bottom-4">
+          <div className="p-3 border-b t-border font-['Bebas_Neue'] text-lg tracking-widest bg-[var(--bg-elevated)] rounded-t-xl text-[var(--accent-gold)]">
+            🎯 Spin Queue
+          </div>
+          <div className="p-2 border-b t-border font-['DM_Mono'] text-[9px] t-muted bg-black/10">
+            Drag maps into bracket slots
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
+            {spinResults.map((m, i) => (
+              <div
+                key={i}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData('text/plain', m)}
+                className="cursor-grab active:cursor-grabbing p-2 text-sm font-['DM_Mono'] border t-border-mid rounded bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors truncate"
+              >
+                🗺 {m}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -171,55 +195,18 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
 }
 
 // ── BracketDisplay ────────────────────────────────────────────────────────────
-function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
+function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
-  spinResults: string[];
 }) {
-  const { bracket, stageMaps, isAdmin } = useTourney();
+  const { bracket, isAdmin } = useTourney();
   if (!bracket) return null;
 
   const isSingle = bracket.type === 'single';
   const hasLower = bracket.lower && bracket.lower.some(r => r.length > 0);
-
   const isBo3 = bracket.upper[0]?.[0]?.format === 'bo3';
   const globalFormat = isBo3 ? 'Best of 3' : 'Best of 1';
-
-  // Calculate exact map allocations for each round sequentially
-  const spinMapAllocations = new Map<string, string[]>();
-  let spinIdx = 0;
-
-  const allocateMaps = (section: string, rounds: BracketMatch[][]) => {
-    rounds.forEach((round, ri) => {
-      if (round.length === 0) return;
-      // Check if this specific round is BO3 or BO1
-      const isRoundBo3 = round[0]?.format === 'bo3';
-      const needed = isRoundBo3 ? 3 : 1;
-      
-      spinMapAllocations.set(`${section}_${ri}`, spinResults.slice(spinIdx, spinIdx + needed));
-      spinIdx += needed;
-    });
-  };
-
-  if (bracket.upper) allocateMaps('upper', bracket.upper);
-  if (bracket.lower) allocateMaps('lower', bracket.lower);
-  
-  if (isSingle && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2)) {
-    const needed = bracket.thirdPlace.format === 'bo3' ? 3 : 1;
-    spinMapAllocations.set('thirdPlace_0', spinResults.slice(spinIdx, spinIdx + needed));
-    spinIdx += needed;
-  }
-  
-  if (bracket.grandFinal && (bracket.grandFinal.p1 || bracket.grandFinal.p2)) {
-    const needed = bracket.grandFinal.format === 'bo3' ? 3 : 1;
-    spinMapAllocations.set('gf_0', spinResults.slice(spinIdx, spinIdx + needed));
-    spinIdx += needed;
-  }
-
-  const getSpinMaps = (section: string, ri: number): string[] => {
-    return spinMapAllocations.get(`${section}_${ri}`) || [];
-  };
 
   return (
     <>
@@ -236,7 +223,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
           </div>
         </div>
         <div className="overflow-x-auto overflow-y-visible pb-4">
-          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} gf={bracket.grandFinal} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} getSpinMaps={getSpinMaps} />
+          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} gf={bracket.grandFinal} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
         </div>
       </div>
 
@@ -251,7 +238,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
         <div className="t-surface border t-border rounded-xl p-5 shrink-0">
           <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
           <div className="overflow-x-auto overflow-y-visible pb-4">
-            <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} getSpinMaps={getSpinMaps} />
+            <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
           </div>
         </div>
       )}
@@ -269,12 +256,10 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
 }
 
 // ── BracketGrid ───────────────────────────────────────────────────────────────
-function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, isAdmin, getSpinMaps }: {
+function BracketGrid({ rounds, section, type, gf, onScore, onUndo, isAdmin }: {
   rounds: BracketMatch[][]; section: string; type: 'single' | 'double'; gf?: GrandFinal | null;
-  stageMaps: Record<string, string[]>;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
-  getSpinMaps: (section: string, ri: number) => string[];
 }) {
   const validRounds = rounds.map((r, i) => ({ round: r, ri: i })).filter(({ round }) => round.length > 0);
   if (validRounds.length === 0) return null;
@@ -286,7 +271,7 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
   let extraHeight = 0;
   if (hasGF) {
     const finalY = getMatchTop(section, validRounds.length - 1, 0) + CARD_H / 2;
-    const gfHalfHeight = gf.isReset ? 100 : 36;
+    const gfHalfHeight = gf.isReset ? 140 : 50; 
     if (finalY < gfHalfHeight) offsetY += (gfHalfHeight - finalY);
     extraHeight = Math.max(0, (gfHalfHeight * 2) - CARD_H);
   }
@@ -344,14 +329,6 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
       </svg>
 
       {validRounds.map(({ round, ri }, colIdx) => {
-        const sk = `${section}_r${ri}`;
-        const stageMapsArr: string[] = parseStageMaps(stageMaps[sk]);
-        
-        // Grab multiple maps (1 for BO1, 3 for BO3) directly from our helper
-        const spinMaps = getSpinMaps(section, ri);
-        const maps: string[] = stageMapsArr.length > 0 ? stageMapsArr : spinMaps;
-        const isSpinFallback = stageMapsArr.length === 0 && spinMaps.length > 0;
-        
         const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
         const label = isFinalCol 
           ? (section === 'upper' ? (type === 'double' ? 'Winners Final' : 'Final') : 'LB Final') 
@@ -365,7 +342,7 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
               {mi === 0 && (
                 <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim text-center" style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6, whiteSpace: 'nowrap' }}>{label}</div>
               )}
-              <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} isSpinFallback={isSpinFallback} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+              <MatchCard match={match} section={section} ri={ri} mi={mi} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
             </div>
           );
         });
@@ -382,12 +359,12 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
 }
 
 // ── MatchCard ─────────────────────────────────────────────────────────────────
-function MatchCard({ match, section, ri, mi, maps, isSpinFallback, onScore, onUndo, isAdmin }: {
-  match: BracketMatch; section: string; ri: number; mi: number; maps: string[];
-  isSpinFallback?: boolean;
+function MatchCard({ match, section, ri, mi, onScore, onUndo, isAdmin }: {
+  match: BracketMatch; section: string; ri: number; mi: number; 
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
 }) {
+  const { stageMaps, assignStage, clearStage } = useTourney();
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
 
@@ -402,23 +379,57 @@ function MatchCard({ match, section, ri, mi, maps, isSpinFallback, onScore, onUn
   const handleSave = () => onScore(section, ri, mi, s1, s2);
   const handleCancel = () => { setS1(match.score1); setS2(match.score2); };
 
+  // Match Level Map Assignment Logic
+  const matchKey = `m_${section}_${ri}_${mi}`;
+  const matchMaps = parseStageMaps(stageMaps[matchKey] || '');
+  const slotCount = isBo3 ? 3 : 1;
+
   return (
     <div style={{ position: 'relative' }}>
-      {/* Floating Map Badges OUTSIDE the Card */}
-      {maps.length > 0 && (
-        <div className="absolute bottom-[100%] right-2 mb-1 flex gap-1 z-10">
-          {maps.map((m, i) => (
-            <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] whitespace-nowrap" style={{ background: isSpinFallback ? 'rgba(224,144,16,0.12)' : 'rgba(176,109,255,0.12)', color: isSpinFallback ? 'var(--accent-gold)' : '#b06dff', border: `1px solid ${isSpinFallback ? 'rgba(224,144,16,0.3)' : 'rgba(176,109,255,0.3)'}` }}>
-              {isSpinFallback ? '🎯' : '🗺'} {m}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Strictly Locked 72px Card Height */}
-      <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W, height: CARD_H }}>
+      {/* Locked 100px Card Height to fit slots natively */}
+      <div className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col" style={{ width: CARD_W, height: CARD_H }}>
         <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
         <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
+        
+        {/* MAP SLOTS */}
+        <div className="flex h-7 border-t t-border bg-[var(--bg-surface)] shrink-0 mt-auto">
+          {Array.from({ length: slotCount }).map((_, slotIdx) => {
+            const map = matchMaps[slotIdx];
+            return (
+              <div
+                key={slotIdx}
+                className="flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors"
+                style={{ 
+                  background: map ? 'rgba(58,107,255,0.04)' : undefined, 
+                  color: map ? 'var(--accent)' : 'var(--text-dim)'
+                }}
+                onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+                onDrop={isAdmin ? async (e) => {
+                  e.preventDefault();
+                  const m = e.dataTransfer.getData('text/plain');
+                  if (m) await assignStage(matchKey, m, slotIdx);
+                } : undefined}
+              >
+                {map ? (
+                  <>
+                    <span className="truncate px-1 max-w-[85%]">{map}</span>
+                    {isAdmin && (
+                      <button 
+                        onClick={() => clearStage(matchKey, slotIdx)} 
+                        className="absolute right-1 hidden group-hover:flex w-4 h-4 items-center justify-center bg-black/60 rounded-full text-[var(--accent-red)] transition-opacity"
+                        title="Clear map"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <span className="opacity-40">{isBo3 ? `Map ${slotIdx + 1}` : 'Drop Map'}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {isModified && (
@@ -441,6 +452,7 @@ function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
   onScore: (p1wins: number, p2wins: number) => Promise<void>;
   onUndo: () => Promise<void>; isAdmin: boolean;
 }) {
+  const { stageMaps, assignStage, clearStage } = useTourney();
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
 
@@ -455,11 +467,44 @@ function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
   const handleSave = () => onScore(s1, s2);
   const handleCancel = () => { setS1(match.score1); setS2(match.score2); };
 
+  const matchKey = `m_thirdPlace_0_0`;
+  const matchMaps = parseStageMaps(stageMaps[matchKey] || '');
+  const slotCount = isBo3 ? 3 : 1;
+
   return (
     <div style={{ position: 'relative', width: 'fit-content' }}>
-      <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W, height: CARD_H }}>
+      <div className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col" style={{ width: CARD_W, height: CARD_H }}>
         <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
         <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
+        <div className="flex h-7 border-t t-border bg-[var(--bg-surface)] shrink-0 mt-auto">
+          {Array.from({ length: slotCount }).map((_, slotIdx) => {
+            const map = matchMaps[slotIdx];
+            return (
+              <div
+                key={slotIdx}
+                className="flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors"
+                style={{ background: map ? 'rgba(58,107,255,0.04)' : undefined, color: map ? 'var(--accent)' : 'var(--text-dim)' }}
+                onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+                onDrop={isAdmin ? async (e) => {
+                  e.preventDefault();
+                  const m = e.dataTransfer.getData('text/plain');
+                  if (m) await assignStage(matchKey, m, slotIdx);
+                } : undefined}
+              >
+                {map ? (
+                  <>
+                    <span className="truncate px-1 max-w-[85%]">{map}</span>
+                    {isAdmin && (
+                      <button onClick={() => clearStage(matchKey, slotIdx)} className="absolute right-1 hidden group-hover:flex w-4 h-4 items-center justify-center bg-black/60 rounded-full text-[var(--accent-red)] transition-opacity">✕</button>
+                    )}
+                  </>
+                ) : (
+                  <span className="opacity-40">{isBo3 ? `Map ${slotIdx + 1}` : 'Drop Map'}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {isModified && (
@@ -482,7 +527,9 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
 }) {
+  const { stageMaps, assignStage, clearStage } = useTourney();
   const isBo3 = gf.format === 'bo3';
+  const slotCount = isBo3 ? 3 : 1;
   
   const [gf1s1, setGf1s1] = useState(gf.score1);
   const [gf1s2, setGf1s2] = useState(gf.score2);
@@ -501,16 +548,53 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
   const gf1Modified = gf1s1 !== gf.score1 || gf1s2 !== gf.score2;
   const gf2Modified = gf2s1 !== (gf.resetScore1 ?? 0) || gf2s2 !== (gf.resetScore2 ?? 0);
 
+  const matchKeyGF1 = `m_gf_0_0`;
+  const matchKeyGF2 = `m_gf_0_1`;
+  const gf1Maps = parseStageMaps(stageMaps[matchKeyGF1] || '');
+  const gf2Maps = parseStageMaps(stageMaps[matchKeyGF2] || '');
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <p className="font-['DM_Mono'] text-[10px] t-dim uppercase tracking-widest">GF1</p>
         <div style={{ position: 'relative' }}>
-          <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
+          <div className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col" style={{ width: CARD_W, minHeight: CARD_H }}>
             <PlayerRow player={gf.p1} score={gf1Done ? gf.score1 : gf1s1} isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p1} isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p1} showScore={gf1Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf1} isBo3={isBo3} onCommit={n => setGf1s1(n)} />
             <PlayerRow player={gf.p2} score={gf1Done ? gf.score2 : gf1s2} isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p2} isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p2} showScore={gf1Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf1} isBo3={isBo3} onCommit={n => setGf1s2(n)} />
+            
+            {/* GF1 MAP SLOTS */}
+            <div className="flex h-7 border-t t-border bg-[var(--bg-surface)] shrink-0 mt-auto">
+              {Array.from({ length: slotCount }).map((_, slotIdx) => {
+                const map = gf1Maps[slotIdx];
+                return (
+                  <div
+                    key={slotIdx}
+                    className="flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors"
+                    style={{ background: map ? 'rgba(58,107,255,0.04)' : undefined, color: map ? 'var(--accent)' : 'var(--text-dim)' }}
+                    onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+                    onDrop={isAdmin ? async (e) => {
+                      e.preventDefault();
+                      const m = e.dataTransfer.getData('text/plain');
+                      if (m) await assignStage(matchKeyGF1, m, slotIdx);
+                    } : undefined}
+                  >
+                    {map ? (
+                      <>
+                        <span className="truncate px-1 max-w-[85%]">{map}</span>
+                        {isAdmin && (
+                          <button onClick={() => clearStage(matchKeyGF1, slotIdx)} className="absolute right-1 hidden group-hover:flex w-4 h-4 items-center justify-center bg-black/60 rounded-full text-[var(--accent-red)] transition-opacity">✕</button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="opacity-40">{isBo3 ? `Map ${slotIdx + 1}` : 'Drop Map'}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
             {gf.isReset && (
-              <div className="px-3 py-1.5 border-t t-border text-center" style={{ background: 'rgba(58,107,255,0.06)' }}>
+              <div className="px-3 py-1.5 border-t t-border text-center shrink-0" style={{ background: 'rgba(58,107,255,0.06)' }}>
                 <span className="font-['DM_Mono'] text-[9px] font-bold" style={{ color: 'var(--accent)' }}>🔄 BRACKET RESET — play GF2</span>
               </div>
             )}
@@ -528,9 +612,40 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
         <div className="flex flex-col gap-1">
           <p className="font-['DM_Mono'] text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--accent)' }}>GF2 — Reset Match</p>
           <div style={{ position: 'relative' }}>
-            <div className="t-elevated border-2 rounded-xl overflow-hidden" style={{ width: CARD_W, borderColor: 'var(--accent)', height: CARD_H }}>
+            <div className="t-elevated border-2 rounded-xl overflow-hidden flex flex-col" style={{ width: CARD_W, borderColor: 'var(--accent)', height: CARD_H }}>
               <PlayerRow player={gf.p1} score={gf2Done ? (gf.resetScore1 ?? 0) : gf2s1} isWinner={gf2Done && gf.winner === gf.p1} isLoser={gf2Done && gf.winner !== gf.p1} showScore={gf2Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf2} isBo3={isBo3} onCommit={n => setGf2s1(n)} />
               <PlayerRow player={gf.p2} score={gf2Done ? (gf.resetScore2 ?? 0) : gf2s2} isWinner={gf2Done && gf.winner === gf.p2} isLoser={gf2Done && gf.winner !== gf.p2} showScore={gf2Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf2} isBo3={isBo3} onCommit={n => setGf2s2(n)} />
+              
+              {/* GF2 MAP SLOTS */}
+              <div className="flex h-7 border-t t-border bg-[var(--bg-surface)] shrink-0 mt-auto">
+                {Array.from({ length: slotCount }).map((_, slotIdx) => {
+                  const map = gf2Maps[slotIdx];
+                  return (
+                    <div
+                      key={slotIdx}
+                      className="flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors"
+                      style={{ background: map ? 'rgba(58,107,255,0.04)' : undefined, color: map ? 'var(--accent)' : 'var(--text-dim)' }}
+                      onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+                      onDrop={isAdmin ? async (e) => {
+                        e.preventDefault();
+                        const m = e.dataTransfer.getData('text/plain');
+                        if (m) await assignStage(matchKeyGF2, m, slotIdx);
+                      } : undefined}
+                    >
+                      {map ? (
+                        <>
+                          <span className="truncate px-1 max-w-[85%]">{map}</span>
+                          {isAdmin && (
+                            <button onClick={() => clearStage(matchKeyGF2, slotIdx)} className="absolute right-1 hidden group-hover:flex w-4 h-4 items-center justify-center bg-black/60 rounded-full text-[var(--accent-red)] transition-opacity">✕</button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="opacity-40">{isBo3 ? `Map ${slotIdx + 1}` : 'Drop Map'}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             {gf2Modified && (
               <div className="flex flex-col gap-1.5" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)' }}>

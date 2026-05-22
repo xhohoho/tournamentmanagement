@@ -22,7 +22,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
   });
   
-  // Persisted Removed Maps (Guarantees the restore button always works)
+  // Persisted Removed Maps
   const [removedFromPool, setRemovedFromPool] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('removedMaps') ?? '[]'); } catch { return []; }
   });
@@ -139,8 +139,8 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
 
   return (
     <>
-      <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
-        <div>
+      <div className="flex-1 flex flex-col w-full h-full min-h-0 overflow-hidden py-4 gap-4">
+        <div className="shrink-0">
           <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Map Selector</h1>
           <p className="font-['DM_Mono'] text-xs t-muted">
             {isAdmin ? 'Spin the wheel to build a map queue. Bracket automatically picks from the queue (1 map for BO1, 3 maps for BO3).' : 'View only — admin required to edit'}
@@ -150,8 +150,8 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
 
           {/* Wheel panel */}
-          <div className="t-surface border t-border rounded-2xl p-4 flex flex-col gap-3 overflow-y-auto">
-            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎡 Wheel</h2>
+          <div className="t-surface border t-border rounded-2xl p-4 flex flex-col gap-3 min-h-0">
+            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text shrink-0">🎡 Wheel</h2>
 
             {isAdmin && (
               <div className="shrink-0">
@@ -178,39 +178,41 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               </div>
             )}
 
-            <div className="flex flex-wrap gap-2 min-h-8 shrink-0">
-              {maps.map(m => (
-                <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
-                  {m}
-                  {isAdmin && (
-                    <span 
-                      className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0" 
-                      onClick={() => handleRemoveMap(m)}
-                    >
-                      ✕
-                    </span>
-                  )}
-                </span>
-              ))}
-              {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'No maps yet.' : 'No maps added.'}</p>}
-            </div>
+            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
+              <div className="flex flex-wrap gap-2 shrink-0 mb-4">
+                {maps.map(m => (
+                  <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
+                    {m}
+                    {isAdmin && (
+                      <span 
+                        className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0" 
+                        onClick={() => handleRemoveMap(m)}
+                      >
+                        ✕
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'No maps yet.' : 'No maps added.'}</p>}
+              </div>
 
-            <div className="flex flex-col items-center gap-2 mt-4 shrink-0 pb-4">
-              <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
-              <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
-              <button
-                className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
-                style={{ background: 'var(--accent-red)' }}
-                onClick={spin}
-                disabled={spinning || maps.length === 0}
-              >
-                🌀 SPIN
-              </button>
+              <div className="flex flex-col items-center gap-2 shrink-0 pb-4 mt-auto">
+                <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
+                <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
+                <button
+                  className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
+                  style={{ background: 'var(--accent-red)' }}
+                  onClick={spin}
+                  disabled={spinning || maps.length === 0}
+                >
+                  🌀 SPIN
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Spin Results panel */}
-          <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4 overflow-y-auto">
+          <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4 min-h-0">
             <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
               {isAdmin && spinResults.length > 0 && (
@@ -221,7 +223,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               )}
             </div>
             
-            <div className="flex flex-col gap-1.5 shrink-0">
+            <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-1.5">
               {spinResults.length === 0 ? (
                 <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue. The bracket automatically assigns them in order.</p>
               ) : (
@@ -242,54 +244,56 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               )}
             </div>
 
-            <hr className="t-border shrink-0 my-2" />
-            <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest shrink-0">MAP POOL DEFAULTS</p>
-            <div className="flex flex-wrap gap-2 shrink-0">
-              {maps.map(m => {
-                const isDefault = defaultMaps.includes(m);
-                return (
-                  <div
-                    key={m}
-                    className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5 shrink-0"
-                  >
-                    <span className="truncate max-w-[150px]">{m}</span>
-                    {isAdmin && (
-                      <button
-                        title={isDefault ? 'Remove from defaults' : 'Set as default map (restored after reset)'}
-                        className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
-                        style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
-                        onClick={() => toggleDefault(m)}
-                      >★</button>
-                    )}
-                  </div>
-                );
-              })}
-              {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
-            </div>
-
-            {isAdmin && defaultMaps.filter(m => maps.includes(m)).length > 0 && (
-              <p className="font-['DM_Mono'] text-[10px] t-dim shrink-0">★ = default map (stays in pool after reset)</p>
-            )}
-
-            {isAdmin && removedFromPool.filter(m => !maps.includes(m)).length > 0 && (
-              <div className="shrink-0">
-                <hr className="t-border mt-2 mb-4" />
-                <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-2">RESTORE MAPS</p>
-                <div className="flex flex-wrap gap-2">
-                  {removedFromPool.filter(m => !maps.includes(m)).map(m => (
-                    <button
+            <div className="shrink-0">
+              <hr className="t-border my-2" />
+              <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-2">MAP POOL DEFAULTS</p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {maps.map(m => {
+                  const isDefault = defaultMaps.includes(m);
+                  return (
+                    <div
                       key={m}
-                      className="shrink-0 flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm cursor-pointer transition-colors whitespace-nowrap"
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; e.currentTarget.style.color = 'var(--accent-green)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
-                      onClick={() => handleRestoreMap(m)}
+                      className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5 shrink-0"
                     >
-                      ↩ {m}
-                    </button>
-                  ))}
-                </div>
+                      <span className="truncate max-w-[150px]">{m}</span>
+                      {isAdmin && (
+                        <button
+                          title={isDefault ? 'Remove from defaults' : 'Set as default map (restored after reset)'}
+                          className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
+                          style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
+                          onClick={() => toggleDefault(m)}
+                        >★</button>
+                      )}
+                    </div>
+                  );
+                })}
+                {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
               </div>
-            )}
+
+              {isAdmin && defaultMaps.filter(m => maps.includes(m)).length > 0 && (
+                <p className="font-['DM_Mono'] text-[10px] t-dim">★ = default map (stays in pool after reset)</p>
+              )}
+
+              {isAdmin && removedFromPool.filter(m => !maps.includes(m)).length > 0 && (
+                <div>
+                  <hr className="t-border mt-2 mb-4" />
+                  <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-2">RESTORE MAPS</p>
+                  <div className="flex flex-wrap gap-2">
+                    {removedFromPool.filter(m => !maps.includes(m)).map(m => (
+                      <button
+                        key={m}
+                        className="shrink-0 flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm cursor-pointer transition-colors whitespace-nowrap"
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; e.currentTarget.style.color = 'var(--accent-green)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
+                        onClick={() => handleRestoreMap(m)}
+                      >
+                        ↩ {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
