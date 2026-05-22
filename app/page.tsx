@@ -50,27 +50,14 @@ export default function Home() {
 
   // DB SYNC: Handle adding a new map to the queue from a spin
   const handleSpunMap = async (map: string) => {
-    setSpunMap(map);
-    if (map) {
+    setSpunMap(map); // Everyone gets to see the "We have a winner" modal
+    
+    // ONLY admins actually push the result to the Queue and Database
+    if (map && isAdmin) {
       const newQueue = [...spinResults, map];
       setSpinResults(newQueue); // Optimistic UI update
       
-      if (isAdmin) {
-        await fetch('/api/maps', { // <-- UPDATE URL IF NEEDED
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQueue })
-        });
-      }
-    }
-  };
-
-  // DB SYNC: Handle re-ordering, clearing, or deleting specific items from the queue
-  const handleSpinResultsChange = async (newQueue: string[]) => {
-    setSpinResults(newQueue);
-    
-    if (isAdmin) {
-      await fetch('/api/maps', { // <-- UPDATE URL IF NEEDED
+      await fetch('/api/maps', { // <-- Make sure this URL matches your route
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQueue })
