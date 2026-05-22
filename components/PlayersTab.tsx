@@ -3,25 +3,6 @@
 import { useState, useMemo } from 'react';
 import { useTourney } from '@/lib/context';
 
-/** Reusable loading skeleton for tab content. */
-function TabSkeleton({ lines = 4 }: { lines?: number }) {
-  return (
-    <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
-      <div className="h-10 w-48 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
-      <div className="h-4 w-72 rounded-lg" style={{ background: 'var(--bg-elevated)' }} />
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {[0, 1].map(col => (
-          <div key={col} className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-3">
-            {Array.from({ length: lines }, (_, i) => (
-              <div key={i} className="h-10 rounded-xl" style={{ background: 'var(--bg-elevated)', opacity: 1 - i * 0.12 }} />
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function PlayersTab() {
   const {
     players, roster, isAdmin, loading,
@@ -43,7 +24,21 @@ export function PlayersTab() {
 
   const rosterValid = roster.length >= 10 && roster.length % 5 === 0;
 
-  if (loading) return <TabSkeleton lines={6} />;
+  if (loading) return (
+    <div className="flex-1 flex flex-col w-full py-4 gap-3 min-h-0 animate-pulse">
+      <div className="h-8 w-48 rounded-xl shrink-0" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="h-4 w-72 rounded-lg shrink-0" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
+        {[0, 1].map(col => (
+          <div key={col} className="t-surface border t-border rounded-2xl p-4 flex flex-col gap-2">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="h-8 rounded-lg" style={{ background: 'var(--bg-elevated)', opacity: 1 - i * 0.1 }} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   const handleSubmit = async () => {
     const name = nameInput.trim();
@@ -87,26 +82,22 @@ export function PlayersTab() {
   };
 
   return (
-    /* 
-      FIX: Added h-[calc(100dvh-140px)] and max-h-full to prevent layout spilling.
-      Adjust the "140px" up or down to account for the height of your global navigation bar if needed.
-    */
-    <div className="flex-1 flex flex-col w-full py-6 gap-5 h-[calc(100dvh-140px)] max-h-full min-h-0 overflow-hidden">
+    <div className="flex-1 flex flex-col w-full py-4 gap-3 min-h-0">
 
-      {/* Page header */}
+      {/* Page header — fixed height, never squeezed */}
       <div className="shrink-0">
-        <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Player Registration</h1>
+        <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Player Registration</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">
           Anyone can submit their name · {isAdmin ? 'Click or drag to manage roster' : 'Admin selects who plays'}
         </p>
       </div>
 
-      {/* Submit bar — always visible, anyone can queue */}
+      {/* Submit bar — fixed height, never squeezed */}
       <div className="shrink-0">
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <input
             type="text"
-            className="flex-1 rounded-xl px-4 py-2.5 font-['Syne'] text-sm outline-none transition-colors border"
+            className="flex-1 rounded-xl px-4 py-2 font-['Syne'] text-sm outline-none transition-colors border"
             style={{ color: 'var(--text)', background: 'var(--bg-surface)', borderColor: 'var(--border-mid)' }}
             placeholder="Enter your name to join the queue…"
             maxLength={24}
@@ -119,7 +110,7 @@ export function PlayersTab() {
           />
           {isAdmin && (
             <button
-              className="px-3 py-2.5 font-['DM_Mono'] text-xs rounded-xl border transition-all cursor-pointer shrink-0"
+              className="px-3 py-2 font-['DM_Mono'] text-xs rounded-xl border transition-all cursor-pointer shrink-0"
               style={{
                 borderColor: addAsAdmin ? 'var(--accent-gold)' : 'var(--border-mid)',
                 color: addAsAdmin ? 'var(--accent-gold)' : 'var(--text-muted)',
@@ -132,7 +123,7 @@ export function PlayersTab() {
             </button>
           )}
           <button
-            className="px-6 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm active:scale-95 transition-all cursor-pointer shrink-0"
+            className="px-5 py-2 font-['DM_Mono'] font-bold rounded-xl text-sm active:scale-95 transition-all cursor-pointer shrink-0"
             style={{
               background: isAdmin && addAsAdmin ? 'var(--accent-gold)' : 'var(--accent)',
               color: isAdmin && addAsAdmin ? '#1a0f00' : 'white',
@@ -143,18 +134,18 @@ export function PlayersTab() {
           </button>
         </div>
         {nameStatus && (
-          <p className="mt-2 font-['DM_Mono'] text-xs" style={{ color: nameStatus.ok ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+          <p className="mt-1.5 font-['DM_Mono'] text-xs" style={{ color: nameStatus.ok ? 'var(--accent-green)' : 'var(--accent-red)' }}>
             {nameStatus.text}
           </p>
         )}
       </div>
 
-      {/* Dual panel — fills remaining space */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0 overflow-hidden">
+      {/* Dual panel — flex-1 + min-h-0 fills remaining space; lists scroll internally */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
 
         {/* ── Queue ── */}
-        <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden h-full min-h-0">
-          <div className="flex items-center justify-between px-5 py-3 border-b t-border shrink-0">
+        <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden min-h-0">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b t-border shrink-0">
             <div className="flex items-center gap-2">
               <span>📋</span>
               <span className="font-['Bebas_Neue'] text-lg tracking-widest t-text">Queue</span>
@@ -175,8 +166,8 @@ export function PlayersTab() {
             )}
           </div>
 
-          <div className="px-4 py-2 border-b t-border shrink-0">
-            <div className="flex items-center gap-2 rounded-lg px-3 py-2 border" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}>
+          <div className="px-3 py-2 border-b t-border shrink-0">
+            <div className="flex items-center gap-2 rounded-lg px-3 py-1.5 border" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}>
               <span className="text-xs t-dim">🔍</span>
               <input
                 type="text"
@@ -188,7 +179,8 @@ export function PlayersTab() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0">
+          {/* Scrollable list — works because all ancestors are height-constrained */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-0.5 min-h-0">
             {filteredQueue.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <p className="font-['DM_Mono'] text-xs t-dim text-center">
@@ -200,7 +192,7 @@ export function PlayersTab() {
               return (
                 <div
                   key={p.name}
-                  className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all select-none"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all select-none"
                   style={{
                     cursor: isAdmin ? 'pointer' : 'default',
                     background: inRoster ? 'rgba(34,184,98,0.07)' : 'var(--bg-elevated)',
@@ -212,7 +204,7 @@ export function PlayersTab() {
                   onClick={() => toggleRoster(p.name)}
                 >
                   <span className="font-['DM_Mono'] text-[10px] w-5 text-right shrink-0 t-dim">{i + 1}</span>
-                  <span className="flex-1 font-['DM_Mono'] text-sm font-medium truncate t-text">{p.name}</span>
+                  <span className="flex-1 font-['DM_Mono'] text-xs font-medium truncate t-text">{p.name}</span>
                   <span
                     className="text-[10px] font-['DM_Mono'] px-1.5 py-0.5 rounded border shrink-0"
                     style={p.byAdmin
@@ -223,7 +215,7 @@ export function PlayersTab() {
                     {p.byAdmin ? '👑' : 'usr'}
                   </span>
                   <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] border shrink-0 transition-all"
+                    className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] border shrink-0 transition-all"
                     style={inRoster
                       ? { background: 'rgba(34,184,98,0.15)', color: 'var(--accent-green)', borderColor: 'rgba(34,184,98,0.4)' }
                       : { background: 'var(--bg-elevated)', color: 'var(--text-dim)', borderColor: 'var(--border-mid)' }
@@ -233,7 +225,7 @@ export function PlayersTab() {
                   </div>
                   {isAdmin && (
                     <button
-                      className="text-sm leading-none shrink-0 transition-colors cursor-pointer t-dim"
+                      className="text-xs leading-none shrink-0 transition-colors cursor-pointer t-dim"
                       onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent-red)')}
                       onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
                       onClick={e => { e.stopPropagation(); removePlayer(p.name); }}
@@ -244,15 +236,15 @@ export function PlayersTab() {
             })}
           </div>
 
-          <div className="px-5 py-2 border-t t-border flex items-center justify-between shrink-0">
+          <div className="px-4 py-2 border-t t-border flex items-center justify-between shrink-0">
             <span className="font-['DM_Mono'] text-[10px] t-dim">Sorted by submission ↓</span>
-            {isAdmin && <span className="font-['DM_Mono'] text-[10px] text-[var(--accent-gold)]">Click to select · Drag to roster</span>}
+            {isAdmin && <span className="font-['DM_Mono'] text-[10px] text-[var(--accent-gold)]">Click · Drag to roster</span>}
           </div>
         </div>
 
         {/* ── Roster ── */}
-        <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden h-full min-h-0">
-          <div className="flex items-center justify-between px-5 py-3 border-b t-border shrink-0">
+        <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden min-h-0">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b t-border shrink-0">
             <div className="flex items-center gap-2">
               <span>✅</span>
               <span className="font-['Bebas_Neue'] text-lg tracking-widest t-text">Roster</span>
@@ -276,14 +268,15 @@ export function PlayersTab() {
             )}
           </div>
 
+          {/* Scrollable list */}
           <div
-            className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0"
+            className="flex-1 overflow-y-auto p-2 space-y-0.5 min-h-0"
             onDragOver={e => e.preventDefault()}
             onDrop={handleDropOnRoster}
           >
             {roster.length === 0 ? (
               <div className="h-full flex items-center justify-center">
-                <div className="rounded-2xl flex flex-col items-center justify-center gap-3 p-10 w-full border-2 border-dashed" style={{ borderColor: 'var(--border-mid)' }}>
+                <div className="rounded-2xl flex flex-col items-center justify-center gap-3 p-8 w-full border-2 border-dashed" style={{ borderColor: 'var(--border-mid)' }}>
                   <span className="text-3xl t-dim opacity-40">↓</span>
                   <p className="font-['DM_Mono'] text-xs text-center t-dim">
                     {isAdmin ? 'Drop players here or click from queue' : 'No players selected yet'}
@@ -293,14 +286,14 @@ export function PlayersTab() {
             ) : (
               <>
                 {isAdmin && (
-                  <div className="rounded-xl flex items-center justify-center h-9 font-['DM_Mono'] text-[10px] border border-dashed t-dim opacity-50" style={{ borderColor: 'var(--border-mid)' }}>
+                  <div className="rounded-lg flex items-center justify-center h-7 font-['DM_Mono'] text-[10px] border border-dashed t-dim opacity-50" style={{ borderColor: 'var(--border-mid)' }}>
                     drop zone
                   </div>
                 )}
                 {roster.map((name, i) => (
                   <div
                     key={name}
-                    className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all"
                     style={{
                       background: 'var(--bg-elevated)',
                       borderColor: 'var(--border)',
@@ -313,11 +306,11 @@ export function PlayersTab() {
                     onDrop={e => handleRosterDrop(e, name)}
                   >
                     <span className="font-['DM_Mono'] text-[10px] w-5 text-right shrink-0 t-dim">{i + 1}</span>
-                    <span className="flex-1 font-['DM_Mono'] text-sm font-medium truncate t-text">{name}</span>
+                    <span className="flex-1 font-['DM_Mono'] text-xs font-medium truncate t-text">{name}</span>
                     {isAdmin && <span className="font-['DM_Mono'] text-[10px] shrink-0 t-dim">≡</span>}
                     {isAdmin && (
                       <button
-                        className="text-sm leading-none shrink-0 transition-colors cursor-pointer t-dim"
+                        className="text-xs leading-none shrink-0 transition-colors cursor-pointer t-dim"
                         onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent-red)')}
                         onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
                         onClick={() => removeFromRoster(name)}
@@ -329,11 +322,11 @@ export function PlayersTab() {
             )}
           </div>
 
-          <div className="px-5 py-2 border-t t-border flex items-center justify-between shrink-0">
+          <div className="px-4 py-2 border-t t-border flex items-center justify-between shrink-0">
             <span className="font-['DM_Mono'] text-[10px] font-bold" style={{ color: rosterValid ? 'var(--accent-green)' : 'var(--accent-red)' }}>
               {roster.length} selected {rosterValid ? '✓ Ready' : ''}
             </span>
-            <span className="font-['DM_Mono'] text-[10px] t-dim">Need 10+ in multiples of 5</span>
+            <span className="font-['DM_Mono'] text-[10px] t-dim">Need 10+ · multiples of 5</span>
           </div>
         </div>
 

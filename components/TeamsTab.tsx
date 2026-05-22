@@ -104,9 +104,9 @@ export function TeamsTab() {
   );
 
   return (
-    <div className="flex-1 flex flex-col w-full py-6 gap-5">
+    <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
       <div>
-        <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Team Formation</h1>
+        <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Team Formation</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">5 players per team · {isAdmin ? 'Admin controls below' : 'View only — admin required to edit'}</p>
       </div>
 
@@ -116,7 +116,7 @@ export function TeamsTab() {
         </div>
       )}
 
-      <div className={`flex-1 flex flex-col gap-5 ${!isAdmin ? 'min-h-0' : ''}`}>
+      <div className={`flex-1 flex flex-col gap-4 min-h-0 ${!isAdmin ? 'min-h-0' : ''}`}>
         {isAdmin && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 shrink-0">
             {/* Mode selector */}

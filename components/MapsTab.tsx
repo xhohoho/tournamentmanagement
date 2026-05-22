@@ -118,10 +118,10 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
   );
 
   return (
-    <div className="flex-1 flex flex-col w-full py-6 gap-5">
+    <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
 
       <div>
-        <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Map Selector</h1>
+        <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Map Selector</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">
           {isAdmin ? 'Spin the wheel · Drag maps onto bracket stages · Each stage supports up to 3 maps' : 'View only — admin required to edit'}
         </p>
@@ -134,7 +134,7 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
         </div>
       )}
 
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 min-h-0">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
 
         {/* Wheel panel */}
         <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4">

@@ -117,10 +117,10 @@ export function BracketTab() {
   const hasBracket = !!bracket;
 
   return (
-    <div className="flex-1 flex flex-col w-full py-6 gap-5">
+    <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
 
       <div>
-        <h1 className="font-['Bebas_Neue'] text-4xl tracking-widest t-text mb-1">Bracket</h1>
+        <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Bracket</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">
           {isAdmin ? 'Pick a format · Generate once · Update scores to advance teams' : 'View only — admin required to edit'}
         </p>
