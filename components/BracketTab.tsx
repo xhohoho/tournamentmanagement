@@ -5,11 +5,26 @@ import { useTourney } from '@/lib/context';
 import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal } from '@/lib/types';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const CARD_W = 192;   // px — match card width
-const CARD_H = 72;    // px — match card height (2 rows × 36px)
-const COL_GAP = 56;   // px — horizontal space between columns (where connectors live)
-const COL_W   = CARD_W + COL_GAP; // total column stride
+const CARD_W = 192;
+const CARD_H = 72;
+const COL_GAP = 56;
+const COL_W   = CARD_W + COL_GAP;
+
+// ─── Helpers (module-level so TypeScript can infer types cleanly) ─────────────
+function getSpacing(colIdx: number): number {
+  return (CARD_H + 16) * Math.pow(2, colIdx);
+}
+
+function getMatchTop(colIdx: number, matchIdx: number): number {
+  if (colIdx === 0) {
+    return matchIdx * getSpacing(0);
+  }
+  const feederA = matchIdx * 2;
+  const feederB = feederA + 1;
+  const topA = getMatchTop(colIdx - 1, feederA) + CARD_H / 2;
+  const topB = getMatchTop(colIdx - 1, feederB) + CARD_H / 2;
+  return (topA + topB) / 2 - CARD_H / 2;
+}
 
 // ─── PlayerRow ────────────────────────────────────────────────────────────────
 function PlayerRow({ player, score, isWinner, isLoser, showScore }: {
@@ -125,7 +140,6 @@ export function BracketTab() {
 
   return (
     <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
-
       <div>
         <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Bracket</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">
@@ -215,9 +229,7 @@ export function BracketTab() {
 }
 
 // ─── BracketDisplay ───────────────────────────────────────────────────────────
-function BracketDisplay({
-  onScore, onUndo, onThirdPlace,
-}: {
+function BracketDisplay({ onScore, onUndo, onThirdPlace }: {
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
@@ -231,7 +243,7 @@ function BracketDisplay({
   return (
     <>
       <div className="t-surface border t-border rounded-xl p-5">
-        <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">
+        <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
           {isSingle ? 'Bracket' : 'Winners Bracket'}
           <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${
             isSingle
@@ -241,7 +253,7 @@ function BracketDisplay({
             {isSingle ? 'Single Elim' : 'Double Elim'}
           </span>
         </div>
-        <div className="overflow-x-auto overflow-y-visible pb-2">
+        <div className="overflow-x-auto overflow-y-visible pb-4">
           <BracketGrid rounds={bracket.upper} section="upper" stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
         </div>
       </div>
@@ -255,8 +267,8 @@ function BracketDisplay({
 
       {!isSingle && hasLower && (
         <div className="t-surface border t-border rounded-xl p-5">
-          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
-          <div className="overflow-x-auto overflow-y-visible pb-2">
+          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
+          <div className="overflow-x-auto overflow-y-visible pb-4">
             <BracketGrid rounds={bracket.lower!} section="lower" stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
           </div>
         </div>
@@ -270,7 +282,7 @@ function BracketDisplay({
       )}
 
       {bracket.champion && (
-        <div className="rounded-2xl p-7 text-center border-2 border-[var(--accent-gold)] bg-gradient-to-br from-[rgba(224,144,16,0.10)] to-[rgba(232,41,74,0.07)] animate-pulse-glow">
+        <div className="rounded-2xl p-7 text-center border-2 border-[var(--accent-gold)] bg-gradient-to-br from-[rgba(224,144,16,0.10)] to-[rgba(232,41,74,0.07)]">
           <div className="text-5xl mb-2">🏆</div>
           <h2 className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>{bracket.champion}</h2>
           <p className="font-['DM_Mono'] text-xs mt-2 t-muted">Tournament Champion</p>
@@ -283,7 +295,7 @@ function BracketDisplay({
   );
 }
 
-// ─── BracketGrid — absolute-positioned cards + SVG connectors ─────────────────
+// ─── BracketGrid ──────────────────────────────────────────────────────────────
 function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
   rounds: BracketMatch[][];
   section: string;
@@ -292,150 +304,80 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
-  // Filter out empty rounds (can occur in losers bracket)
   const validRounds = rounds.map((r, i) => ({ round: r, ri: i })).filter(({ round }) => round.length > 0);
   if (validRounds.length === 0) return null;
 
   const numRounds = validRounds.length;
-
-  // For each round, compute the vertical spacing between match centres.
-  // Round 0: spacing = CARD_H + 16px gap
-  // Each subsequent round: spacing doubles (matches fan out)
-  const getSpacing = (roundIdx: number) => {
-    // roundIdx here is the visual column index (0 = first visible round)
-    const base = CARD_H + 16;
-    return base * Math.pow(2, roundIdx);
-  };
-
-  // Compute the top offset for each match so it aligns with the midpoint of
-  // its two "parent" matches in the previous round.
-  const getMatchTop = (colIdx: number, matchIdx: number) => {
-    const spacing = getSpacing(colIdx);
-    if (colIdx === 0) {
-      // First column: just stack with base spacing
-      return matchIdx * spacing;
-    }
-    // Centre of this match = midpoint between the two feeder matches' centres
-    const prevSpacing = getSpacing(colIdx - 1);
-    const feederA = matchIdx * 2;
-    const feederB = feederA + 1;
-    const topA = getMatchTop(colIdx - 1, feederA) + CARD_H / 2;
-    const topB = getMatchTop(colIdx - 1, feederB) + CARD_H / 2;
-    return (topA + topB) / 2 - CARD_H / 2;
-  };
-
-  // Total canvas height — driven by the first (tallest) column
   const firstRound = validRounds[0];
-  const totalHeight = firstRound.round.length * getSpacing(0);
-
-  // Total canvas width
-  const totalWidth = numRounds * COL_W - COL_GAP + 8; // +8 for right stub
-
-  // Connector stroke colour (CSS var won't work in SVG attr, use inline style)
+  const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H;
+  const totalWidth = numRounds * COL_W - COL_GAP + 28;
   const stroke = 'var(--border-mid)';
 
   return (
     <div style={{ position: 'relative', width: totalWidth, height: totalHeight, minWidth: totalWidth }}>
 
-      {/* SVG connector layer — drawn behind cards */}
-      <svg
-        style={{ position: 'absolute', top: 0, left: 0, width: totalWidth, height: totalHeight, overflow: 'visible', pointerEvents: 'none' }}
-      >
-        {validRounds.map(({ round, ri }, colIdx) => {
-          if (colIdx === validRounds.length - 1) return null; // last column has no outgoing connector
+      {/* SVG connectors */}
+      <svg style={{ position: 'absolute', top: 0, left: 0, width: totalWidth, height: totalHeight, overflow: 'visible', pointerEvents: 'none' }}>
+        {validRounds.map(({ round }, colIdx) => {
+          if (colIdx === validRounds.length - 1) return null;
           const nextColIdx = colIdx + 1;
 
           return round.map((_, mi) => {
-            const isEven = mi % 2 === 0;
-            const partnerMi = isEven ? mi + 1 : mi - 1;
+            if (mi % 2 !== 0) return null; // only draw once per pair
 
-            // x positions
-            const cardLeft = colIdx * COL_W;
-            const cardRight = cardLeft + CARD_W;
+            const partnerMi = mi + 1;
+            const cardRight = colIdx * COL_W + CARD_W;
             const nextCardLeft = nextColIdx * COL_W;
             const midX = cardRight + COL_GAP / 2;
 
-            // y: vertical centre of this card
-            const myTop = getMatchTop(colIdx, mi);
-            const myCentreY = myTop + CARD_H / 2;
+            const myCentreY    = getMatchTop(colIdx, mi)        + CARD_H / 2;
+            const partnerCentreY = getMatchTop(colIdx, partnerMi) + CARD_H / 2;
+            const targetCentreY  = getMatchTop(nextColIdx, Math.floor(mi / 2)) + CARD_H / 2;
 
-            // y: vertical centre of partner card (to draw the bracket join)
-            const partnerTop = getMatchTop(colIdx, partnerMi);
-            const partnerCentreY = partnerTop + CARD_H / 2;
-
-            // y: vertical centre of the target match in next round
-            const targetMi = Math.floor(mi / 2);
-            const targetTop = getMatchTop(nextColIdx, targetMi);
-            const targetCentreY = targetTop + CARD_H / 2;
-
-            // Only draw from the "even" match of each pair to avoid duplicate lines
-            // The even match draws the stub + vertical join + horizontal to next round
-            if (isEven) {
-              return (
-                <g key={`${colIdx}-${mi}`}>
-                  {/* Horizontal stub right of THIS card */}
-                  <line x1={cardRight} y1={myCentreY} x2={midX} y2={myCentreY} stroke={stroke} strokeWidth={1.5} />
-                  {/* Horizontal stub right of PARTNER card */}
-                  <line x1={cardRight} y1={partnerCentreY} x2={midX} y2={partnerCentreY} stroke={stroke} strokeWidth={1.5} />
-                  {/* Vertical join between the two stubs */}
-                  <line x1={midX} y1={myCentreY} x2={midX} y2={partnerCentreY} stroke={stroke} strokeWidth={1.5} />
-                  {/* Horizontal line to next card */}
-                  <line x1={midX} y1={targetCentreY} x2={nextCardLeft} y2={targetCentreY} stroke={stroke} strokeWidth={1.5} />
-                </g>
-              );
-            }
-            return null;
+            return (
+              <g key={`conn-${colIdx}-${mi}`}>
+                <line x1={cardRight}    y1={myCentreY}      x2={midX}         y2={myCentreY}      stroke={stroke} strokeWidth={1.5} />
+                <line x1={cardRight}    y1={partnerCentreY} x2={midX}         y2={partnerCentreY} stroke={stroke} strokeWidth={1.5} />
+                <line x1={midX}         y1={myCentreY}      x2={midX}         y2={partnerCentreY} stroke={stroke} strokeWidth={1.5} />
+                <line x1={midX}         y1={targetCentreY}  x2={nextCardLeft} y2={targetCentreY}  stroke={stroke} strokeWidth={1.5} />
+              </g>
+            );
           });
         })}
 
-        {/* Right stub from last round's card to indicate it feeds into something (GF etc) */}
-        {(() => {
+        {/* Trailing stub from the final card */}
+        {validRounds.length > 0 && (() => {
           const lastColIdx = validRounds.length - 1;
-          const lastRound = validRounds[lastColIdx];
-          if (lastRound.round.length !== 1) return null;
-          const cardLeft = lastColIdx * COL_W;
-          const cardRight = cardLeft + CARD_W;
-          const centreY = getMatchTop(lastColIdx, 0) + CARD_H / 2;
-          return <line key="final-stub" x1={cardRight} y1={centreY} x2={cardRight + 20} y2={centreY} stroke={stroke} strokeWidth={1.5} />;
+          if (validRounds[lastColIdx].round.length !== 1) return null;
+          const cardRight = lastColIdx * COL_W + CARD_W;
+          const centreY   = getMatchTop(lastColIdx, 0) + CARD_H / 2;
+          return <line x1={cardRight} y1={centreY} x2={cardRight + 20} y2={centreY} stroke={stroke} strokeWidth={1.5} />;
         })()}
       </svg>
 
-      {/* Match cards — absolutely positioned */}
+      {/* Cards */}
       {validRounds.map(({ round, ri }, colIdx) => {
-        const sk = `${section}_r${ri}`;
+        const sk   = `${section}_r${ri}`;
         const maps: string[] = parseStageMaps(stageMaps[sk]);
+        const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
+        const label = isFinalCol
+          ? (section === 'upper' ? 'Final' : 'LB Final')
+          : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
 
         return round.map((match, mi) => {
-          const top = getMatchTop(colIdx, mi);
+          const top  = getMatchTop(colIdx, mi);
           const left = colIdx * COL_W;
-
-          // Round label — only render above first match in each column
-          const isFinalRound = colIdx === validRounds.length - 1 && round.length === 1;
-          const label = isFinalRound
-            ? (section === 'upper' ? 'Final' : 'LB Final')
-            : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
-
           return (
-            <div key={`${colIdx}-${mi}`} style={{ position: 'absolute', top, left, width: CARD_W }}>
-              {/* Column header above first card only */}
+            <div key={`card-${colIdx}-${mi}`} style={{ position: 'absolute', top, left, width: CARD_W }}>
               {mi === 0 && (
                 <div
-                  className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim text-center pb-2"
-                  style={{ position: 'absolute', top: -(CARD_H / 2 + 4), left: 0, width: CARD_W, whiteSpace: 'nowrap' }}
+                  className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim text-center"
+                  style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6, whiteSpace: 'nowrap' }}
                 >
                   {label}
                 </div>
               )}
-              <MatchCard
-                match={match}
-                section={section}
-                ri={ri}
-                mi={mi}
-                maps={maps}
-                onScore={onScore}
-                onUndo={onUndo}
-                isAdmin={isAdmin}
-              />
+              <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
             </div>
           );
         });
@@ -453,13 +395,13 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
-  const isBo3 = match.format === 'bo3';
-  const isDone = !!match.winner;
+  const isBo3   = match.format === 'bo3';
+  const isDone  = !!match.winner;
   const canEdit = isAdmin && match.p1 && match.p2 && !isDone;
   const canUndo = isAdmin && isDone;
 
   return (
-    <div className="t-elevated border t-border rounded-xl overflow-hidden flex-shrink-0" style={{ width: CARD_W }}>
+    <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
       {maps.length > 0 && (
         <div className="px-2 pt-1.5 flex flex-wrap gap-1">
           {maps.map((m, i) => (
@@ -473,23 +415,15 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
       {isBo3 && (
         <div className="px-2 pt-1">
           <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
-            style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>
-            BO3
-          </span>
+            style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
         </div>
       )}
       {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
         const isWinner = isDone && match.winner === player;
         const isLoser  = isDone && match.winner !== player;
-        return (
-          <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser}
-            showScore={isDone || !!(player && match.p1 && match.p2)} />
-        );
+        return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
       })}
-      {canEdit && (
-        <ScoreControls isBo3={isBo3} p1={match.p1} p2={match.p2}
-          onScore={(s1, s2) => onScore(section, ri, mi, s1, s2)} />
-      )}
+      {canEdit && <ScoreControls isBo3={isBo3} p1={match.p1} p2={match.p2} onScore={(s1, s2) => onScore(section, ri, mi, s1, s2)} />}
       {canUndo && (
         <div className="px-3 py-1.5 border-t t-border flex justify-end" style={{ background: 'var(--bg-hover)' }}>
           <button
@@ -511,24 +445,16 @@ function ThirdPlaceDisplay({ match, onScore, isAdmin }: {
   onScore: (p1wins: number, p2wins: number) => Promise<void>;
   isAdmin: boolean;
 }) {
-  const isDone = !!match.winner;
+  const isDone  = !!match.winner;
   const canEdit = isAdmin && match.p1 && match.p2 && !isDone;
-
   return (
     <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
       {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
         const isWinner = isDone && match.winner === player;
         const isLoser  = isDone && match.winner !== player;
-        return (
-          <PlayerRow key={idx} player={isWinner ? `🥉 ${player}` : player} score={score}
-            isWinner={isWinner} isLoser={isLoser}
-            showScore={isDone || !!(player && match.p1 && match.p2)} />
-        );
+        return <PlayerRow key={idx} player={isWinner ? `🥉 ${player}` : player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
       })}
-      {canEdit && (
-        <ScoreControls isBo3={match.format === 'bo3'} p1={match.p1} p2={match.p2}
-          onScore={(s1, s2) => onScore(s1, s2)} />
-      )}
+      {canEdit && <ScoreControls isBo3={match.format === 'bo3'} p1={match.p1} p2={match.p2} onScore={onScore} />}
     </div>
   );
 }
@@ -539,10 +465,9 @@ function GrandFinalDisplay({ gf, onScore, isAdmin }: {
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   isAdmin: boolean;
 }) {
-  const isBo3 = gf.format === 'bo3';
-  const isDone = !!gf.winner;
+  const isBo3   = gf.format === 'bo3';
+  const isDone  = !!gf.winner;
   const canEdit = isAdmin && gf.p1 && gf.p2 && !isDone;
-
   return (
     <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
       {isBo3 && (
@@ -554,15 +479,9 @@ function GrandFinalDisplay({ gf, onScore, isAdmin }: {
       {[{ player: gf.p1, score: gf.score1 }, { player: gf.p2, score: gf.score2 }].map(({ player, score }, idx) => {
         const isWinner = isDone && gf.winner === player;
         const isLoser  = isDone && gf.winner !== player;
-        return (
-          <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser}
-            showScore={isDone || !!(player && gf.p1 && gf.p2)} />
-        );
+        return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && gf.p1 && gf.p2)} />;
       })}
-      {canEdit && (
-        <ScoreControls isBo3={isBo3} p1={gf.p1} p2={gf.p2}
-          onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)} />
-      )}
+      {canEdit && <ScoreControls isBo3={isBo3} p1={gf.p1} p2={gf.p2} onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)} />}
     </div>
   );
 }
