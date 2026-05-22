@@ -64,6 +64,7 @@ export interface ServerState {
   joinKey: string;          // empty string = no key required
   chatMessages: ChatMessage[];
   defaultMaps: string[];     // maps that are always restored after reset
+  spinQueue: string[];
 }
 
 /**
