@@ -12,12 +12,20 @@ export async function GET() {
 
 // POST /api/players — add player to queue (open to all)
 export async function POST(req: NextRequest) {
-  const { name } = await req.json();
+  const { name, joinKey } = await req.json();
   const trimmed = name?.trim();
   if (!trimmed) return NextResponse.json({ error: 'Name required' }, { status: 400 });
   if (trimmed.length > 24) return NextResponse.json({ error: 'Name must be 24 characters or fewer' }, { status: 400 });
 
   const state = await getState();
+
+  // Join key check
+  if (state.joinKey) {
+    if (!joinKey || joinKey.trim() !== state.joinKey) {
+      return NextResponse.json({ error: 'Invalid join key' }, { status: 403 });
+    }
+  }
+
   const lo = trimmed.toLowerCase();
   if (state.players.find(p => p.name.toLowerCase() === lo)) {
     return NextResponse.json({ error: `"${trimmed}" is already in the queue` }, { status: 409 });

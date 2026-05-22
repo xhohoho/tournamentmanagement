@@ -13,6 +13,8 @@ export function defaultState(): TournamentState {
     bracket: null,
     maps: [],
     stageMaps: {},
+    joinKey: '',
+    chatMessages: [],
   };
 }
 export async function getState(): Promise<TournamentState> {

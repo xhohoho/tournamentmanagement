@@ -43,6 +43,13 @@ export interface Bracket {
   third?: string | null;      // 3rd place winner
 }
 
+export interface ChatMessage {
+  id: string;
+  name: string;
+  text: string;
+  ts: number;
+}
+
 /** Full state stored in KV — never sent to the client as-is. */
 export interface ServerState {
   adminPwHash: string;
@@ -54,6 +61,8 @@ export interface ServerState {
   bracket: Bracket | null;
   maps: string[];
   stageMaps: Record<string, string[]>; // key -> up to 3 map names (BO3)
+  joinKey: string;          // empty string = no key required
+  chatMessages: ChatMessage[];
 }
 
 /**
@@ -68,4 +77,4 @@ export type ClientState = Omit<ServerState, 'adminPwHash'>;
  */
 export type TournamentState = ServerState;
 
-export type TabId = 'players' | 'teams' | 'bracket' | 'maps';
+export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'chat';

@@ -9,9 +9,13 @@ export function PlayersTab() {
     submitPlayer, removePlayer,
     addToRoster, removeFromRoster,
     setRoster, clearQueue, clearRoster,
+    joinKey, setJoinKey,
   } = useTourney();
 
   const [nameInput, setNameInput] = useState('');
+  const [joinKeyInput, setJoinKeyInput] = useState('');
+  const [adminKeyInput, setAdminKeyInput] = useState('');
+  const [editingKey, setEditingKey] = useState(false);
   const [nameStatus, setNameStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
@@ -62,7 +66,7 @@ export function PlayersTab() {
     setSubmitting(true);
     setNameInput(''); // clear immediately so the field looks reset right away
 
-    const result = await submitPlayer(name);
+    const result = await submitPlayer(name, joinKey ? joinKeyInput : undefined);
 
     if (result.error) {
       setNameInput(name); // restore input so user can fix/retry
@@ -108,55 +112,148 @@ export function PlayersTab() {
     <div className="flex-1 flex flex-col w-full py-3 gap-3 min-h-0">
 
       {/* Top bar: title + submit */}
-      <div className="shrink-0 flex items-center gap-3">
-        <div className="shrink-0">
-          <h1 className="font-['Bebas_Neue'] text-2xl tracking-widest t-text leading-none">Player Registration</h1>
-          <p className="font-['DM_Mono'] text-[10px] t-muted mt-0.5">
-            {isAdmin ? 'Click to roster · Drag to reorder' : 'Submit your name to join the queue'}
-          </p>
+      <div className="shrink-0 flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <div className="shrink-0">
+            <h1 className="font-['Bebas_Neue'] text-2xl tracking-widest t-text leading-none">Player Registration</h1>
+            <p className="font-['DM_Mono'] text-[10px] t-muted mt-0.5">
+              {isAdmin ? 'Click to roster · Drag to reorder' : 'Submit your name to join the queue'}
+            </p>
+          </div>
+
+          <div className="flex-1 flex gap-2">
+            <input
+              type="text"
+              className="flex-1 rounded-lg px-3 py-2 font-['Syne'] text-sm outline-none transition-colors border"
+              style={{
+                color: 'var(--text)',
+                background: submitting ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+                borderColor: 'var(--border-mid)',
+                opacity: submitting ? 0.6 : 1,
+                cursor: submitting ? 'not-allowed' : 'text',
+              }}
+              placeholder={submitting ? 'Adding…' : 'Enter your name…'}
+              maxLength={24}
+              autoComplete="off"
+              disabled={submitting}
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !submitting && handleSubmit()}
+              onFocus={e => { if (!submitting) e.target.style.borderColor = 'var(--accent)'; }}
+              onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
+            />
+            {joinKey && (
+              <input
+                type="text"
+                className="w-28 rounded-lg px-3 py-2 font-['DM_Mono'] text-xs outline-none transition-colors border"
+                style={{
+                  color: 'var(--text)',
+                  background: submitting ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+                  borderColor: joinKeyInput ? 'var(--accent-green)' : 'var(--border-mid)',
+                  opacity: submitting ? 0.6 : 1,
+                }}
+                placeholder="Join key…"
+                autoComplete="off"
+                disabled={submitting}
+                value={joinKeyInput}
+                onChange={e => setJoinKeyInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !submitting && handleSubmit()}
+                onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                onBlur={e => (e.target.style.borderColor = joinKeyInput ? 'var(--accent-green)' : 'var(--border-mid)')}
+              />
+            )}
+            <button
+              className="px-4 py-2 font-['DM_Mono'] font-bold rounded-lg text-sm transition-all cursor-pointer shrink-0"
+              style={{
+                background: submitting ? 'var(--bg-elevated)' : 'var(--accent)',
+                color: submitting ? 'var(--text-muted)' : 'white',
+                opacity: submitting ? 0.7 : 1,
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                transform: submitting ? 'none' : undefined,
+              }}
+              disabled={submitting}
+              onClick={handleSubmit}
+            >
+              {submitting ? '…' : 'Submit'}
+            </button>
+          </div>
+
+          {nameStatus && (
+            <span className="font-['DM_Mono'] text-xs shrink-0" style={{ color: nameStatus.ok ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+              {nameStatus.text}
+            </span>
+          )}
         </div>
 
-        <div className="flex-1 flex gap-2">
-          <input
-            type="text"
-            className="flex-1 rounded-lg px-3 py-2 font-['Syne'] text-sm outline-none transition-colors border"
-            style={{
-              color: 'var(--text)',
-              background: submitting ? 'var(--bg-elevated)' : 'var(--bg-surface)',
-              borderColor: 'var(--border-mid)',
-              opacity: submitting ? 0.6 : 1,
-              cursor: submitting ? 'not-allowed' : 'text',
-            }}
-            placeholder={submitting ? 'Adding…' : 'Enter your name…'}
-            maxLength={24}
-            autoComplete="off"
-            disabled={submitting}
-            value={nameInput}
-            onChange={e => setNameInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !submitting && handleSubmit()}
-            onFocus={e => { if (!submitting) e.target.style.borderColor = 'var(--accent)'; }}
-            onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
-          />
-          <button
-            className="px-4 py-2 font-['DM_Mono'] font-bold rounded-lg text-sm transition-all cursor-pointer shrink-0"
-            style={{
-              background: submitting ? 'var(--bg-elevated)' : 'var(--accent)',
-              color: submitting ? 'var(--text-muted)' : 'white',
-              opacity: submitting ? 0.7 : 1,
-              cursor: submitting ? 'not-allowed' : 'pointer',
-              transform: submitting ? 'none' : undefined,
-            }}
-            disabled={submitting}
-            onClick={handleSubmit}
-          >
-            {submitting ? '…' : 'Submit'}
-          </button>
-        </div>
-
-        {nameStatus && (
-          <span className="font-['DM_Mono'] text-xs shrink-0" style={{ color: nameStatus.ok ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-            {nameStatus.text}
-          </span>
+        {/* Admin: join key management */}
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <span className="font-['DM_Mono'] text-[10px] t-muted shrink-0">🔑 Join Key:</span>
+            {editingKey ? (
+              <>
+                <input
+                  type="text"
+                  className="rounded-lg px-2 py-1 font-['DM_Mono'] text-xs outline-none border"
+                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--accent)', color: 'var(--text)', width: 120 }}
+                  placeholder="Set key (blank=off)"
+                  value={adminKeyInput}
+                  onChange={e => setAdminKeyInput(e.target.value)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter') {
+                      await setJoinKey(adminKeyInput);
+                      setEditingKey(false);
+                    }
+                    if (e.key === 'Escape') setEditingKey(false);
+                  }}
+                  autoFocus
+                />
+                <button
+                  className="font-['DM_Mono'] text-[10px] px-2 py-1 rounded-md cursor-pointer"
+                  style={{ background: 'var(--accent)', color: 'white' }}
+                  onClick={async () => { await setJoinKey(adminKeyInput); setEditingKey(false); }}
+                >
+                  Save
+                </button>
+                <button
+                  className="font-['DM_Mono'] text-[10px] px-2 py-1 rounded-md cursor-pointer t-muted"
+                  onClick={() => setEditingKey(false)}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <span
+                  className="font-['DM_Mono'] text-[10px] px-2 py-0.5 rounded-md"
+                  style={{
+                    background: joinKey ? 'rgba(34,184,98,0.12)' : 'var(--bg-elevated)',
+                    color: joinKey ? 'var(--accent-green)' : 'var(--text-muted)',
+                    border: `1px solid ${joinKey ? 'rgba(34,184,98,0.4)' : 'var(--border-mid)'}`,
+                  }}
+                >
+                  {joinKey ? `"${joinKey}" active` : 'off'}
+                </span>
+                <button
+                  className="font-['DM_Mono'] text-[10px] px-2 py-1 rounded-md border cursor-pointer t-muted hover:t-text transition-colors"
+                  style={{ borderColor: 'var(--border-mid)', background: 'var(--bg-elevated)' }}
+                  onClick={() => { setAdminKeyInput(joinKey); setEditingKey(true); }}
+                >
+                  {joinKey ? 'Change' : 'Set Key'}
+                </button>
+                {joinKey && (
+                  <button
+                    className="font-['DM_Mono'] text-[10px] px-2 py-1 rounded-md border cursor-pointer transition-colors"
+                    style={{ borderColor: 'var(--border-mid)', background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+                    onClick={() => setJoinKey('')}
+                  >
+                    Remove Key
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         )}
       </div>
 

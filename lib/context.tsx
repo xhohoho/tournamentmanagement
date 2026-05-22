@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import type { Player, Team, Bracket } from '@/lib/types';
+import type { Player, Team, Bracket, ChatMessage } from '@/lib/types';
 
 interface TourneyContext {
   players: Player[];
@@ -16,17 +16,25 @@ interface TourneyContext {
   adminToken: string | null;
   loading: boolean;
 
+  joinKey: string;          // empty = no key required; non-empty = key active
+  chatMessages: ChatMessage[];
+
   setIsAdmin: (v: boolean) => void;
   setAdminToken: (token: string | null) => void;
   refresh: () => Promise<void>;
 
-  submitPlayer: (name: string) => Promise<{ error?: string }>;
+  submitPlayer: (name: string, joinKey?: string) => Promise<{ error?: string }>;
   removePlayer: (name: string) => Promise<void>;
   addToRoster: (name: string) => Promise<void>;
   removeFromRoster: (name: string) => Promise<void>;
   setRoster: (names: string[]) => Promise<void>;
   clearQueue: () => Promise<void>;
   clearRoster: () => Promise<void>;
+
+  setJoinKey: (key: string) => Promise<{ error?: string }>;
+
+  sendChat: (name: string, text: string) => Promise<{ error?: string }>;
+  clearChat: () => Promise<void>;
 
   formTeams: (leaders?: string[]) => Promise<{ error?: string; teams?: Team[] }>;
   resetTeams: () => Promise<void>;
@@ -59,6 +67,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [maps, setMaps] = useState<string[]>([]);
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
+  const [joinKey, setJoinKeyState] = useState<string>('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAdmin, setIsAdminState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,6 +107,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setBracket(data.bracket ?? null);
       setMaps(data.maps ?? []);
       setStageMaps(data.stageMaps ?? {});
+      setJoinKeyState(data.joinKey ?? '');
+      setChatMessages(data.chatMessages ?? []);
     } catch {
       // keep existing state on network error
     } finally {
@@ -127,6 +139,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setBracket(data.bracket ?? null);
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
+          setJoinKeyState(data.joinKey ?? '');
+          setChatMessages(data.chatMessages ?? []);
         } catch { /* ignore malformed frames */ }
         setLoading(false);
       };
@@ -145,11 +159,11 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   // —— Players ——
-  const submitPlayer = async (name: string) => {
+  const submitPlayer = async (name: string, joinKey?: string) => {
     const res = await fetch('/api/players', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, joinKey }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
@@ -217,6 +231,38 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json();
     setRosterState(data.roster);
+  };
+
+  // —— Join Key ——
+  const setJoinKey = async (key: string) => {
+    const res = await fetch('/api/players/joinkey', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ joinKey: key }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setJoinKeyState(data.joinKey ?? '');
+    return {};
+  };
+
+  // —— Chat ——
+  const sendChat = async (name: string, text: string) => {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, text }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setChatMessages(data.messages);
+    return {};
+  };
+
+  const clearChat = async () => {
+    const res = await fetch('/api/chat', { method: 'DELETE', headers: adminHeaders });
+    const data = await res.json();
+    setChatMessages(data.messages);
   };
 
   // —— Teams ——
@@ -380,9 +426,12 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps,
+      joinKey, chatMessages,
       isAdmin, adminToken, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
+      setJoinKey,
+      sendChat, clearChat,
       formTeams, resetTeams, setTeamMode,
       generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, assignStage, clearStage,
