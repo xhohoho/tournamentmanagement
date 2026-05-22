@@ -65,6 +65,19 @@ export default function Home() {
     }
   };
 
+  // Paste this right below your handleSpunMap function!
+  const handleSpinResultsChange = async (newQueue: string[]) => {
+    setSpinResults(newQueue);
+    
+    if (isAdmin) {
+      await fetch('/api/maps', { 
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQueue })
+      });
+    }
+  };
+
   const handleAdminBtn = () => {
     if (isAdmin) { setIsAdmin(false); return; }
     setAdminOpen(true);
