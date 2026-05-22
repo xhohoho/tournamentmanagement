@@ -7,6 +7,7 @@ import { PlayersTab } from '@/components/PlayersTab';
 import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
 import { MapsTab } from '@/components/MapsTab';
+import { ChatPanel } from '@/components/ChatPanel';
 import type { TabId } from '@/lib/types';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
@@ -22,6 +23,7 @@ export default function Home() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [spunMap, setSpunMap] = useState('');
   const [dark, setDark] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
@@ -147,6 +149,9 @@ export default function Home() {
       </div>
 
       <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
+
+      {/* Floating Chat Panel — always mounted, toggled by button */}
+      <ChatPanel open={chatOpen} onToggle={() => setChatOpen(o => !o)} />
     </div>
   );
 }

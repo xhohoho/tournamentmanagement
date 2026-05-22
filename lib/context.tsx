@@ -421,6 +421,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setTeams([]);
     setBracket(null);
     setStageMaps({});
+    setJoinKeyState('');
+    setChatMessages([]);
   };
 
   return (

@@ -14,6 +14,8 @@ export async function DELETE(req: NextRequest) {
     teams: [],
     bracket: null,
     stageMaps: {},
+    joinKey: '',
+    chatMessages: [],
   }));
   const { adminPwHash: _, ...safe } = next;
   return NextResponse.json(safe);
