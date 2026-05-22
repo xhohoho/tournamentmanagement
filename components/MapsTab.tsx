@@ -21,11 +21,6 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
   });
-  
-  // Persisted Removed Maps
-  const [removedFromPool, setRemovedFromPool] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('removedMaps') ?? '[]'); } catch { return []; }
-  });
 
   const toggleDefault = (map: string) => {
     setDefaultMaps(prev => {
@@ -37,24 +32,11 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
 
   const handleRemoveMap = async (mapToRemove: string) => {
     await removeMap(mapToRemove);
-    setRemovedFromPool(prev => {
-      if (prev.includes(mapToRemove)) return prev;
-      const next = [...prev, mapToRemove];
-      localStorage.setItem('removedMaps', JSON.stringify(next));
-      return next;
-    });
     if (spunMap === mapToRemove) onSpunMap('');
   };
 
   const handleRestoreMap = async (mapToRestore: string) => {
-    const result = await addMap(mapToRestore);
-    if (!result?.error) {
-      setRemovedFromPool(prev => {
-        const next = prev.filter(m => m !== mapToRestore);
-        localStorage.setItem('removedMaps', JSON.stringify(next));
-        return next;
-      });
-    }
+    await addMap(mapToRestore);
   };
 
   if (loading) return (
@@ -143,13 +125,13 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         <div className="shrink-0">
           <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Map Selector</h1>
           <p className="font-['DM_Mono'] text-xs t-muted">
-            {isAdmin ? 'Spin the wheel to build a map queue. Bracket automatically picks from the queue (1 map for BO1, 3 maps for BO3).' : 'View only — admin required to edit'}
+            {isAdmin ? 'Spin the wheel to build a map queue. Drag them directly into bracket slots.' : 'View only — admin required to edit'}
           </p>
         </div>
 
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
 
-          {/* Wheel panel */}
+          {/* Wheel panel - removed overflow-y-auto to stop panel scrolling */}
           <div className="t-surface border t-border rounded-2xl p-4 flex flex-col gap-3 min-h-0">
             <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text shrink-0">🎡 Wheel</h2>
 
@@ -178,8 +160,9 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               </div>
             )}
 
-            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
-              <div className="flex flex-wrap gap-2 shrink-0 mb-4">
+            {/* Scrolling isolated ONLY to the map list if there are too many */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="flex flex-wrap gap-2">
                 {maps.map(m => (
                   <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
                     {m}
@@ -195,19 +178,19 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                 ))}
                 {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'No maps yet.' : 'No maps added.'}</p>}
               </div>
+            </div>
 
-              <div className="flex flex-col items-center gap-2 shrink-0 pb-4 mt-auto">
-                <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
-                <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
-                <button
-                  className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
-                  style={{ background: 'var(--accent-red)' }}
-                  onClick={spin}
-                  disabled={spinning || maps.length === 0}
-                >
-                  🌀 SPIN
-                </button>
-              </div>
+            <div className="flex flex-col items-center gap-2 mt-auto shrink-0 pb-2">
+              <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
+              <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
+              <button
+                className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
+                style={{ background: 'var(--accent-red)' }}
+                onClick={spin}
+                disabled={spinning || maps.length === 0}
+              >
+                🌀 SPIN
+              </button>
             </div>
           </div>
 
@@ -227,20 +210,36 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               {spinResults.length === 0 ? (
                 <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue. The bracket automatically assigns them in order.</p>
               ) : (
-                spinResults.map((m, i) => (
-                  <div key={i} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 flex-wrap gap-2">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{i + 1}</span>
-                      <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
+                spinResults.map((m, i) => {
+                  const isRemoved = !maps.includes(m);
+                  return (
+                    <div key={i} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 flex-wrap gap-2">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{i + 1}</span>
+                        <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
+                      </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isRemoved && (
+                            <button
+                              className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-green)] cursor-pointer transition-colors px-1 py-1"
+                              title="Restore map to pool"
+                              onClick={() => handleRestoreMap(m)}
+                            >
+                              ↩
+                            </button>
+                          )}
+                          <button
+                            className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors px-1 py-1"
+                            onClick={() => onSpinResultsChange(spinResults.filter((_, idx) => idx !== i))}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {isAdmin && (
-                      <button
-                        className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors px-2 py-1"
-                        onClick={() => onSpinResultsChange(spinResults.filter((_, idx) => idx !== i))}
-                      >✕</button>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -273,26 +272,6 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               {isAdmin && defaultMaps.filter(m => maps.includes(m)).length > 0 && (
                 <p className="font-['DM_Mono'] text-[10px] t-dim">★ = default map (stays in pool after reset)</p>
               )}
-
-              {isAdmin && removedFromPool.filter(m => !maps.includes(m)).length > 0 && (
-                <div>
-                  <hr className="t-border mt-2 mb-4" />
-                  <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-2">RESTORE MAPS</p>
-                  <div className="flex flex-wrap gap-2">
-                    {removedFromPool.filter(m => !maps.includes(m)).map(m => (
-                      <button
-                        key={m}
-                        className="shrink-0 flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm cursor-pointer transition-colors whitespace-nowrap"
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; e.currentTarget.style.color = 'var(--accent-green)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
-                        onClick={() => handleRestoreMap(m)}
-                      >
-                        ↩ {m}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -302,17 +281,12 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       {spunMap && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[#1e1e1e] border border-[var(--border-mid)] rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-            {/* Modal Header */}
             <div className="bg-[#d32f2f] text-white px-5 py-3 font-semibold text-lg">
               We have a winner!
             </div>
-            
-            {/* Modal Body */}
             <div className="p-10 flex items-center justify-center border-b border-[#333]">
               <p className="text-white text-5xl font-light tracking-wide text-center break-words">{spunMap}</p>
             </div>
-            
-            {/* Modal Footer / Actions */}
             <div className="px-5 py-4 flex items-center justify-end gap-4 bg-[#242424]">
               <button
                 className="text-sm text-gray-300 hover:text-white font-medium transition-colors cursor-pointer"

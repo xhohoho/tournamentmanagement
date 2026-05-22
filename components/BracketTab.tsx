@@ -6,7 +6,7 @@ import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal } from '@/lib/types';
 
 const CARD_W = 210;
-const CARD_H = 100; // Increased strictly to 100px to perfectly fit the slots row!
+const CARD_H = 100; // Strictly locked height to fit map slots!
 const COL_GAP = 72;
 const COL_W = CARD_W + COL_GAP;
 
@@ -63,6 +63,45 @@ function PlayerRow({
             {score}
           </span>
         )
+      )}
+    </div>
+  );
+}
+
+// ── RoundHeader Drop Zone ─────────────────────────────────────────────────────
+function RoundHeader({ section, ri, label, matchCount, isBo3, isAdmin }: {
+  section: string; ri: number; label: string; matchCount: number; isBo3: boolean; isAdmin: boolean;
+}) {
+  const { assignStage } = useTourney();
+  const slotCount = isBo3 ? 3 : 1;
+
+  return (
+    <div className="flex items-end justify-between w-full">
+      <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim">{label}</div>
+      {isAdmin && (
+        <div className="flex gap-1">
+          {Array.from({ length: slotCount }).map((_, slotIdx) => (
+            <div
+              key={slotIdx}
+              className="w-[18px] h-[18px] border border-dashed t-border-mid rounded bg-[var(--bg-surface)] text-[9px] flex items-center justify-center t-dim hover:border-[var(--accent)] hover:text-[var(--accent)] hover:bg-[rgba(58,107,255,0.05)] transition-colors cursor-crosshair"
+              onDragOver={e => e.preventDefault()}
+              onDrop={async e => {
+                e.preventDefault();
+                const m = e.dataTransfer.getData('text/plain');
+                if (m) {
+                  await Promise.all(
+                    Array.from({ length: matchCount }).map((_, mi) =>
+                      assignStage(`m_${section}_${ri}_${mi}`, m, slotIdx)
+                    )
+                  );
+                }
+              }}
+              title={`Drop to set Map ${slotIdx + 1} for ALL matches in this round`}
+            >
+              {slotIdx + 1}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -212,7 +251,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
     <>
       <div className="t-surface border t-border rounded-xl p-5 shrink-0">
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
-          {isSingle ? 'Bracket' : 'Winners Bracket'}
+          {isSingle ? 'Bracket' : 'Upper Bracket'}
           <div className="flex gap-2">
             <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${isSingle ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>
               {isSingle ? 'Single Elim' : 'Double Elim'}
@@ -236,7 +275,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
 
       {!isSingle && hasLower && (
         <div className="t-surface border t-border rounded-xl p-5 shrink-0">
-          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
+          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Lower Bracket</h3>
           <div className="overflow-x-auto overflow-y-visible pb-4">
             <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
           </div>
@@ -331,8 +370,10 @@ function BracketGrid({ rounds, section, type, gf, onScore, onUndo, isAdmin }: {
       {validRounds.map(({ round, ri }, colIdx) => {
         const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
         const label = isFinalCol 
-          ? (section === 'upper' ? (type === 'double' ? 'Winners Final' : 'Final') : 'LB Final') 
-          : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
+          ? (section === 'upper' ? (type === 'double' ? 'Upper Final' : 'Final') : 'Lower Final') 
+          : (section === 'upper' ? `Round ${ri + 1}` : `Lower R${ri + 1}`);
+
+        const isRoundBo3 = round[0]?.format === 'bo3';
 
         return round.map((match, mi) => {
           const top = getMatchTop(section, colIdx, mi) + offsetY;
@@ -340,7 +381,9 @@ function BracketGrid({ rounds, section, type, gf, onScore, onUndo, isAdmin }: {
           return (
             <div key={`card-${colIdx}-${mi}`} style={{ position: 'absolute', top, left, width: CARD_W }}>
               {mi === 0 && (
-                <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim text-center" style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6, whiteSpace: 'nowrap' }}>{label}</div>
+                <div style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6 }}>
+                  <RoundHeader section={section} ri={ri} label={label} matchCount={round.length} isBo3={isRoundBo3} isAdmin={isAdmin} />
+                </div>
               )}
               <MatchCard match={match} section={section} ri={ri} mi={mi} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
             </div>
@@ -379,14 +422,12 @@ function MatchCard({ match, section, ri, mi, onScore, onUndo, isAdmin }: {
   const handleSave = () => onScore(section, ri, mi, s1, s2);
   const handleCancel = () => { setS1(match.score1); setS2(match.score2); };
 
-  // Match Level Map Assignment Logic
   const matchKey = `m_${section}_${ri}_${mi}`;
   const matchMaps = parseStageMaps(stageMaps[matchKey] || '');
   const slotCount = isBo3 ? 3 : 1;
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* Locked 100px Card Height to fit slots natively */}
       <div className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col" style={{ width: CARD_W, height: CARD_H }}>
         <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
         <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
