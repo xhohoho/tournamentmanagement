@@ -5,7 +5,12 @@ import { verifyAdminToken } from '@/app/api/admin/auth/route';
 
 export async function GET() {
   const state = await getState();
-  return NextResponse.json({ maps: state.maps, stageMaps: state.stageMaps });
+  // Return spinQueue along with maps and stageMaps
+  return NextResponse.json({ 
+    maps: state.maps, 
+    stageMaps: state.stageMaps,
+    spinQueue: state.spinQueue || [] 
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -48,7 +53,14 @@ export async function PATCH(req: NextRequest) {
   if (!await verifyAdminToken(req)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   }
-  const { action, stageKey, mapName, slot } = await req.json();
+  const body = await req.json();
+  const { action, stageKey, mapName, slot, spinQueue } = body;
+
+  // NEW: Save the Spin Queue to the database
+  if (action === 'updateSpinQueue') {
+    const next = await updateState(s => ({ ...s, spinQueue: spinQueue || [] }));
+    return NextResponse.json({ spinQueue: next.spinQueue });
+  }
 
   if (action === 'assignStage') {
     // slot = 0|1|2 for BO3; default 0 (append to array up to 3)

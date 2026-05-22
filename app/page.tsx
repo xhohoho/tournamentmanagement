@@ -24,12 +24,19 @@ export default function Home() {
   const [spunMap, setSpunMap] = useState('');
   const [spinResults, setSpinResults] = useState<string[]>([]);
 
-  const handleSpunMap = (map: string) => {
-    setSpunMap(map);
-    if (map) setSpinResults(prev => [...prev, map]);
-  };
   const [dark, setDark] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+
+  // FETCH INITIAL QUEUE ON MOUNT
+  useEffect(() => {
+    fetch('/api/maps') // <-- UPDATE THIS URL IF YOUR ROUTE IS DIFFERENT
+      .then(res => res.json())
+      .then(data => {
+        if (data.spinQueue) setSpinResults(data.spinQueue);
+      })
+      .catch(err => console.error('Failed to load spin queue', err));
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
@@ -41,7 +48,35 @@ export default function Home() {
     return !prev;
   });
 
-  const [resetConfirm, setResetConfirm] = useState(false);
+  // DB SYNC: Handle adding a new map to the queue from a spin
+  const handleSpunMap = async (map: string) => {
+    setSpunMap(map);
+    if (map) {
+      const newQueue = [...spinResults, map];
+      setSpinResults(newQueue); // Optimistic UI update
+      
+      if (isAdmin) {
+        await fetch('/api/maps', { // <-- UPDATE URL IF NEEDED
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQueue })
+        });
+      }
+    }
+  };
+
+  // DB SYNC: Handle re-ordering, clearing, or deleting specific items from the queue
+  const handleSpinResultsChange = async (newQueue: string[]) => {
+    setSpinResults(newQueue);
+    
+    if (isAdmin) {
+      await fetch('/api/maps', { // <-- UPDATE URL IF NEEDED
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQueue })
+      });
+    }
+  };
 
   const handleAdminBtn = () => {
     if (isAdmin) { setIsAdmin(false); return; }
@@ -51,6 +86,15 @@ export default function Home() {
   const handleReset = async () => {
     if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
     await resetAll();
+    
+    // Clear the queue on a full reset
+    setSpinResults([]);
+    await fetch('/api/maps', { 
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] })
+    });
+    
     setResetConfirm(false);
   };
 
@@ -150,7 +194,7 @@ export default function Home() {
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
 
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={spinResults} /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={handleSpunMap} spinResults={spinResults} onSpinResultsChange={setSpinResults} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={handleSpunMap} spinResults={spinResults} onSpinResultsChange={handleSpinResultsChange} /></div>
           </div>
         </main>
       </div>

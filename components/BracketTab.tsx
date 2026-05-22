@@ -89,11 +89,10 @@ function RoundHeader({ section, ri, label, matchCount, isBo3, isAdmin }: {
                 e.preventDefault();
                 const m = e.dataTransfer.getData('text/plain');
                 if (m) {
-                  await Promise.all(
-                    Array.from({ length: matchCount }).map((_, mi) =>
-                      assignStage(`m_${section}_${ri}_${mi}`, m, slotIdx)
-                    )
-                  );
+                  // FIX: Process sequentially to avoid database overwrite race conditions
+                  for (let mi = 0; mi < matchCount; mi++) {
+                    await assignStage(`m_${section}_${ri}_${mi}`, m, slotIdx);
+                  }
                 }
               }}
               title={`Drop to set Map ${slotIdx + 1} for ALL matches in this round`}
@@ -206,24 +205,27 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
         </div>
       )}
 
-      {/* Floating Map Assignment Sidebar */}
-      {isAdmin && hasBracket && spinResults.length > 0 && (
+      {/* Floating Map Assignment Sidebar (Visible to all, draggable by Admin) */}
+      {hasBracket && spinResults.length > 0 && (
         <div className="absolute bottom-6 right-6 t-surface border t-border rounded-xl shadow-2xl w-56 z-50 flex flex-col max-h-[50vh] animate-in slide-in-from-bottom-4">
           <div className="p-3 border-b t-border font-['Bebas_Neue'] text-lg tracking-widest bg-[var(--bg-elevated)] rounded-t-xl text-[var(--accent-gold)]">
             🎯 Spin Queue
           </div>
-          <div className="p-2 border-b t-border font-['DM_Mono'] text-[9px] t-muted bg-black/10">
-            Drag maps into bracket slots
-          </div>
+          {isAdmin && (
+            <div className="p-2 border-b t-border font-['DM_Mono'] text-[9px] t-muted bg-black/10">
+              Drag maps into bracket slots
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
             {spinResults.map((m, i) => (
               <div
                 key={i}
-                draggable
-                onDragStart={(e) => e.dataTransfer.setData('text/plain', m)}
-                className="cursor-grab active:cursor-grabbing p-2 text-sm font-['DM_Mono'] border t-border-mid rounded bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors truncate"
+                draggable={isAdmin}
+                onDragStart={isAdmin ? (e) => e.dataTransfer.setData('text/plain', m) : undefined}
+                className={`p-2 flex items-center gap-2 text-sm font-['DM_Mono'] border t-border-mid rounded bg-[var(--bg-surface)] transition-colors truncate ${isAdmin ? 'cursor-grab active:cursor-grabbing hover:border-[var(--accent)]' : 'cursor-default'}`}
               >
-                🗺 {m}
+                <span className="font-['DM_Mono'] text-[10px] t-dim w-4 text-right">#{i + 1}</span>
+                <span>🗺 {m}</span>
               </div>
             ))}
           </div>
