@@ -1,6 +1,5 @@
 export interface Player {
   name: string;
-  byAdmin: boolean;
   addedAt: number;
 }
 

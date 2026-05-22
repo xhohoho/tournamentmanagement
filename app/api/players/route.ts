@@ -12,7 +12,7 @@ export async function GET() {
 
 // POST /api/players — add player to queue (open to all)
 export async function POST(req: NextRequest) {
-  const { name, byAdmin } = await req.json();
+  const { name } = await req.json();
   const trimmed = name?.trim();
   if (!trimmed) return NextResponse.json({ error: 'Name required' }, { status: 400 });
   if (trimmed.length > 24) return NextResponse.json({ error: 'Name must be 24 characters or fewer' }, { status: 400 });
@@ -25,7 +25,11 @@ export async function POST(req: NextRequest) {
 
   const next = await updateState(s => ({
     ...s,
-    players: [...s.players, { name: trimmed, byAdmin: !!byAdmin, addedAt: Date.now() }],
+    // Strip byAdmin from any legacy records on the way through, add new clean record
+    players: [
+      ...s.players.map(({ name, addedAt }) => ({ name, addedAt })),
+      { name: trimmed, addedAt: Date.now() },
+    ],
   }));
   return NextResponse.json({ players: next.players });
 }

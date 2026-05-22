@@ -20,7 +20,7 @@ interface TourneyContext {
   setAdminToken: (token: string | null) => void;
   refresh: () => Promise<void>;
 
-  submitPlayer: (name: string, byAdmin?: boolean) => Promise<{ error?: string }>;
+  submitPlayer: (name: string) => Promise<{ error?: string }>;
   removePlayer: (name: string) => Promise<void>;
   addToRoster: (name: string) => Promise<void>;
   removeFromRoster: (name: string) => Promise<void>;
@@ -63,7 +63,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Builds auth headers for admin-only API calls
   const adminHeaders = useMemo(() => ({
     'Content-Type': 'application/json',
     ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
@@ -72,7 +71,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const setIsAdmin = (v: boolean) => {
     setIsAdminState(v);
     if (!v) {
-      // Revoke the token server-side so it's invalidated in KV immediately
       if (adminToken) {
         fetch('/api/admin/auth', {
           method: 'DELETE',
@@ -109,7 +107,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refresh();
 
-    // Use Server-Sent Events when available; fall back to polling on error.
     let es: EventSource | null = null;
     let pollFallback: NodeJS.Timeout | null = null;
 
@@ -134,7 +131,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       };
       es.onerror = () => {
-        // SSE failed or not yet implemented — fall back to polling
         es?.close();
         es = null;
         if (!pollFallback) pollFallback = setInterval(refresh, 4000);
@@ -149,11 +145,11 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   // —— Players ——
-  const submitPlayer = async (name: string, byAdmin = false) => {
+  const submitPlayer = async (name: string) => {
     const res = await fetch('/api/players', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, byAdmin }),
+      body: JSON.stringify({ name }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
@@ -237,7 +233,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     return { teams: data.teams };
   };
 
-  // —— FIXED OVERWRITE LAYER ——
   const assignLeader = async (teamId: string, playerName: string) => {
     try {
       const res = await fetch('/api/teams', {
@@ -245,30 +240,14 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
         headers: adminHeaders,
         body: JSON.stringify({ assignments: { [teamId]: playerName } }),
       });
-      
       const data = await res.json();
-      
-      // If the server explicitly rejected it, return the backend message to the screen
-      if (!res.ok) {
-        return { error: data.error || 'Server rejected leader assignment.' };
-      }
-      
-      // Successfully synchronized with database! Update real-time state values
+      if (!res.ok) return { error: data.error || 'Server rejected leader assignment.' };
       setTeams(data.teams);
       return {};
-      
-    } catch (e) {
-      // FALLBACK: If the internet drops or server encounters a timeout block,
-      // update it locally so the admin doesn't see a broken interface.
+    } catch {
       setTeams(prevTeams =>
-        prevTeams.map(t => {
-          if (t.name === teamId) {
-            return { ...t, leader: playerName };
-          }
-          return t;
-        })
+        prevTeams.map(t => t.name === teamId ? { ...t, leader: playerName } : t)
       );
-      
       return { error: 'Network failure. Leader assigned locally, but not saved to cloud database.' };
     }
   };
@@ -337,7 +316,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const setElimMode = async (mode: 'single' | 'double') => {
-    setElimModeState(mode); // optimistic update
+    setElimModeState(mode);
     await fetch('/api/bracket', {
       method: 'PATCH',
       headers: adminHeaders,

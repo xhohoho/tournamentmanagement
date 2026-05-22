@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useTourney } from '@/lib/context';
 
 export function PlayersTab() {
@@ -13,19 +13,26 @@ export function PlayersTab() {
 
   const [nameInput, setNameInput] = useState('');
   const [nameStatus, setNameStatus] = useState<{ text: string; ok: boolean } | null>(null);
-  const [qSearch, setQSearch] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
-  const [addAsAdmin, setAddAsAdmin] = useState(false);
+  const submitLock = useRef(false);
 
-  const filteredQueue = useMemo(() =>
-    players.filter(p => p.name.toLowerCase().includes(qSearch.toLowerCase())),
-    [players, qSearch]
-  );
+  const term = search.toLowerCase().trim();
 
-  const filteredRoster = useMemo(() =>
-    roster.filter(name => name.toLowerCase().includes(qSearch.toLowerCase())),
-    [roster, qSearch]
-  );
+  const filteredQueue = useMemo(() => {
+    if (!term) return players.map((p, i) => ({ ...p, originalIndex: i + 1 }));
+    return players
+      .map((p, i) => ({ ...p, originalIndex: i + 1 }))
+      .filter(p => p.name.toLowerCase().includes(term));
+  }, [players, term]);
+
+  const filteredRoster = useMemo(() => {
+    if (!term) return roster.map((name, i) => ({ name, originalIndex: i + 1 }));
+    return roster
+      .map((name, i) => ({ name, originalIndex: i + 1 }))
+      .filter(r => r.name.toLowerCase().includes(term));
+  }, [roster, term]);
 
   const rosterValid = roster.length >= 10 && roster.length % 5 === 0;
 
@@ -46,15 +53,26 @@ export function PlayersTab() {
   );
 
   const handleSubmit = async () => {
+    // Hard lock — ref-based so it's synchronous and can't be bypassed by rapid clicks
+    if (submitLock.current) return;
     const name = nameInput.trim();
     if (!name) return;
-    const result = await submitPlayer(name, isAdmin && addAsAdmin);
+
+    submitLock.current = true;
+    setSubmitting(true);
+    setNameInput(''); // clear immediately so the field looks reset right away
+
+    const result = await submitPlayer(name);
+
     if (result.error) {
+      setNameInput(name); // restore input so user can fix/retry
       setNameStatus({ text: `❌ ${result.error}`, ok: false });
     } else {
       setNameStatus({ text: `✓ "${name}" added!`, ok: true });
-      setNameInput('');
     }
+
+    setSubmitting(false);
+    submitLock.current = false;
     setTimeout(() => setNameStatus(null), 2500);
   };
 
@@ -89,7 +107,7 @@ export function PlayersTab() {
   return (
     <div className="flex-1 flex flex-col w-full py-3 gap-3 min-h-0">
 
-      {/* Top bar: title + submit in one compact row */}
+      {/* Top bar: title + submit */}
       <div className="shrink-0 flex items-center gap-3">
         <div className="shrink-0">
           <h1 className="font-['Bebas_Neue'] text-2xl tracking-widest t-text leading-none">Player Registration</h1>
@@ -98,42 +116,40 @@ export function PlayersTab() {
           </p>
         </div>
 
-        {/* Submit input — takes remaining space */}
         <div className="flex-1 flex gap-2">
           <input
             type="text"
             className="flex-1 rounded-lg px-3 py-2 font-['Syne'] text-sm outline-none transition-colors border"
-            style={{ color: 'var(--text)', background: 'var(--bg-surface)', borderColor: 'var(--border-mid)' }}
-            placeholder="Enter your name…"
+            style={{
+              color: 'var(--text)',
+              background: submitting ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+              borderColor: 'var(--border-mid)',
+              opacity: submitting ? 0.6 : 1,
+              cursor: submitting ? 'not-allowed' : 'text',
+            }}
+            placeholder={submitting ? 'Adding…' : 'Enter your name…'}
             maxLength={24}
             autoComplete="off"
+            disabled={submitting}
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+            onKeyDown={e => e.key === 'Enter' && !submitting && handleSubmit()}
+            onFocus={e => { if (!submitting) e.target.style.borderColor = 'var(--accent)'; }}
             onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
           />
-          {isAdmin && (
-            <button
-              className="px-2.5 py-2 font-['DM_Mono'] text-xs rounded-lg border transition-all cursor-pointer shrink-0"
-              style={{
-                borderColor: addAsAdmin ? 'var(--accent-gold)' : 'var(--border-mid)',
-                color: addAsAdmin ? 'var(--accent-gold)' : 'var(--text-muted)',
-                background: addAsAdmin ? 'rgba(224,144,16,0.08)' : 'var(--bg-elevated)',
-              }}
-              onClick={() => setAddAsAdmin(p => !p)}
-              title="Toggle: Add as Admin"
-            >👑</button>
-          )}
           <button
-            className="px-4 py-2 font-['DM_Mono'] font-bold rounded-lg text-sm active:scale-95 transition-all cursor-pointer shrink-0"
+            className="px-4 py-2 font-['DM_Mono'] font-bold rounded-lg text-sm transition-all cursor-pointer shrink-0"
             style={{
-              background: isAdmin && addAsAdmin ? 'var(--accent-gold)' : 'var(--accent)',
-              color: isAdmin && addAsAdmin ? '#1a0f00' : 'white',
+              background: submitting ? 'var(--bg-elevated)' : 'var(--accent)',
+              color: submitting ? 'var(--text-muted)' : 'white',
+              opacity: submitting ? 0.7 : 1,
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              transform: submitting ? 'none' : undefined,
             }}
+            disabled={submitting}
             onClick={handleSubmit}
           >
-            {isAdmin && addAsAdmin ? '👑 Add' : 'Submit'}
+            {submitting ? '…' : 'Submit'}
           </button>
         </div>
 
@@ -144,31 +160,29 @@ export function PlayersTab() {
         )}
       </div>
 
-      {/* Shared search bar — filters both Queue and Roster */}
+      {/* Shared search bar */}
       <div className="shrink-0 flex items-center gap-2 rounded-lg px-3 py-2 border" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}>
         <span className="text-sm t-dim">🔍</span>
         <input
           type="text"
           className="flex-1 bg-transparent font-['DM_Mono'] text-xs outline-none t-text"
-          placeholder="Search queue &amp; roster…"
-          value={qSearch}
-          onChange={e => setQSearch(e.target.value)}
+          placeholder="Search queue & roster…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
         />
-        {qSearch && (
+        {search && (
           <button
             className="font-['DM_Mono'] text-[10px] t-dim hover:t-text transition-colors cursor-pointer"
-            onClick={() => setQSearch('')}
+            onClick={() => setSearch('')}
           >✕</button>
         )}
       </div>
 
-      {/* Dual panel — fills all remaining height */}
+      {/* Dual panel */}
       <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
 
         {/* ── Queue ── */}
         <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden min-h-0">
-
-          {/* Panel header */}
           <div className="flex items-center justify-between px-3 py-2 border-b t-border shrink-0">
             <div className="flex items-center gap-2">
               <span className="font-['Bebas_Neue'] text-base tracking-widest t-text">📋 Queue</span>
@@ -176,20 +190,17 @@ export function PlayersTab() {
                 {players.length}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              {isAdmin && players.length > 0 && (
-                <button
-                  className="font-['DM_Mono'] text-[9px] px-2 py-1 rounded-md border transition-colors cursor-pointer"
-                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-                  onClick={clearQueue}
-                >Clear</button>
-              )}
-            </div>
+            {isAdmin && players.length > 0 && (
+              <button
+                className="font-['DM_Mono'] text-[9px] px-2 py-1 rounded-md border transition-colors cursor-pointer"
+                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+                onClick={clearQueue}
+              >Clear</button>
+            )}
           </div>
 
-          {/* 2-column chip grid — scrolls internally */}
           <div className="flex-1 overflow-y-auto p-2 min-h-0">
             {filteredQueue.length === 0 ? (
               <div className="flex items-center justify-center h-full">
@@ -199,7 +210,7 @@ export function PlayersTab() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-1">
-                {filteredQueue.map((p, i) => {
+                {filteredQueue.map(p => {
                   const inRoster = roster.includes(p.name);
                   return (
                     <div
@@ -215,11 +226,10 @@ export function PlayersTab() {
                       onDragEnd={() => setDragging(null)}
                       onClick={() => toggleRoster(p.name)}
                     >
-                      <span className="font-['DM_Mono'] text-[9px] w-4 text-right shrink-0 t-dim">{i + 1}</span>
+                      <span className="font-['DM_Mono'] text-[9px] w-4 text-right shrink-0 t-dim">{p.originalIndex}</span>
                       <span className="flex-1 font-['DM_Mono'] text-[11px] font-medium truncate" style={{ color: inRoster ? 'var(--accent-green)' : 'var(--text)' }}>
                         {p.name}
                       </span>
-                      {p.byAdmin && <span className="text-[9px] shrink-0" title="Added by admin">👑</span>}
                       {inRoster && <span className="text-[9px] shrink-0" style={{ color: 'var(--accent-green)' }}>✓</span>}
                       {isAdmin && (
                         <button
@@ -245,8 +255,6 @@ export function PlayersTab() {
 
         {/* ── Roster ── */}
         <div className="t-surface border t-border rounded-2xl flex flex-col shadow-sm overflow-hidden min-h-0">
-
-          {/* Panel header */}
           <div className="flex items-center justify-between px-3 py-2 border-b t-border shrink-0">
             <div className="flex items-center gap-2">
               <span className="font-['Bebas_Neue'] text-base tracking-widest t-text">✅ Roster</span>
@@ -269,7 +277,6 @@ export function PlayersTab() {
             )}
           </div>
 
-          {/* 2-column chip grid — scrolls internally */}
           <div
             className="flex-1 overflow-y-auto p-2 min-h-0"
             onDragOver={e => e.preventDefault()}
@@ -294,39 +301,40 @@ export function PlayersTab() {
                     drop zone
                   </div>
                 )}
-                {filteredRoster.map((name, i) => (
-                  <div
-                    key={name}
-                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all group"
-                    style={{
-                      background: 'var(--bg-elevated)',
-                      borderColor: 'var(--border)',
-                      cursor: isAdmin ? 'grab' : 'default',
-                    }}
-                    draggable={isAdmin}
-                    onDragStart={() => handleDragStart(name)}
-                    onDragEnd={() => setDragging(null)}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={e => handleRosterDrop(e, name)}
-                  >
-                    <span className="font-['DM_Mono'] text-[9px] w-4 text-right shrink-0 t-dim">{roster.indexOf(name) + 1}</span>
-                    <span className="flex-1 font-['DM_Mono'] text-[11px] font-medium truncate t-text">{name}</span>
-                    {isAdmin && <span className="font-['DM_Mono'] text-[9px] shrink-0 t-dim opacity-0 group-hover:opacity-100">≡</span>}
-                    {isAdmin && (
-                      <button
-                        className="text-[10px] leading-none shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                        style={{ color: 'var(--text-dim)' }}
-                        onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent-red)')}
-                        onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
-                        onClick={() => removeFromRoster(name)}
-                      >✕</button>
-                    )}
-                  </div>
-                ))}
-                {qSearch && filteredRoster.length === 0 && roster.length > 0 && (
+                {filteredRoster.length === 0 && term ? (
                   <div className="col-span-2 flex items-center justify-center py-4">
                     <p className="font-['DM_Mono'] text-xs t-dim">No matches in roster.</p>
                   </div>
+                ) : (
+                  filteredRoster.map(r => (
+                    <div
+                      key={r.name}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all group"
+                      style={{
+                        background: 'var(--bg-elevated)',
+                        borderColor: 'var(--border)',
+                        cursor: isAdmin ? 'grab' : 'default',
+                      }}
+                      draggable={isAdmin}
+                      onDragStart={() => handleDragStart(r.name)}
+                      onDragEnd={() => setDragging(null)}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => handleRosterDrop(e, r.name)}
+                    >
+                      <span className="font-['DM_Mono'] text-[9px] w-4 text-right shrink-0 t-dim">{r.originalIndex}</span>
+                      <span className="flex-1 font-['DM_Mono'] text-[11px] font-medium truncate t-text">{r.name}</span>
+                      {isAdmin && <span className="font-['DM_Mono'] text-[9px] shrink-0 t-dim opacity-0 group-hover:opacity-100">≡</span>}
+                      {isAdmin && (
+                        <button
+                          className="text-[10px] leading-none shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          style={{ color: 'var(--text-dim)' }}
+                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent-red)')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
+                          onClick={() => removeFromRoster(r.name)}
+                        >✕</button>
+                      )}
+                    </div>
+                  ))
                 )}
               </div>
             )}
