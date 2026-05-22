@@ -75,7 +75,6 @@ export function BracketTab() {
   const [generating, setGenerating] = useState(false);
   const [matchFormat, setMatchFormat] = useState<'bo1' | 'bo3'>('bo1');
 
-  // Local state to prevent "bouncing" animation when SWR polls the server during a format switch
   const [localElim, setLocalElim] = useState(elimMode);
   const [isUpdatingMode, setIsUpdatingMode] = useState(false);
 
@@ -238,12 +237,11 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
   const firstRound = validRounds[0];
   const hasGF = type === 'double' && section === 'upper' && gf && (gf.p1 || gf.p2);
   
-  // Calculate dynamic vertical offset to ensure Grand Final (which can be tall) never clips the top
   let offsetY = 20; 
   let extraHeight = 0;
   if (hasGF) {
     const finalY = getMatchTop(section, validRounds.length - 1, 0) + CARD_H / 2;
-    const gfHalfHeight = gf.isReset ? 120 : 60; // Approximate half height of the GrandFinal component
+    const gfHalfHeight = gf.isReset ? 120 : 60;
     if (finalY < gfHalfHeight) offsetY += (gfHalfHeight - finalY);
     extraHeight = Math.max(0, (gfHalfHeight * 2) - CARD_H);
   }
@@ -290,8 +288,6 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
             }
           });
         })}
-        
-        {/* Draw the final stub line connecting to the Grand Final (or 20px if no GF) */}
         {(() => {
           const lastColIdx = validRounds.length - 1;
           if (validRounds[lastColIdx].round.length !== 1) return null;
@@ -325,7 +321,6 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
         });
       })}
 
-      {/* Render Grand Final directly inside the Grid math for pixel-perfect alignment */}
       {hasGF && (
         <div style={{ position: 'absolute', top: cardCentreY(validRounds.length - 1, 0), left: validRounds.length * COL_W, transform: 'translateY(-50%)', width: CARD_W }}>
            <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase text-center mb-1.5" style={{ color: 'var(--accent)' }}>Grand Final</div>
@@ -345,7 +340,6 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
 
-  // Sync local draft scores with server truth
   useEffect(() => { setS1(match.score1); setS2(match.score2); }, [match.score1, match.score2]);
 
   const isBo3 = match.format === 'bo3';
@@ -372,17 +366,19 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
         )}
         <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
         <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
-        
-        {/* Explicit Save Bar replaces the broken Auto-Submit */}
-        {isModified && (
-          <div className="flex border-t t-border bg-[var(--bg-elevated)]">
-            <button className="flex-1 py-1.5 text-[10px] font-['DM_Mono'] font-bold text-[var(--accent-green)] hover:bg-[rgba(34,184,98,0.1)] transition-colors cursor-pointer" onClick={handleSave}>✓ SAVE SCORE</button>
-            <button className="px-3 py-1.5 border-l t-border text-[10px] font-['DM_Mono'] t-dim hover:t-text transition-colors cursor-pointer" onClick={handleCancel}>✕</button>
-          </div>
-        )}
       </div>
+
+      {/* Floating Save Actions (Occupies same space as Undo when active) */}
+      {isModified && (
+        <div className="flex flex-col gap-1.5" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)' }}>
+          <button title="Save Score" className="font-['DM_Mono'] text-[10px] font-bold text-[var(--accent-green)] hover:brightness-125 transition-all cursor-pointer whitespace-nowrap" onClick={handleSave}>✓ SAVE</button>
+          <button title="Cancel Edit" className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-all cursor-pointer whitespace-nowrap" onClick={handleCancel}>✕ CANCEL</button>
+        </div>
+      )}
+
+      {/* Floating Undo */}
       {canUndo && (
-        <button title="Undo this result" className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)', whiteSpace: 'nowrap' }} onClick={() => onUndo(section, ri, mi)}>↩</button>
+        <button title="Undo this result" className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)', whiteSpace: 'nowrap' }} onClick={() => onUndo(section, ri, mi)}>↩ UNDO</button>
       )}
     </div>
   );
@@ -409,14 +405,21 @@ function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
   const handleCancel = () => { setS1(match.score1); setS2(match.score2); };
 
   return (
-    <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
-      <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
-      <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
+    <div style={{ position: 'relative', width: 'fit-content' }}>
+      <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
+        <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
+        <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
+      </div>
+
       {isModified && (
-        <div className="flex border-t t-border bg-[var(--bg-elevated)]">
-          <button className="flex-1 py-1.5 text-[10px] font-['DM_Mono'] font-bold text-[var(--accent-green)] hover:bg-[rgba(34,184,98,0.1)] transition-colors cursor-pointer" onClick={handleSave}>✓ SAVE SCORE</button>
-          <button className="px-3 py-1.5 border-l t-border text-[10px] font-['DM_Mono'] t-dim hover:t-text transition-colors cursor-pointer" onClick={handleCancel}>✕</button>
+        <div className="flex flex-col gap-1.5" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)' }}>
+          <button title="Save Score" className="font-['DM_Mono'] text-[10px] font-bold text-[var(--accent-green)] hover:brightness-125 transition-all cursor-pointer whitespace-nowrap" onClick={handleSave}>✓ SAVE</button>
+          <button title="Cancel Edit" className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-all cursor-pointer whitespace-nowrap" onClick={handleCancel}>✕ CANCEL</button>
         </div>
+      )}
+
+      {canUndo && (
+        <button title="Undo this result" className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)', whiteSpace: 'nowrap' }} onClick={onUndo}>↩ UNDO</button>
       )}
     </div>
   );
@@ -451,21 +454,23 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <p className="font-['DM_Mono'] text-[10px] t-dim uppercase tracking-widest">GF1</p>
-        <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
-          {isBo3 && (
-            <div className="px-2 pt-1"><span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold" style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span></div>
-          )}
-          <PlayerRow player={gf.p1} score={gf1Done ? gf.score1 : gf1s1} isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p1} isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p1} showScore={gf1Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf1} isBo3={isBo3} onCommit={n => setGf1s1(n)} />
-          <PlayerRow player={gf.p2} score={gf1Done ? gf.score2 : gf1s2} isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p2} isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p2} showScore={gf1Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf1} isBo3={isBo3} onCommit={n => setGf1s2(n)} />
-          {gf.isReset && (
-            <div className="px-3 py-1.5 border-t t-border text-center" style={{ background: 'rgba(58,107,255,0.06)' }}>
-              <span className="font-['DM_Mono'] text-[9px] font-bold" style={{ color: 'var(--accent)' }}>🔄 BRACKET RESET — play GF2</span>
-            </div>
-          )}
+        <div style={{ position: 'relative' }}>
+          <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
+            {isBo3 && (
+              <div className="px-2 pt-1"><span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold" style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span></div>
+            )}
+            <PlayerRow player={gf.p1} score={gf1Done ? gf.score1 : gf1s1} isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p1} isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p1} showScore={gf1Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf1} isBo3={isBo3} onCommit={n => setGf1s1(n)} />
+            <PlayerRow player={gf.p2} score={gf1Done ? gf.score2 : gf1s2} isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p2} isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p2} showScore={gf1Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf1} isBo3={isBo3} onCommit={n => setGf1s2(n)} />
+            {gf.isReset && (
+              <div className="px-3 py-1.5 border-t t-border text-center" style={{ background: 'rgba(58,107,255,0.06)' }}>
+                <span className="font-['DM_Mono'] text-[9px] font-bold" style={{ color: 'var(--accent)' }}>🔄 BRACKET RESET — play GF2</span>
+              </div>
+            )}
+          </div>
           {gf1Modified && (
-            <div className="flex border-t t-border bg-[var(--bg-elevated)]">
-              <button className="flex-1 py-1.5 text-[10px] font-['DM_Mono'] font-bold text-[var(--accent-green)] hover:bg-[rgba(34,184,98,0.1)] transition-colors cursor-pointer" onClick={() => onScore('gf', 0, 0, gf1s1, gf1s2)}>✓ SAVE SCORE</button>
-              <button className="px-3 py-1.5 border-l t-border text-[10px] font-['DM_Mono'] t-dim hover:t-text transition-colors cursor-pointer" onClick={() => { setGf1s1(gf.score1); setGf1s2(gf.score2); }}>✕</button>
+            <div className="flex flex-col gap-1.5" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)' }}>
+              <button title="Save Score" className="font-['DM_Mono'] text-[10px] font-bold text-[var(--accent-green)] hover:brightness-125 transition-all cursor-pointer whitespace-nowrap" onClick={() => onScore('gf', 0, 0, gf1s1, gf1s2)}>✓ SAVE</button>
+              <button title="Cancel Edit" className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-all cursor-pointer whitespace-nowrap" onClick={() => { setGf1s1(gf.score1); setGf1s2(gf.score2); }}>✕ CANCEL</button>
             </div>
           )}
         </div>
@@ -474,16 +479,18 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
       {gf.isReset && (
         <div className="flex flex-col gap-1">
           <p className="font-['DM_Mono'] text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--accent)' }}>GF2 — Reset Match</p>
-          <div className="t-elevated border-2 rounded-xl overflow-hidden" style={{ width: CARD_W, borderColor: 'var(--accent)' }}>
-            {isBo3 && (
-              <div className="px-2 pt-1"><span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold" style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span></div>
-            )}
-            <PlayerRow player={gf.p1} score={gf2Done ? (gf.resetScore1 ?? 0) : gf2s1} isWinner={gf2Done && gf.winner === gf.p1} isLoser={gf2Done && gf.winner !== gf.p1} showScore={gf2Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf2} isBo3={isBo3} onCommit={n => setGf2s1(n)} />
-            <PlayerRow player={gf.p2} score={gf2Done ? (gf.resetScore2 ?? 0) : gf2s2} isWinner={gf2Done && gf.winner === gf.p2} isLoser={gf2Done && gf.winner !== gf.p2} showScore={gf2Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf2} isBo3={isBo3} onCommit={n => setGf2s2(n)} />
+          <div style={{ position: 'relative' }}>
+            <div className="t-elevated border-2 rounded-xl overflow-hidden" style={{ width: CARD_W, borderColor: 'var(--accent)' }}>
+              {isBo3 && (
+                <div className="px-2 pt-1"><span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold" style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span></div>
+              )}
+              <PlayerRow player={gf.p1} score={gf2Done ? (gf.resetScore1 ?? 0) : gf2s1} isWinner={gf2Done && gf.winner === gf.p1} isLoser={gf2Done && gf.winner !== gf.p1} showScore={gf2Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf2} isBo3={isBo3} onCommit={n => setGf2s1(n)} />
+              <PlayerRow player={gf.p2} score={gf2Done ? (gf.resetScore2 ?? 0) : gf2s2} isWinner={gf2Done && gf.winner === gf.p2} isLoser={gf2Done && gf.winner !== gf.p2} showScore={gf2Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf2} isBo3={isBo3} onCommit={n => setGf2s2(n)} />
+            </div>
             {gf2Modified && (
-              <div className="flex border-t t-border bg-[var(--bg-elevated)]">
-                <button className="flex-1 py-1.5 text-[10px] font-['DM_Mono'] font-bold text-[var(--accent-green)] hover:bg-[rgba(34,184,98,0.1)] transition-colors cursor-pointer" onClick={() => onScore('gf', 0, 0, gf2s1, gf2s2)}>✓ SAVE SCORE</button>
-                <button className="px-3 py-1.5 border-l t-border text-[10px] font-['DM_Mono'] t-dim hover:t-text transition-colors cursor-pointer" onClick={() => { setGf2s1(gf.resetScore1 ?? 0); setGf2s2(gf.resetScore2 ?? 0); }}>✕</button>
+              <div className="flex flex-col gap-1.5" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)' }}>
+                <button title="Save Score" className="font-['DM_Mono'] text-[10px] font-bold text-[var(--accent-green)] hover:brightness-125 transition-all cursor-pointer whitespace-nowrap" onClick={() => onScore('gf', 0, 0, gf2s1, gf2s2)}>✓ SAVE</button>
+                <button title="Cancel Edit" className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-all cursor-pointer whitespace-nowrap" onClick={() => { setGf2s1(gf.resetScore1 ?? 0); setGf2s2(gf.resetScore2 ?? 0); }}>✕ CANCEL</button>
               </div>
             )}
           </div>
