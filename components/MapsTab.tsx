@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
-import { WHEEL_COLORS, parseStageMaps } from '@/lib/utils';
+import { WHEEL_COLORS } from '@/lib/utils';
 
 export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }: {
   spunMap: string;
@@ -10,21 +10,22 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
   spinResults: string[];
   onSpinResultsChange: (results: string[]) => void;
 }) {
-  const { maps, stageMaps, bracket, isAdmin, loading, addMap, removeMap, assignStage, clearStage } = useTourney();
+  const { maps, isAdmin, loading, addMap, removeMap } = useTourney();
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const angleRef = useRef(0);
   const [spinning, setSpinning] = useState(false);
-  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
-  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
   
-  // Default maps — persisted in localStorage per-session for admin
+  // Persisted Default Maps
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
   });
-  // Removed maps that were in the pool (for restore button)
-  const [removedFromPool, setRemovedFromPool] = useState<string[]>([]);
+  
+  // Persisted Removed Maps (Guarantees the restore button always works)
+  const [removedFromPool, setRemovedFromPool] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('removedMaps') ?? '[]'); } catch { return []; }
+  });
 
   const toggleDefault = (map: string) => {
     setDefaultMaps(prev => {
@@ -34,14 +35,27 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
     });
   };
 
-  const handleRestoreMap = async (map: string) => {
-    const result = await addMap(map);
-    if (!result?.error) {
-      setRemovedFromPool(prev => prev.filter(m => m !== map));
-    }
+  const handleRemoveMap = async (mapToRemove: string) => {
+    await removeMap(mapToRemove);
+    setRemovedFromPool(prev => {
+      if (prev.includes(mapToRemove)) return prev;
+      const next = [...prev, mapToRemove];
+      localStorage.setItem('removedMaps', JSON.stringify(next));
+      return next;
+    });
+    if (spunMap === mapToRemove) onSpunMap('');
   };
 
-  const getStageMaps = (key: string): string[] => parseStageMaps(stageMaps[key]);
+  const handleRestoreMap = async (mapToRestore: string) => {
+    const result = await addMap(mapToRestore);
+    if (!result?.error) {
+      setRemovedFromPool(prev => {
+        const next = prev.filter(m => m !== mapToRestore);
+        localStorage.setItem('removedMaps', JSON.stringify(next));
+        return next;
+      });
+    }
+  };
 
   if (loading) return (
     <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
@@ -111,7 +125,6 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = maps[Math.floor(norm / slice) % maps.length];
       onSpunMap(result);
-      // Parent handles pushing this result to the spinResults array
     };
     requestAnimationFrame(tick);
   };
@@ -124,34 +137,13 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
     setMapInput(''); setMapErr('');
   };
 
-  const getStageLabels = () => {
-    if (!bracket) return [];
-    const labels: { key: string; label: string }[] = [];
-    bracket.upper.forEach((_, ri) => labels.push({ key: `upper_r${ri}`, label: `Winners R${ri + 1}` }));
-    if (bracket.type === 'double' && bracket.lower) {
-      bracket.lower.forEach((r, ri) => {
-        if (r.length) labels.push({ key: `lower_r${ri}`, label: `Losers R${ri + 1}` });
-      });
-      if (bracket.grandFinal && (bracket.grandFinal.p1 || bracket.grandFinal.p2)) {
-        labels.push({ key: 'gf', label: 'Grand Final' });
-      }
-    }
-    return labels;
-  };
-
-  const stages = getStageLabels();
-
-  const usedMaps = new Set(
-    Object.values(stageMaps).flatMap(v => parseStageMaps(v))
-  );
-
   return (
     <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
 
       <div>
         <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Map Selector</h1>
         <p className="font-['DM_Mono'] text-xs t-muted">
-          {isAdmin ? 'Spin the wheel · Drag maps onto bracket stages · Each stage supports up to 3 maps' : 'View only — admin required to edit'}
+          {isAdmin ? 'Spin the wheel to build a map queue. Bracket automatically picks from the queue.' : 'View only — admin required to edit'}
         </p>
       </div>
 
@@ -191,14 +183,19 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
                 {m}
                 {isAdmin && (
-                  <span className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0" onClick={() => removeMap(m)}>✕</span>
+                  <span 
+                    className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0" 
+                    onClick={() => handleRemoveMap(m)}
+                  >
+                    ✕
+                  </span>
                 )}
               </span>
             ))}
             {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'No maps yet.' : 'No maps added.'}</p>}
           </div>
 
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-2 mt-4">
             <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
             <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
             <button
@@ -210,15 +207,16 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               🌀 SPIN
             </button>
 
+            {/* Completely unconstrained Spun Map container to fix clipping */}
             {spunMap && (
-              <div className="flex flex-col items-center gap-2 w-full max-w-[220px] mx-auto mt-2">
-                <p className="font-['Bebas_Neue'] text-2xl tracking-widest text-center break-words" style={{ color: 'var(--accent-gold)' }}>🎯 {spunMap}</p>
+              <div className="flex flex-col items-center justify-center gap-3 w-full mt-4 p-2">
+                <p className="font-['Bebas_Neue'] text-3xl tracking-widest text-center break-words w-full" style={{ color: 'var(--accent-gold)' }}>🎯 {spunMap}</p>
                 {isAdmin && (
                   <button
-                    className="w-full shrink-0 whitespace-nowrap px-3 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer"
+                    className="flex-none px-5 py-2.5 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer"
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-red)'; e.currentTarget.style.color = 'var(--accent-red)'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
-                    onClick={async () => { await removeMap(spunMap); setRemovedFromPool(prev => [...prev, spunMap]); onSpunMap(''); }}
+                    onClick={() => handleRemoveMap(spunMap)}
                   >
                     🗑 Remove from pool
                   </button>
@@ -240,10 +238,9 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
             )}
           </div>
           
-          {/* Spin results queue — each round in bracket consumes one */}
           <div className="flex flex-col gap-1.5">
             {spinResults.length === 0 ? (
-              <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue for rounds.</p>
+              <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue. The bracket automatically assigns them in order.</p>
             ) : (
               spinResults.map((m, i) => (
                 <div key={i} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 flex-wrap gap-2">
@@ -263,91 +260,22 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
           </div>
 
           <hr className="t-border" />
-          
-          {/* Renamed from "Stage Assignment" to "Spin Results Assignment" to clarify intent */}
-          <h3 className="font-['Bebas_Neue'] text-lg tracking-widest t-text">📌 Spin Results Assignment</h3>
-
-          {!bracket ? (
-            <p className="font-['DM_Mono'] text-xs t-dim text-center py-4">Generate a bracket first.</p>
-          ) : (
-            <div className="space-y-2">
-              {stages.map(s => {
-                const stageMapsArr = getStageMaps(s.key);
-                return (
-                  <div key={s.key} className="t-elevated border t-border rounded-xl px-4 py-3">
-                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                      <span className="font-['Bebas_Neue'] text-sm tracking-widest t-text">{s.label}</span>
-                      <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim">{stageMapsArr.length}/3</span>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      {Array.from({ length: 3 }, (_, slotIdx) => {
-                        const map = stageMapsArr[slotIdx];
-                        const isOver = dragOverStage === s.key && dragOverSlot === slotIdx;
-                        return (
-                          <div
-                            key={slotIdx}
-                            className="flex-1 min-w-[80px] min-h-8 border-2 border-dashed rounded-lg flex items-center justify-center font-['DM_Mono'] text-xs transition-all px-2 py-1"
-                            style={{
-                              borderColor: map ? 'var(--accent)' : isOver ? 'var(--accent-gold)' : 'var(--border-mid)',
-                              background:  map ? 'rgba(58,107,255,0.07)' : isOver ? 'rgba(224,144,16,0.07)' : undefined,
-                              color: map ? 'var(--accent)' : 'var(--text-dim)',
-                              borderStyle: map ? 'solid' : 'dashed',
-                            }}
-                            onDragOver={isAdmin ? e => { e.preventDefault(); setDragOverStage(s.key); setDragOverSlot(slotIdx); } : undefined}
-                            onDragLeave={isAdmin ? () => { setDragOverStage(null); setDragOverSlot(null); } : undefined}
-                            onDrop={isAdmin ? async e => {
-                              e.preventDefault(); setDragOverStage(null); setDragOverSlot(null);
-                              const m = e.dataTransfer.getData('text/plain');
-                              if (m) await assignStage(s.key, m, slotIdx);
-                            } : undefined}
-                          >
-                            {map ? (
-                              <div className="flex items-center justify-center overflow-hidden">
-                                <span className="truncate text-[10px]">🗺 {map}</span>
-                                {isAdmin && (
-                                  <button
-                                    className="ml-1.5 shrink-0 t-dim hover:text-[var(--accent-red)] transition-colors text-sm cursor-pointer"
-                                    onClick={() => clearStage(s.key, slotIdx)}
-                                  >✕</button>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-[10px] whitespace-nowrap">{isOver ? '+ drop' : `Map ${slotIdx + 1}`}</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <hr className="t-border" />
-          <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest">MAP POOL</p>
+          <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest">MAP POOL DEFAULTS</p>
           <div className="flex flex-wrap gap-2">
             {maps.map(m => {
-              const used = usedMaps.has(m);
               const isDefault = defaultMaps.includes(m);
               return (
                 <div
                   key={m}
                   className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5 shrink-0"
-                  style={{ opacity: used ? 0.35 : 1, cursor: used || !isAdmin ? 'default' : 'grab' }}
-                  draggable={!used && isAdmin}
-                  onDragStart={e => e.dataTransfer.setData('text/plain', m)}
-                  title={used ? 'Already assigned' : isAdmin ? 'Drag to a stage slot' : undefined}
-                  onMouseEnter={e => { if (!used && isAdmin) { e.currentTarget.style.borderColor = 'var(--accent)'; }}}
-                  onMouseLeave={e => { if (!used && isAdmin) { e.currentTarget.style.borderColor = ''; }}}
                 >
-                  <span className="truncate max-w-[120px]">{m}</span>
+                  <span className="truncate max-w-[150px]">{m}</span>
                   {isAdmin && (
                     <button
                       title={isDefault ? 'Remove from defaults' : 'Set as default map (restored after reset)'}
                       className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
                       style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
-                      onClick={e => { e.stopPropagation(); toggleDefault(m); }}
+                      onClick={() => toggleDefault(m)}
                     >★</button>
                   )}
                 </div>
@@ -356,15 +284,14 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
             {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
           </div>
 
-          {/* Defaults legend */}
           {isAdmin && defaultMaps.filter(m => maps.includes(m)).length > 0 && (
             <p className="font-['DM_Mono'] text-[10px] t-dim">★ = default map (stays in pool after reset)</p>
           )}
 
-          {/* Restore removed maps */}
+          {/* Restore removed maps - Guarantee to show maps deleted manually */}
           {isAdmin && removedFromPool.filter(m => !maps.includes(m)).length > 0 && (
             <>
-              <hr className="t-border" />
+              <hr className="t-border mt-2" />
               <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest">RESTORE MAPS</p>
               <div className="flex flex-wrap gap-2">
                 {removedFromPool.filter(m => !maps.includes(m)).map(m => (
