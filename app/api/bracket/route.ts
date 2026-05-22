@@ -391,9 +391,9 @@ export async function PATCH(req: NextRequest) {
     seedLBDropIn(bracket.lower, ri * 2, loser, mi);
   }
 
-  // Advance any byes created by the seeding above (only for truly null slots, not pending matches)
+  // Only run autoByes on the upper bracket — LB slots are filled by UB losers (drop-in),
+  // never by structural byes, so autoByes must never touch the lower bracket.
   bracket.upper = autoByes(bracket.upper);
-  if (bracket.lower) bracket.lower = autoByes(bracket.lower);
   if (bracket.grandFinal?.winner) bracket.champion = bracket.grandFinal.winner;
 
   const next = await updateState(s => ({ ...s, bracket }));

@@ -93,7 +93,7 @@ function PlayerRow({
               minWidth: 20,
               textAlign: 'center',
             }}
-            title={canEdit ? 'Click to edit score' : undefined}
+            title={canEdit ? (isBo3 ? 'Click to edit (0–2)' : 'Click to edit (0 or 1)') : undefined}
             onClick={startEdit}
           >
             {score}
@@ -468,13 +468,6 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
         canEdit={canEdit} isBo3={isBo3} otherScore={s1}
         onCommit={n => { setS2(n); trySubmit(s1, n); }}
       />
-      {canEdit && (
-        <div className="px-3 py-0.5" style={{ background: 'var(--bg-hover)' }}>
-          <p className="font-['DM_Mono'] text-[8px] t-dim text-center">
-            {isBo3 ? 'click score → 0–2' : 'click score → 1 or 0'}
-          </p>
-        </div>
-      )}
       {canUndo && (
         <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
           <button
