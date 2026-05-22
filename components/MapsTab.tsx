@@ -127,13 +127,6 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
         </p>
       </div>
 
-      {/* View-only banner */}
-      {!isAdmin && (
-        <div className="t-surface border t-border rounded-2xl px-5 py-3 font-['DM_Mono'] text-sm t-muted flex items-center gap-2 shrink-0">
-          🔒 <span>Admin access required to add maps or assign stages.</span>
-        </div>
-      )}
-
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
 
         {/* Wheel panel */}

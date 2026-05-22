@@ -110,13 +110,7 @@ export function TeamsTab() {
         <p className="font-['DM_Mono'] text-xs t-muted">5 players per team · {isAdmin ? 'Admin controls below' : 'View only — admin required to edit'}</p>
       </div>
 
-      {!isAdmin && (
-        <div className="t-surface border t-border rounded-2xl px-5 py-3 font-['DM_Mono'] text-sm t-muted flex items-center gap-2">
-          🔒 <span>Admin access required to form or modify teams.</span>
-        </div>
-      )}
-
-      <div className={`flex-1 flex flex-col gap-4 min-h-0 ${!isAdmin ? 'min-h-0' : ''}`}>
+      <div className="flex-1 flex flex-col gap-4 min-h-0">
         {isAdmin && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 shrink-0">
             {/* Mode selector */}
@@ -189,7 +183,7 @@ export function TeamsTab() {
                 <p className="font-['DM_Mono'] text-[11px] t-muted mb-4">
                   Pool: <span style={{ color: 'var(--accent-gold)' }}>{getPool().join(', ') || '—'}</span>
                 </p>
-                <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-48">
+                <div className="grid grid-cols-2 gap-3 overflow-y-auto" style={{ maxHeight: '160px' }}>
                   {Array.from({ length: n }, (_, i) => (
                     <div key={i} className="t-elevated border t-border rounded-xl p-3">
                       <h4 className="font-['Bebas_Neue'] text-sm tracking-widest mb-2" style={{ color: TEAM_COLORS[i % TEAM_COLORS.length] }}>

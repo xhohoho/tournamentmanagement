@@ -147,69 +147,62 @@ export function BracketTab() {
         </p>
       </div>
 
-      {!isAdmin && (
-        <div className="t-surface border t-border rounded-2xl px-5 py-3 font-['DM_Mono'] text-sm t-muted flex items-center gap-2 shrink-0">
-          🔒 <span>Admin access required to generate or update the bracket.</span>
-        </div>
-      )}
-
       {isAdmin && (
-        <div className="t-surface border t-border rounded-2xl p-5 shrink-0">
-          <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">Format</h2>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            {[
-              { id: 'single', icon: '⚔️', label: 'Single Elimination', desc: 'One loss = out. Losers of semis play for 3rd place.' },
-              { id: 'double', icon: '🛡️', label: 'Double Elimination', desc: 'Two losses = out. Losers drop to a second bracket.' },
-            ].map(opt => (
-              <div
-                key={opt.id}
-                className="p-5 rounded-xl border-2 transition-all select-none"
-                style={{
-                  borderColor: elimMode === opt.id ? 'var(--accent-red)' : 'var(--border)',
-                  background: elimMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
-                  cursor: hasBracket ? 'not-allowed' : 'pointer',
-                  opacity: hasBracket ? 0.5 : 1,
-                }}
-                onClick={() => !hasBracket && setElimMode(opt.id as 'single' | 'double')}
-              >
-                <div className="text-3xl mb-2">{opt.icon}</div>
-                <div className="font-bold text-sm mb-1 t-text">{opt.label}</div>
-                <div className="font-['DM_Mono'] text-[11px] t-muted">{opt.desc}</div>
-                {hasBracket && elimMode === opt.id && (
-                  <div className="mt-2 font-['DM_Mono'] text-[10px]" style={{ color: 'var(--accent-red)' }}>● Active</div>
-                )}
-              </div>
-            ))}
+        <div className="t-surface border t-border rounded-2xl p-4 shrink-0">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="font-['Bebas_Neue'] text-base tracking-widest t-text shrink-0">Format</span>
+            <div className="flex gap-2 flex-1 min-w-0">
+              {[
+                { id: 'single', icon: '⚔️', label: 'Single Elim', desc: 'One loss = out' },
+                { id: 'double', icon: '🛡️', label: 'Double Elim', desc: 'Two losses = out' },
+              ].map(opt => (
+                <div
+                  key={opt.id}
+                  className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border-2 transition-all select-none flex-1"
+                  style={{
+                    borderColor: elimMode === opt.id ? 'var(--accent-red)' : 'var(--border)',
+                    background: elimMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
+                    cursor: hasBracket ? 'not-allowed' : 'pointer',
+                    opacity: hasBracket && elimMode !== opt.id ? 0.45 : 1,
+                  }}
+                  onClick={() => !hasBracket && setElimMode(opt.id as 'single' | 'double')}
+                >
+                  <span className="text-xl shrink-0">{opt.icon}</span>
+                  <div className="min-w-0">
+                    <div className="font-['DM_Mono'] text-xs font-bold t-text truncate">
+                      {opt.label}
+                      {hasBracket && elimMode === opt.id && (
+                        <span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>● Active</span>
+                      )}
+                    </div>
+                    <div className="font-['DM_Mono'] text-[10px] t-muted">{opt.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {!hasBracket ? (
+                <button
+                  className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+                  style={{ background: 'var(--accent-red)' }}
+                  onClick={handleGenerate}
+                  disabled={!hasTeams || generating}
+                >
+                  {generating ? '⏳ Generating…' : '⚡ Generate Bracket'}
+                </button>
+              ) : (
+                <button
+                  className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap"
+                  onClick={resetBracket}
+                >
+                  Reset Bracket
+                </button>
+              )}
+            </div>
           </div>
-
-          {hasBracket && (
-            <p className="font-['DM_Mono'] text-[11px] t-dim mb-3">
-              ⚠ Format is locked once generated. Reset the bracket to change it.
-            </p>
-          )}
-
-          <div className="flex items-center gap-3 flex-wrap">
-            {!hasBracket && (
-              <button
-                className="px-5 py-2 font-['DM_Mono'] font-bold rounded-xl text-sm text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                style={{ background: 'var(--accent-red)' }}
-                onClick={handleGenerate}
-                disabled={!hasTeams || generating}
-              >
-                {generating ? '⏳ Generating…' : '⚡ Generate Bracket'}
-              </button>
-            )}
-            {!hasTeams && <p className="font-['DM_Mono'] text-xs t-muted">⚠ Form teams first.</p>}
-            {err && <p className="font-['DM_Mono'] text-xs" style={{ color: 'var(--accent-red)' }}>{err}</p>}
-            {hasBracket && (
-              <button
-                className="ml-auto px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)]"
-                onClick={resetBracket}
-              >
-                Reset Bracket
-              </button>
-            )}
-          </div>
+          {!hasTeams && <p className="font-['DM_Mono'] text-[11px] mt-2" style={{ color: 'var(--accent-red)' }}>⚠ Form teams first.</p>}
+          {hasBracket && <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">⚠ Format locked — reset to change.</p>}
+          {err && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-red)' }}>{err}</p>}
         </div>
       )}
 
