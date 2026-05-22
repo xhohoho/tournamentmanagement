@@ -186,16 +186,39 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
   const isBo3 = bracket.upper[0]?.[0]?.format === 'bo3';
   const globalFormat = isBo3 ? 'Best of 3' : 'Best of 1';
 
-  // Build a global round-index map for spin results assignment INSIDE the component where `bracket` exists.
-  const upperRoundCount = bracket.upper.length;
-  const lowerRoundCount = bracket.lower ? bracket.lower.filter(r => r.length > 0).length : 0;
+  // Calculate exact map allocations for each round sequentially
+  const spinMapAllocations = new Map<string, string[]>();
+  let spinIdx = 0;
 
-  const getSpinMap = (section: string, ri: number): string | null => {
-    let idx: number;
-    if (section === 'upper') idx = ri;
-    else if (section === 'lower') idx = upperRoundCount + ri;
-    else idx = upperRoundCount + lowerRoundCount; // gf
-    return spinResults[idx] ?? null;
+  const allocateMaps = (section: string, rounds: BracketMatch[][]) => {
+    rounds.forEach((round, ri) => {
+      if (round.length === 0) return;
+      // Check if this specific round is BO3 or BO1
+      const isRoundBo3 = round[0]?.format === 'bo3';
+      const needed = isRoundBo3 ? 3 : 1;
+      
+      spinMapAllocations.set(`${section}_${ri}`, spinResults.slice(spinIdx, spinIdx + needed));
+      spinIdx += needed;
+    });
+  };
+
+  if (bracket.upper) allocateMaps('upper', bracket.upper);
+  if (bracket.lower) allocateMaps('lower', bracket.lower);
+  
+  if (isSingle && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2)) {
+    const needed = bracket.thirdPlace.format === 'bo3' ? 3 : 1;
+    spinMapAllocations.set('thirdPlace_0', spinResults.slice(spinIdx, spinIdx + needed));
+    spinIdx += needed;
+  }
+  
+  if (bracket.grandFinal && (bracket.grandFinal.p1 || bracket.grandFinal.p2)) {
+    const needed = bracket.grandFinal.format === 'bo3' ? 3 : 1;
+    spinMapAllocations.set('gf_0', spinResults.slice(spinIdx, spinIdx + needed));
+    spinIdx += needed;
+  }
+
+  const getSpinMaps = (section: string, ri: number): string[] => {
+    return spinMapAllocations.get(`${section}_${ri}`) || [];
   };
 
   return (
@@ -213,7 +236,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
           </div>
         </div>
         <div className="overflow-x-auto overflow-y-visible pb-4">
-          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} gf={bracket.grandFinal} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} getSpinMap={getSpinMap} />
+          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} gf={bracket.grandFinal} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} getSpinMaps={getSpinMaps} />
         </div>
       </div>
 
@@ -228,7 +251,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
         <div className="t-surface border t-border rounded-xl p-5 shrink-0">
           <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
           <div className="overflow-x-auto overflow-y-visible pb-4">
-            <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} getSpinMap={getSpinMap} />
+            <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} getSpinMaps={getSpinMaps} />
           </div>
         </div>
       )}
@@ -246,12 +269,12 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
 }
 
 // ── BracketGrid ───────────────────────────────────────────────────────────────
-function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, isAdmin, getSpinMap }: {
+function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, isAdmin, getSpinMaps }: {
   rounds: BracketMatch[][]; section: string; type: 'single' | 'double'; gf?: GrandFinal | null;
   stageMaps: Record<string, string[]>;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
-  getSpinMap: (section: string, ri: number) => string | null;
+  getSpinMaps: (section: string, ri: number) => string[];
 }) {
   const validRounds = rounds.map((r, i) => ({ round: r, ri: i })).filter(({ round }) => round.length > 0);
   if (validRounds.length === 0) return null;
@@ -323,21 +346,22 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
       {validRounds.map(({ round, ri }, colIdx) => {
         const sk = `${section}_r${ri}`;
         const stageMapsArr: string[] = parseStageMaps(stageMaps[sk]);
-        // Prefer stage-assigned maps; fall back to spin result for this round
-        const spinMap = getSpinMap(section, ri);
-        const maps: string[] = stageMapsArr.length > 0 ? stageMapsArr : (spinMap ? [spinMap] : []);
-        const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
         
+        // Grab multiple maps (1 for BO1, 3 for BO3) directly from our helper
+        const spinMaps = getSpinMaps(section, ri);
+        const maps: string[] = stageMapsArr.length > 0 ? stageMapsArr : spinMaps;
+        const isSpinFallback = stageMapsArr.length === 0 && spinMaps.length > 0;
+        
+        const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
         const label = isFinalCol 
           ? (section === 'upper' ? (type === 'double' ? 'Winners Final' : 'Final') : 'LB Final') 
           : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
 
         return round.map((match, mi) => {
-        const top = getMatchTop(section, colIdx, mi) + offsetY;
-        const left = colIdx * COL_W;
-        const isSpinFallback = stageMapsArr.length === 0 && spinMap !== null;
-        return (
-              <div key={`card-${colIdx}-${mi}`} style={{ position: 'absolute', top, left, width: CARD_W }}>
+          const top = getMatchTop(section, colIdx, mi) + offsetY;
+          const left = colIdx * COL_W;
+          return (
+            <div key={`card-${colIdx}-${mi}`} style={{ position: 'absolute', top, left, width: CARD_W }}>
               {mi === 0 && (
                 <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim text-center" style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6, whiteSpace: 'nowrap' }}>{label}</div>
               )}
