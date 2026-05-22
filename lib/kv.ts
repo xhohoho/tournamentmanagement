@@ -15,6 +15,7 @@ export function defaultState(): TournamentState {
     stageMaps: {},
     joinKey: '',
     chatMessages: [],
+    defaultMaps: [],
   };
 }
 export async function getState(): Promise<TournamentState> {

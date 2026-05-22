@@ -63,6 +63,7 @@ export interface ServerState {
   stageMaps: Record<string, string[]>; // key -> up to 3 map names (BO3)
   joinKey: string;          // empty string = no key required
   chatMessages: ChatMessage[];
+  defaultMaps: string[];     // maps that are always restored after reset
 }
 
 /**
