@@ -4,7 +4,12 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { WHEEL_COLORS, parseStageMaps } from '@/lib/utils';
 
-export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (map: string) => void }) {
+export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }: {
+  spunMap: string;
+  onSpunMap: (map: string) => void;
+  spinResults: string[];
+  onSpinResultsChange: (results: string[]) => void;
+}) {
   const { maps, stageMaps, bracket, isAdmin, loading, addMap, removeMap, assignStage, clearStage } = useTourney();
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
@@ -13,6 +18,28 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
   const [spinning, setSpinning] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
+  // Spin results queue — managed by parent, each spin appends
+  // Default maps — persisted in localStorage per-session for admin
+  const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
+  });
+  // Removed maps that were in the pool (for restore button)
+  const [removedFromPool, setRemovedFromPool] = useState<string[]>([]);
+
+  const toggleDefault = (map: string) => {
+    setDefaultMaps(prev => {
+      const next = prev.includes(map) ? prev.filter(m => m !== map) : [...prev, map];
+      localStorage.setItem('defaultMaps', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleRestoreMap = async (map: string) => {
+    const result = await addMap(map);
+    if (!result?.error) {
+      setRemovedFromPool(prev => prev.filter(m => m !== map));
+    }
+  };
 
   const getStageMaps = (key: string): string[] => parseStageMaps(stageMaps[key]);
 
@@ -80,14 +107,11 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
       if (t < 1) { requestAnimationFrame(tick); return; }
       setSpinning(false);
       const slice = (Math.PI * 2) / maps.length;
-      // Pointer is at 12 o'clock = -π/2 in canvas coords (3 o'clock = 0).
-      // The wheel drew slice i starting at: angle + i * slice.
-      // We need the slice index where the pointer angle falls inside [start, end).
-      // Pointer canvas angle = -π/2, so relative to wheel start: (-π/2 - angle)
-      // Normalise to [0, 2π) then divide by slice size.
       const pointerAngle = -Math.PI / 2;
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-      onSpunMap(maps[Math.floor(norm / slice) % maps.length]);
+      const result = maps[Math.floor(norm / slice) % maps.length];
+      onSpunMap(result);
+      // Append to spin results queue — parent handles accumulation
     };
     requestAnimationFrame(tick);
   };
@@ -187,14 +211,14 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
             </button>
 
             {spunMap && (
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-2 w-full">
                 <p className="font-['Bebas_Neue'] text-2xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>🎯 {spunMap}</p>
                 {isAdmin && (
                   <button
-                    className="px-3 py-1.5 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer"
+                    className="w-full px-3 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer"
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-red)'; e.currentTarget.style.color = 'var(--accent-red)'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
-                    onClick={async () => { await removeMap(spunMap); onSpunMap(''); }}
+                    onClick={async () => { await removeMap(spunMap); setRemovedFromPool(prev => [...prev, spunMap]); onSpunMap(''); }}
                   >
                     🗑 Remove from pool
                   </button>
@@ -204,12 +228,44 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
           </div>
         </div>
 
-        {/* Stage assignment panel */}
+        {/* Spin Results panel */}
         <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4 overflow-y-auto">
-          <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">📌 Stage Assignment</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results</h2>
+            {isAdmin && spinResults.length > 0 && (
+              <button
+                className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer"
+                onClick={() => onSpinResultsChange([])}
+              >clear all</button>
+            )}
+          </div>
+          {/* Spin results queue — each round in bracket consumes one */}
+          <div className="flex flex-col gap-1.5">
+            {spinResults.length === 0 ? (
+              <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue for rounds.</p>
+            ) : (
+              spinResults.map((m, i) => (
+                <div key={i} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{i + 1}</span>
+                    <span className="font-['DM_Mono'] text-sm t-text">🗺 {m}</span>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors"
+                      onClick={() => onSpinResultsChange(spinResults.filter((_, idx) => idx !== i))}
+                    >✕</button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <hr className="t-border" />
+          <h3 className="font-['Bebas_Neue'] text-lg tracking-widest t-text">📌 Stage Assignment</h3>
 
           {!bracket ? (
-            <p className="font-['DM_Mono'] text-xs t-dim text-center py-8">Generate a bracket first.</p>
+            <p className="font-['DM_Mono'] text-xs t-dim text-center py-4">Generate a bracket first.</p>
           ) : (
             <div className="space-y-2">
               {stages.map(s => {
@@ -270,23 +326,58 @@ export function MapsTab({ spunMap, onSpunMap }: { spunMap: string; onSpunMap: (m
           <div className="flex flex-wrap gap-2">
             {maps.map(m => {
               const used = usedMaps.has(m);
+              const isDefault = defaultMaps.includes(m);
               return (
                 <div
                   key={m}
-                  className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all"
+                  className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5"
                   style={{ opacity: used ? 0.35 : 1, cursor: used || !isAdmin ? 'default' : 'grab' }}
                   draggable={!used && isAdmin}
                   onDragStart={e => e.dataTransfer.setData('text/plain', m)}
                   title={used ? 'Already assigned' : isAdmin ? 'Drag to a stage slot' : undefined}
-                  onMouseEnter={e => { if (!used && isAdmin) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}}
-                  onMouseLeave={e => { if (!used && isAdmin) { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}}
+                  onMouseEnter={e => { if (!used && isAdmin) { e.currentTarget.style.borderColor = 'var(--accent)'; }}}
+                  onMouseLeave={e => { if (!used && isAdmin) { e.currentTarget.style.borderColor = ''; }}}
                 >
                   {m}
+                  {isAdmin && (
+                    <button
+                      title={isDefault ? 'Remove from defaults' : 'Set as default map (restored after reset)'}
+                      className="transition-colors cursor-pointer text-xs leading-none"
+                      style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
+                      onClick={e => { e.stopPropagation(); toggleDefault(m); }}
+                    >★</button>
+                  )}
                 </div>
               );
             })}
             {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
           </div>
+
+          {/* Defaults legend */}
+          {isAdmin && defaultMaps.filter(m => maps.includes(m)).length > 0 && (
+            <p className="font-['DM_Mono'] text-[10px] t-dim">★ = default map (stays in pool after reset)</p>
+          )}
+
+          {/* Restore removed maps */}
+          {isAdmin && removedFromPool.filter(m => !maps.includes(m)).length > 0 && (
+            <>
+              <hr className="t-border" />
+              <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest">RESTORE MAPS</p>
+              <div className="flex flex-wrap gap-2">
+                {removedFromPool.filter(m => !maps.includes(m)).map(m => (
+                  <button
+                    key={m}
+                    className="flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm cursor-pointer transition-colors"
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; e.currentTarget.style.color = 'var(--accent-green)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
+                    onClick={() => handleRestoreMap(m)}
+                  >
+                    ↩ {m}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

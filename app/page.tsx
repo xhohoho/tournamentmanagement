@@ -22,6 +22,12 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
   const [spunMap, setSpunMap] = useState('');
+  const [spinResults, setSpinResults] = useState<string[]>([]);
+
+  const handleSpunMap = (map: string) => {
+    setSpunMap(map);
+    if (map) setSpinResults(prev => [...prev, map]);
+  };
   const [dark, setDark] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -142,8 +148,9 @@ export default function Home() {
           <div className="flex-1 min-h-0 flex flex-col px-8">
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={setSpunMap} /></div>
+
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={spinResults} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={handleSpunMap} spinResults={spinResults} onSpinResultsChange={setSpinResults} /></div>
           </div>
         </main>
       </div>

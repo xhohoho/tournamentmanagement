@@ -11,6 +11,20 @@ const COL_GAP = 72;
 const COL_W = CARD_W + COL_GAP;
 
 function getSpacing(colIdx: number): number {
+  // Build a global round-index map for spin results assignment.
+  // Upper rounds go first (0, 1, 2...), then lower rounds, then GF.
+  // Each unique round gets one spin result from the queue by index.
+  const upperRoundCount = bracket.upper.length;
+  const lowerRoundCount = bracket.lower ? bracket.lower.filter(r => r.length > 0).length : 0;
+
+  const getSpinMap = (section: string, ri: number): string | null => {
+    let idx: number;
+    if (section === 'upper') idx = ri;
+    else if (section === 'lower') idx = upperRoundCount + ri;
+    else idx = upperRoundCount + lowerRoundCount; // gf
+    return spinResults[idx] ?? null;
+  };
+
   return (CARD_H + 28) * Math.pow(2, colIdx); // Much tighter vertical spacing!
 }
 
@@ -69,7 +83,7 @@ function PlayerRow({
 }
 
 // ── BracketTab ────────────────────────────────────────────────────────────────
-export function BracketTab() {
+export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const { bracket, elimMode, teams, isAdmin, loading, setElimMode, generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -159,7 +173,7 @@ export function BracketTab() {
 
       {bracket ? (
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          <BracketDisplay onScore={updateScore} onThirdPlace={updateThirdPlace} onUndo={undoMatch} />
+          <BracketDisplay onScore={updateScore} onThirdPlace={updateThirdPlace} onUndo={undoMatch} spinResults={spinResults} />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
@@ -171,10 +185,11 @@ export function BracketTab() {
 }
 
 // ── BracketDisplay ────────────────────────────────────────────────────────────
-function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
+function BracketDisplay({ onScore, onThirdPlace, onUndo, spinResults }: {
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
+  spinResults: string[];
 }) {
   const { bracket, stageMaps, isAdmin } = useTourney();
   if (!bracket) return null;
@@ -202,7 +217,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
           </div>
         </div>
         <div className="overflow-x-auto overflow-y-visible pb-4">
-          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} gf={bracket.grandFinal} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} gf={bracket.grandFinal} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} getSpinMap={getSpinMap} />
         </div>
       </div>
 
@@ -217,7 +232,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
         <div className="t-surface border t-border rounded-xl p-5 shrink-0">
           <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
           <div className="overflow-x-auto overflow-y-visible pb-4">
-            <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+            <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} getSpinMap={getSpinMap} />
           </div>
         </div>
       )}
@@ -235,11 +250,12 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
 }
 
 // ── BracketGrid ───────────────────────────────────────────────────────────────
-function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, isAdmin }: {
+function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, isAdmin, getSpinMap }: {
   rounds: BracketMatch[][]; section: string; type: 'single' | 'double'; gf?: GrandFinal | null;
   stageMaps: Record<string, string[]>;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
+  getSpinMap: (section: string, ri: number) => string | null;
 }) {
   const validRounds = rounds.map((r, i) => ({ round: r, ri: i })).filter(({ round }) => round.length > 0);
   if (validRounds.length === 0) return null;
@@ -310,7 +326,10 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
 
       {validRounds.map(({ round, ri }, colIdx) => {
         const sk = `${section}_r${ri}`;
-        const maps: string[] = parseStageMaps(stageMaps[sk]);
+        const stageMapsArr: string[] = parseStageMaps(stageMaps[sk]);
+        // Prefer stage-assigned maps; fall back to spin result for this round
+        const spinMap = getSpinMap(section, ri);
+        const maps: string[] = stageMapsArr.length > 0 ? stageMapsArr : (spinMap ? [spinMap] : []);
         const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
         
         const label = isFinalCol 
@@ -318,14 +337,15 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
           : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
 
         return round.map((match, mi) => {
-          const top = getMatchTop(section, colIdx, mi) + offsetY;
-          const left = colIdx * COL_W;
-          return (
-            <div key={`card-${colIdx}-${mi}`} style={{ position: 'absolute', top, left, width: CARD_W }}>
+        const top = getMatchTop(section, colIdx, mi) + offsetY;
+        const left = colIdx * COL_W;
+        const isSpinFallback = stageMapsArr.length === 0 && spinMap !== null;
+        return (
+              <div key={`card-${colIdx}-${mi}`} style={{ position: 'absolute', top, left, width: CARD_W }}>
               {mi === 0 && (
                 <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim text-center" style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6, whiteSpace: 'nowrap' }}>{label}</div>
               )}
-              <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+              <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} isSpinFallback={isSpinFallback} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
             </div>
           );
         });
@@ -342,8 +362,9 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
 }
 
 // ── MatchCard ─────────────────────────────────────────────────────────────────
-function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
+function MatchCard({ match, section, ri, mi, maps, isSpinFallback, onScore, onUndo, isAdmin }: {
   match: BracketMatch; section: string; ri: number; mi: number; maps: string[];
+  isSpinFallback?: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
 }) {
@@ -367,7 +388,9 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
       {maps.length > 0 && (
         <div className="absolute bottom-[100%] right-2 mb-1 flex gap-1 z-10">
           {maps.map((m, i) => (
-            <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']" style={{ background: 'rgba(176,109,255,0.12)', color: '#b06dff', border: '1px solid rgba(176,109,255,0.3)' }}>🗺 {m}</div>
+            <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']" style={{ background: isSpinFallback ? 'rgba(224,144,16,0.12)' : 'rgba(176,109,255,0.12)', color: isSpinFallback ? 'var(--accent-gold)' : '#b06dff', border: `1px solid ${isSpinFallback ? 'rgba(224,144,16,0.3)' : 'rgba(176,109,255,0.3)'}` }}>
+              {isSpinFallback ? '🎯' : '🗺'} {m}
+            </div>
           ))}
         </div>
       )}
