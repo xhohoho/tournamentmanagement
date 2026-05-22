@@ -172,7 +172,8 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
   return (
     <>
       {/* WINNERS BRACKET & GRAND FINAL COMBINED */}
-      <div className="t-surface border t-border rounded-xl p-5 overflow-x-auto">
+      {/* FIX: Removed overflow-x-auto from this outer div and added shrink-0 */}
+      <div className="t-surface border t-border rounded-xl p-5 shrink-0">
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
           {isSingle ? 'Bracket' : 'Winners Bracket'}
           <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${isSingle ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>
@@ -180,24 +181,27 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
           </span>
         </div>
         
-        <div className="flex items-center pb-4 min-w-max">
-          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
-          
-          {/* Append Grand Final directly to the right side of the Upper Bracket */}
-          {!isSingle && bracket.grandFinal && (bracket.grandFinal.p1 || bracket.grandFinal.p2) && (
-            <div className="flex items-center">
-              <div className="w-[72px] h-[1.5px]" style={{ background: 'var(--border-mid)' }} />
-              <div className="flex flex-col justify-center">
-                <GrandFinalDisplay gf={bracket.grandFinal} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+        {/* FIX: Restored the inner overflow wrapper so flexbox doesn't collapse the height */}
+        <div className="overflow-x-auto overflow-y-visible pb-4">
+          <div className="flex items-center w-max">
+            <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+            
+            {/* Append Grand Final directly to the right side of the Upper Bracket */}
+            {!isSingle && bracket.grandFinal && (bracket.grandFinal.p1 || bracket.grandFinal.p2) && (
+              <div className="flex items-center">
+                <div className="w-[72px] h-[1.5px]" style={{ background: 'var(--border-mid)' }} />
+                <div className="flex flex-col justify-center">
+                  <GrandFinalDisplay gf={bracket.grandFinal} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       {/* 3RD PLACE (Single Elim Only) */}
       {isSingle && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (
-        <div className="t-surface border t-border rounded-xl p-5">
+        <div className="t-surface border t-border rounded-xl p-5 shrink-0">
           <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent-gold)' }}>🥉 3rd Place Match</h3>
           <ThirdPlaceDisplay match={bracket.thirdPlace} onScore={onThirdPlace} onUndo={() => onUndo('thirdPlace', 0, 0)} isAdmin={isAdmin} />
         </div>
@@ -205,7 +209,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
 
       {/* LOSERS BRACKET */}
       {!isSingle && hasLower && (
-        <div className="t-surface border t-border rounded-xl p-5">
+        <div className="t-surface border t-border rounded-xl p-5 shrink-0">
           <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Losers Bracket</h3>
           <div className="overflow-x-auto overflow-y-visible pb-4">
             <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} stageMaps={stageMaps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
@@ -215,7 +219,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
 
       {/* CHAMPION BANNER */}
       {bracket.champion && (
-        <div className="rounded-2xl p-7 text-center border-2 border-[var(--accent-gold)] bg-gradient-to-br from-[rgba(224,144,16,0.10)] to-[rgba(232,41,74,0.07)] mt-4">
+        <div className="rounded-2xl p-7 text-center border-2 border-[var(--accent-gold)] bg-gradient-to-br from-[rgba(224,144,16,0.10)] to-[rgba(232,41,74,0.07)] mt-4 shrink-0">
           <div className="text-5xl mb-2">🏆</div>
           <h2 className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>{bracket.champion}</h2>
           <p className="font-['DM_Mono'] text-xs mt-2 t-muted">Tournament Champion</p>
@@ -237,7 +241,6 @@ function BracketGrid({ rounds, section, type, stageMaps, onScore, onUndo, isAdmi
 
   const firstRound = validRounds[0];
   const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H + 32;
-  // If this is the upper bracket of a double elim, we drop the right margin so it connects smoothly to the Grand Final
   const isConnectingGF = type === 'double' && section === 'upper';
   const totalWidth = validRounds.length * COL_W - COL_GAP + (isConnectingGF ? 0 : 40);
   const stroke = 'var(--border-mid)';
@@ -279,7 +282,11 @@ function BracketGrid({ rounds, section, type, stageMaps, onScore, onUndo, isAdmi
             }
           });
         })}
+        
+        {/* Draw a tiny stub line ONLY if we are NOT connecting directly to a Grand Final wrapper */}
         {(() => {
+          if (isConnectingGF) return null;
+          
           const lastColIdx = validRounds.length - 1;
           if (validRounds[lastColIdx].round.length !== 1) return null;
           const cardRight = lastColIdx * COL_W + CARD_W;
@@ -293,7 +300,6 @@ function BracketGrid({ rounds, section, type, stageMaps, onScore, onUndo, isAdmi
         const maps: string[] = parseStageMaps(stageMaps[sk]);
         const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
         
-        // Correctly label the final column based on the bracket type
         const label = isFinalCol 
           ? (section === 'upper' ? (type === 'double' ? 'Winners Final' : 'Final') : 'LB Final') 
           : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
