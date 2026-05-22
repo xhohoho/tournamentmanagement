@@ -426,55 +426,56 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
   if (s2 !== match.score2 && !canEdit) setS2(match.score2);
 
   const trySubmit = (n1: number, n2: number) => {
-    // Valid: one side must reach target, other must be less
     const p1wins = (n1 >= target && n2 < target);
     const p2wins = (n2 >= target && n1 < target);
-    if (p1wins || p2wins) {
-      onScore(section, ri, mi, n1, n2);
-    }
+    if (p1wins || p2wins) onScore(section, ri, mi, n1, n2);
   };
 
   return (
-    <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
-      {maps.length > 0 && (
-        <div className="px-2 pt-1.5 flex flex-wrap gap-1">
-          {maps.map((m, i) => (
-            <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']"
-              style={{ background: 'rgba(176,109,255,0.12)', color: '#b06dff', border: '1px solid rgba(176,109,255,0.3)' }}>
-              🗺 {m}
-            </div>
-          ))}
-        </div>
-      )}
-      {isBo3 && (
-        <div className="px-2 pt-1">
-          <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
-            style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
-        </div>
-      )}
-      <PlayerRow
-        player={match.p1} score={isDone ? match.score1 : s1}
-        isWinner={isDone && match.winner === match.p1}
-        isLoser={isDone && match.winner !== match.p1}
-        showScore={isDone || !!(match.p1 && match.p2)}
-        canEdit={canEdit} isBo3={isBo3} otherScore={s2}
-        onCommit={n => { setS1(n); trySubmit(n, s2); }}
-      />
-      <PlayerRow
-        player={match.p2} score={isDone ? match.score2 : s2}
-        isWinner={isDone && match.winner === match.p2}
-        isLoser={isDone && match.winner !== match.p2}
-        showScore={isDone || !!(match.p1 && match.p2)}
-        canEdit={canEdit} isBo3={isBo3} otherScore={s1}
-        onCommit={n => { setS2(n); trySubmit(s1, n); }}
-      />
+    // Wrapper is relative so the undo button can float outside without affecting card height
+    <div style={{ position: 'relative' }}>
+      <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
+        {maps.length > 0 && (
+          <div className="px-2 pt-1.5 flex flex-wrap gap-1">
+            {maps.map((m, i) => (
+              <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']"
+                style={{ background: 'rgba(176,109,255,0.12)', color: '#b06dff', border: '1px solid rgba(176,109,255,0.3)' }}>
+                🗺 {m}
+              </div>
+            ))}
+          </div>
+        )}
+        {isBo3 && (
+          <div className="px-2 pt-1">
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
+              style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
+          </div>
+        )}
+        <PlayerRow
+          player={match.p1} score={isDone ? match.score1 : s1}
+          isWinner={isDone && match.winner === match.p1}
+          isLoser={isDone && match.winner !== match.p1}
+          showScore={isDone || !!(match.p1 && match.p2)}
+          canEdit={canEdit} isBo3={isBo3} otherScore={s2}
+          onCommit={n => { setS1(n); trySubmit(n, s2); }}
+        />
+        <PlayerRow
+          player={match.p2} score={isDone ? match.score2 : s2}
+          isWinner={isDone && match.winner === match.p2}
+          isLoser={isDone && match.winner !== match.p2}
+          showScore={isDone || !!(match.p1 && match.p2)}
+          canEdit={canEdit} isBo3={isBo3} otherScore={s1}
+          onCommit={n => { setS2(n); trySubmit(s1, n); }}
+        />
+      </div>
+      {/* Undo floats to the right of the card in the COL_GAP — never adds card height */}
       {canUndo && (
-        <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
-          <button
-            className="w-full font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer text-center"
-            onClick={() => onUndo(section, ri, mi)}
-          >↩ undo</button>
-        </div>
+        <button
+          title="Undo this result"
+          className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer"
+          style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)', whiteSpace: 'nowrap' }}
+          onClick={() => onUndo(section, ri, mi)}
+        >↩</button>
       )}
     </div>
   );
@@ -517,14 +518,6 @@ function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
         canEdit={canEdit} isBo3={isBo3} otherScore={s1}
         onCommit={n => { setS2(n); trySubmit(s1, n); }}
       />
-      {canUndo && (
-        <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
-          <button
-            className="w-full font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer text-center"
-            onClick={onUndo}
-          >↩ undo</button>
-        </div>
-      )}
     </div>
   );
 }
