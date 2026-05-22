@@ -20,7 +20,9 @@ function resolveWinner(match: BracketMatch | GrandFinal): string | null {
 
 /**
  * Walk a round array and auto-advance any team that has a bye (only one
- * participant). Returns a new deep-copied array — does not mutate its input.
+ * participant AND the missing slot cannot possibly be filled by a future
+ * winner — i.e. the feeder match is already done or doesn't exist).
+ * Returns a new deep-copied array — does not mutate its input.
  */
 function autoByes(rounds: BracketMatch[][]): BracketMatch[][] {
   // Deep-copy so callers can pass their working copy without a separate clone step
@@ -29,9 +31,23 @@ function autoByes(rounds: BracketMatch[][]): BracketMatch[][] {
     for (let mi = 0; mi < result[ri].length; mi++) {
       const m = result[ri][mi];
       if (m.winner) continue;
+      // Only treat as a bye if exactly one slot is filled and there is no
+      // prior round that could still produce an opponent for the empty slot.
+      // If ri === 0 there is no feeder round, so a null slot is a real bye.
+      // If ri > 0, check that the feeder match that would fill the empty slot
+      // is already decided (has a winner) — meaning no real opponent is coming.
       let byeWinner: string | null = null;
-      if (m.p1 && !m.p2) byeWinner = m.p1;
-      else if (!m.p1 && m.p2) byeWinner = m.p2;
+      if (m.p1 && !m.p2) {
+        // p2 slot is empty — is it a real bye or just waiting?
+        const feederMi = mi * 2 + 1; // the feeder match that produces p2
+        const feederMatch = ri > 0 ? result[ri - 1][feederMi] : undefined;
+        // Real bye: no previous round, or the feeder is already done (winner set)
+        if (ri === 0 || !feederMatch || feederMatch.winner) byeWinner = m.p1;
+      } else if (!m.p1 && m.p2) {
+        const feederMi = mi * 2; // the feeder match that produces p1
+        const feederMatch = ri > 0 ? result[ri - 1][feederMi] : undefined;
+        if (ri === 0 || !feederMatch || feederMatch.winner) byeWinner = m.p2;
+      }
       if (!byeWinner) continue;
       m.winner = byeWinner;
       if (ri + 1 < result.length) {
@@ -374,7 +390,7 @@ export async function PATCH(req: NextRequest) {
     seedLBDropIn(bracket.lower, ri * 2, loser, mi);
   }
 
-  // Advance any byes created by the seeding above
+  // Advance any byes created by the seeding above (only for truly null slots, not pending matches)
   bracket.upper = autoByes(bracket.upper);
   if (bracket.lower) bracket.lower = autoByes(bracket.lower);
   if (bracket.grandFinal?.winner) bracket.champion = bracket.grandFinal.winner;

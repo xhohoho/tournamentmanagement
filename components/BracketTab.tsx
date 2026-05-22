@@ -23,74 +23,69 @@ function getMatchTop(colIdx: number, matchIdx: number): number {
   return (topA + topB) / 2 - CARD_H / 2;
 }
 
-// ── Score Modal (floating overlay — fixes the card overlap bug) ──────────────
-interface ScoreModalProps {
-  open: boolean;
+// ── ScoreInput — inline score entry row for admin ────────────────────────────
+interface ScoreInputProps {
   isBo3: boolean;
   p1: string | null;
   p2: string | null;
-  label: string;
   onScore: (s1: number, s2: number) => void;
-  onClose: () => void;
 }
-function ScoreModal({ open, isBo3, p1, p2, label, onScore, onClose }: ScoreModalProps) {
-  if (!open) return null;
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="rounded-2xl border t-border p-5 w-[260px] flex flex-col gap-3"
-        style={{ background: 'var(--bg)' }}
-      >
-        <div className="flex items-center justify-between">
-          <span className="font-['Bebas_Neue'] text-lg tracking-widest t-text">{label}</span>
-          <button className="font-['DM_Mono'] text-xs t-dim hover:t-text cursor-pointer" onClick={onClose}>✕</button>
-        </div>
+function ScoreInput({ isBo3, p1, p2, onScore }: ScoreInputProps) {
+  const [s1, setS1] = useState('');
+  const [s2, setS2] = useState('');
+  const [err, setErr] = useState('');
 
-        {isBo3 ? (
-          <div className="flex flex-col gap-2">
-            <p className="font-['DM_Mono'] text-[10px] t-dim uppercase tracking-wider">Score (BO3)</p>
-            <div className="grid grid-cols-2 gap-2">
-              {(['2-0', '2-1', '0-2', '1-2'] as const).map(lbl => {
-                const [s1, s2] = lbl.split('-').map(Number);
-                return (
-                  <button
-                    key={lbl}
-                    className="px-3 py-2 rounded-xl font-['DM_Mono'] text-xs font-bold border-2 transition-all cursor-pointer text-left"
-                    style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                    onClick={() => { onScore(s1, s2); onClose(); }}
-                  >
-                    <div className="text-[9px] font-normal t-dim mb-0.5 truncate">{s1 > s2 ? p1 : p2}</div>
-                    {lbl}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <p className="font-['DM_Mono'] text-[10px] t-dim uppercase tracking-wider">Winner</p>
-            <button
-              className="w-full px-3 py-2.5 rounded-xl font-['DM_Mono'] text-xs font-bold border-2 transition-all truncate cursor-pointer text-left"
-              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-green)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-              onClick={() => { onScore(1, 0); onClose(); }}
-            >✓ {p1}</button>
-            <button
-              className="w-full px-3 py-2.5 rounded-xl font-['DM_Mono'] text-xs font-bold border-2 transition-all truncate cursor-pointer text-left"
-              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--accent-green)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-green)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-              onClick={() => { onScore(0, 1); onClose(); }}
-            >✓ {p2}</button>
-          </div>
-        )}
+  const submit = () => {
+    const n1 = parseInt(s1, 10);
+    const n2 = parseInt(s2, 10);
+    if (isNaN(n1) || isNaN(n2) || n1 < 0 || n2 < 0) {
+      setErr('Enter valid scores');
+      return;
+    }
+    if (isBo3) {
+      // BO3: winner must reach 2; only valid results are 2-0, 2-1, 0-2, 1-2
+      const valid = (n1 === 2 && (n2 === 0 || n2 === 1)) || (n2 === 2 && (n1 === 0 || n1 === 1));
+      if (!valid) { setErr('BO3: valid scores are 2-0, 2-1, 0-2, 1-2'); return; }
+    } else {
+      // BO1: exactly one team wins, other gets 0
+      if (!((n1 === 1 && n2 === 0) || (n1 === 0 && n2 === 1))) {
+        setErr('BO1: enter 1-0 or 0-1'); return;
+      }
+    }
+    setErr('');
+    onScore(n1, n2);
+    setS1(''); setS2('');
+  };
+
+  return (
+    <div className="flex flex-col gap-1 px-3 py-2 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
+      <div className="flex items-center gap-1.5">
+        <span className="font-['DM_Mono'] text-[9px] t-dim truncate flex-1">{p1 ?? 'P1'}</span>
+        <input
+          type="number" min={0} max={isBo3 ? 2 : 1}
+          value={s1}
+          onChange={e => { setS1(e.target.value); setErr(''); }}
+          className="w-10 text-center font-['DM_Mono'] text-xs rounded border t-border bg-transparent t-text focus:outline-none"
+          placeholder="0"
+          onClick={e => e.stopPropagation()}
+        />
+        <span className="font-['DM_Mono'] text-[10px] t-dim">:</span>
+        <input
+          type="number" min={0} max={isBo3 ? 2 : 1}
+          value={s2}
+          onChange={e => { setS2(e.target.value); setErr(''); }}
+          className="w-10 text-center font-['DM_Mono'] text-xs rounded border t-border bg-transparent t-text focus:outline-none"
+          placeholder="0"
+          onClick={e => e.stopPropagation()}
+        />
+        <span className="font-['DM_Mono'] text-[9px] t-dim truncate flex-1 text-right">{p2 ?? 'P2'}</span>
+        <button
+          className="px-2 py-0.5 rounded font-['DM_Mono'] text-[9px] font-bold cursor-pointer"
+          style={{ background: 'var(--accent)', color: '#fff' }}
+          onClick={e => { e.stopPropagation(); submit(); }}
+        >OK</button>
       </div>
+      {err && <p className="font-['DM_Mono'] text-[9px]" style={{ color: 'var(--accent-red)' }}>{err}</p>}
     </div>
   );
 }
@@ -432,66 +427,51 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
-  const [modalOpen, setModalOpen] = useState(false);
   const isBo3 = match.format === 'bo3';
   const isDone = !!match.winner;
-  const canEdit = isAdmin && match.p1 && match.p2 && !isDone;
+  const canEdit = isAdmin && !!match.p1 && !!match.p2 && !isDone;
   const canUndo = isAdmin && isDone;
-  const label = section === 'upper' ? `R${ri + 1} M${mi + 1}` : `LR${ri + 1} M${mi + 1}`;
 
   return (
-    <>
-      <ScoreModal
-        open={modalOpen}
-        isBo3={isBo3}
-        p1={match.p1}
-        p2={match.p2}
-        label={label}
-        onScore={(s1, s2) => onScore(section, ri, mi, s1, s2)}
-        onClose={() => setModalOpen(false)}
-      />
-      <div
-        className="t-elevated border t-border rounded-xl overflow-hidden"
-        style={{ width: CARD_W, cursor: canEdit ? 'pointer' : 'default' }}
-        onClick={() => canEdit && setModalOpen(true)}
-        title={canEdit ? 'Click to enter score' : undefined}
-      >
-        {maps.length > 0 && (
-          <div className="px-2 pt-1.5 flex flex-wrap gap-1">
-            {maps.map((m, i) => (
-              <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']"
-                style={{ background: 'rgba(176,109,255,0.12)', color: '#b06dff', border: '1px solid rgba(176,109,255,0.3)' }}>
-                🗺 {m}
-              </div>
-            ))}
-          </div>
-        )}
-        {isBo3 && (
-          <div className="px-2 pt-1">
-            <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
-              style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
-          </div>
-        )}
-        {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
-          const isWinner = isDone && match.winner === player;
-          const isLoser = isDone && match.winner !== player;
-          return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
-        })}
-        {canEdit && (
-          <div className="px-3 py-1.5 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
-            <p className="font-['DM_Mono'] text-[9px] t-dim text-center">Click to enter score</p>
-          </div>
-        )}
-        {canUndo && (
-          <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
-            <button
-              className="w-full font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer text-center"
-              onClick={e => { e.stopPropagation(); onUndo(section, ri, mi); }}
-            >↩ undo</button>
-          </div>
-        )}
-      </div>
-    </>
+    <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
+      {maps.length > 0 && (
+        <div className="px-2 pt-1.5 flex flex-wrap gap-1">
+          {maps.map((m, i) => (
+            <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']"
+              style={{ background: 'rgba(176,109,255,0.12)', color: '#b06dff', border: '1px solid rgba(176,109,255,0.3)' }}>
+              🗺 {m}
+            </div>
+          ))}
+        </div>
+      )}
+      {isBo3 && (
+        <div className="px-2 pt-1">
+          <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
+            style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
+        </div>
+      )}
+      {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
+        const isWinner = isDone && match.winner === player;
+        const isLoser = isDone && match.winner !== player;
+        return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
+      })}
+      {canEdit && (
+        <ScoreInput
+          isBo3={isBo3}
+          p1={match.p1}
+          p2={match.p2}
+          onScore={(s1, s2) => onScore(section, ri, mi, s1, s2)}
+        />
+      )}
+      {canUndo && (
+        <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
+          <button
+            className="w-full font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer text-center"
+            onClick={() => onUndo(section, ri, mi)}
+          >↩ undo</button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -502,47 +482,34 @@ function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
   onUndo: () => Promise<void>;
   isAdmin: boolean;
 }) {
-  const [modalOpen, setModalOpen] = useState(false);
   const isDone = !!match.winner;
-  const canEdit = isAdmin && match.p1 && match.p2 && !isDone;
+  const canEdit = isAdmin && !!match.p1 && !!match.p2 && !isDone;
   const canUndo = isAdmin && isDone;
 
   return (
-    <>
-      <ScoreModal
-        open={modalOpen}
-        isBo3={match.format === 'bo3'}
-        p1={match.p1}
-        p2={match.p2}
-        label="3rd Place"
-        onScore={(s1, s2) => onScore(s1, s2)}
-        onClose={() => setModalOpen(false)}
-      />
-      <div
-        className="t-elevated border t-border rounded-xl overflow-hidden"
-        style={{ width: CARD_W, cursor: canEdit ? 'pointer' : 'default' }}
-        onClick={() => canEdit && setModalOpen(true)}
-      >
-        {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
-          const isWinner = isDone && match.winner === player;
-          const isLoser = isDone && match.winner !== player;
-          return <PlayerRow key={idx} player={isWinner ? `🥉 ${player}` : player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
-        })}
-        {canEdit && (
-          <div className="px-3 py-1.5 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
-            <p className="font-['DM_Mono'] text-[9px] t-dim text-center">Click to enter score</p>
-          </div>
-        )}
-        {canUndo && (
-          <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
-            <button
-              className="w-full font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer text-center"
-              onClick={e => { e.stopPropagation(); onUndo(); }}
-            >↩ undo</button>
-          </div>
-        )}
-      </div>
-    </>
+    <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
+      {[{ player: match.p1, score: match.score1 }, { player: match.p2, score: match.score2 }].map(({ player, score }, idx) => {
+        const isWinner = isDone && match.winner === player;
+        const isLoser = isDone && match.winner !== player;
+        return <PlayerRow key={idx} player={isWinner ? `🥉 ${player}` : player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={isDone || !!(player && match.p1 && match.p2)} />;
+      })}
+      {canEdit && (
+        <ScoreInput
+          isBo3={match.format === 'bo3'}
+          p1={match.p1}
+          p2={match.p2}
+          onScore={(s1, s2) => onScore(s1, s2)}
+        />
+      )}
+      {canUndo && (
+        <div className="px-3 py-1" style={{ background: 'var(--bg-hover)' }}>
+          <button
+            className="w-full font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer text-center"
+            onClick={onUndo}
+          >↩ undo</button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -553,9 +520,6 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isAdmin: boolean;
 }) {
-  const [gf1ModalOpen, setGf1ModalOpen] = useState(false);
-  const [gf2ModalOpen, setGf2ModalOpen] = useState(false);
-
   const isBo3 = gf.format === 'bo3';
   const gf1Done = !!(gf.winner || gf.isReset);
   const gf2Done = !!(gf.isReset && gf.winner);
@@ -568,20 +532,7 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
       {/* GF1 */}
       <div className="flex flex-col gap-1">
         <p className="font-['DM_Mono'] text-[10px] t-dim uppercase tracking-widest">GF1</p>
-        <ScoreModal
-          open={gf1ModalOpen}
-          isBo3={isBo3}
-          p1={gf.p1}
-          p2={gf.p2}
-          label="Grand Final"
-          onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)}
-          onClose={() => setGf1ModalOpen(false)}
-        />
-        <div
-          className="t-elevated border t-border rounded-xl overflow-hidden"
-          style={{ width: CARD_W, cursor: canEditGf1 ? 'pointer' : 'default' }}
-          onClick={() => canEditGf1 && setGf1ModalOpen(true)}
-        >
+        <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
           {isBo3 && (
             <div className="px-2 pt-1">
               <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
@@ -589,7 +540,6 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
             </div>
           )}
           {[{ player: gf.p1, score: gf.score1 }, { player: gf.p2, score: gf.score2 }].map(({ player, score }, idx) => {
-            // GF1: show winner styling only if upper bracket won (no reset); if reset, show scores without winner highlight
             const isWinner = !gf.isReset && !!gf.winner && gf.winner === player;
             const isLoser = !gf.isReset && !!gf.winner && gf.winner !== player;
             return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={gf1Done || !!(player && gf.p1 && gf.p2)} />;
@@ -600,9 +550,7 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
             </div>
           )}
           {canEditGf1 && (
-            <div className="px-3 py-1.5 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
-              <p className="font-['DM_Mono'] text-[9px] t-dim text-center">Click to enter score</p>
-            </div>
+            <ScoreInput isBo3={isBo3} p1={gf.p1} p2={gf.p2} onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)} />
           )}
         </div>
       </div>
@@ -611,20 +559,7 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
       {gf.isReset && (
         <div className="flex flex-col gap-1">
           <p className="font-['DM_Mono'] text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--accent)' }}>GF2 — Reset Match</p>
-          <ScoreModal
-            open={gf2ModalOpen}
-            isBo3={isBo3}
-            p1={gf.p1}
-            p2={gf.p2}
-            label="GF2 — Reset Match"
-            onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)}
-            onClose={() => setGf2ModalOpen(false)}
-          />
-          <div
-            className="t-elevated border-2 rounded-xl overflow-hidden"
-            style={{ width: CARD_W, borderColor: 'var(--accent)', cursor: canEditGf2 ? 'pointer' : 'default' }}
-            onClick={() => canEditGf2 && setGf2ModalOpen(true)}
-          >
+          <div className="t-elevated border-2 rounded-xl overflow-hidden" style={{ width: CARD_W, borderColor: 'var(--accent)' }}>
             {isBo3 && (
               <div className="px-2 pt-1">
                 <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
@@ -637,9 +572,7 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
               return <PlayerRow key={idx} player={player} score={score} isWinner={isWinner} isLoser={isLoser} showScore={gf2Done || !!(player && gf.p1 && gf.p2)} />;
             })}
             {canEditGf2 && (
-              <div className="px-3 py-1.5 border-t t-border" style={{ background: 'var(--bg-hover)' }}>
-                <p className="font-['DM_Mono'] text-[9px] t-dim text-center">Click to enter score</p>
-              </div>
+              <ScoreInput isBo3={isBo3} p1={gf.p1} p2={gf.p2} onScore={(s1, s2) => onScore('gf', 0, 0, s1, s2)} />
             )}
           </div>
         </div>
