@@ -14,28 +14,26 @@ function getSpacing(colIdx: number): number {
   return (CARD_H + 20) * Math.pow(2, colIdx);
 }
 
-function getMatchTop(colIdx: number, matchIdx: number): number {
+// Added `section` param to correctly route standard 1:1 double elimination spacing
+function getMatchTop(section: string, colIdx: number, matchIdx: number): number {
   if (colIdx === 0) return matchIdx * getSpacing(0);
+  if (section === 'lower' && colIdx % 2 === 1) {
+    return getMatchTop(section, colIdx - 1, matchIdx);
+  }
   const feederA = matchIdx * 2;
   const feederB = feederA + 1;
-  const topA = getMatchTop(colIdx - 1, feederA) + CARD_H / 2;
-  const topB = getMatchTop(colIdx - 1, feederB) + CARD_H / 2;
+  const topA = getMatchTop(section, colIdx - 1, feederA) + CARD_H / 2;
+  const topB = getMatchTop(section, colIdx - 1, feederB) + CARD_H / 2;
   return (topA + topB) / 2 - CARD_H / 2;
 }
 
-// ── PlayerRow — with optional inline score editing for admin ─────────────────
+// ── PlayerRow ─────────────────────────────────────────────────────────────────
 function PlayerRow({
   player, score, isWinner, isLoser, showScore,
   canEdit, isBo3, otherScore, onCommit,
 }: {
-  player: string | null;
-  score: number;
-  isWinner: boolean;
-  isLoser: boolean;
-  showScore: boolean;
-  canEdit?: boolean;
-  isBo3?: boolean;
-  otherScore?: number;  // the opponent's score, used to validate
+  player: string | null; score: number; isWinner: boolean; isLoser: boolean;
+  showScore: boolean; canEdit?: boolean; isBo3?: boolean; otherScore?: number;
   onCommit?: (newScore: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -55,47 +53,15 @@ function PlayerRow({
   };
 
   return (
-    <div
-      className="flex items-center justify-between px-3 border-b t-border last:border-b-0"
-      style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}
-    >
-      <span
-        className="text-xs font-['DM_Mono'] flex-1 truncate"
-        style={{
-          color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
-          fontStyle: !player ? 'italic' : undefined,
-          opacity: isLoser ? 0.5 : 1,
-        }}
-      >
+    <div className="flex items-center justify-between px-3 border-b t-border last:border-b-0" style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}>
+      <span className="text-xs font-['DM_Mono'] flex-1 truncate" style={{ color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)', fontStyle: !player ? 'italic' : undefined, opacity: isLoser ? 0.5 : 1 }}>
         {isWinner && '✓ '}{player ?? (isLoser ? 'TBD' : 'BYE')}
       </span>
       {showScore && (
         editing ? (
-          <input
-            autoFocus
-            type="number"
-            min={0}
-            max={isBo3 ? 2 : 1}
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onBlur={commit}
-            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-            className="w-8 text-center font-['Bebas_Neue'] text-base rounded border bg-transparent focus:outline-none"
-            style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
-          />
+          <input autoFocus type="number" min={0} max={isBo3 ? 2 : 1} value={draft} onChange={e => setDraft(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }} className="w-8 text-center font-['Bebas_Neue'] text-base rounded border bg-transparent focus:outline-none" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} />
         ) : (
-          <span
-            className="font-['Bebas_Neue'] text-base ml-2 shrink-0 rounded px-1"
-            style={{
-              color: isWinner ? 'var(--accent-green)' : 'var(--text-dim)',
-              cursor: canEdit ? 'text' : 'default',
-              outline: canEdit ? '1px dashed var(--border-mid)' : 'none',
-              minWidth: 20,
-              textAlign: 'center',
-            }}
-            title={canEdit ? (isBo3 ? 'Click to edit (0–2)' : 'Click to edit (0 or 1)') : undefined}
-            onClick={startEdit}
-          >
+          <span className="font-['Bebas_Neue'] text-base ml-2 shrink-0 rounded px-1" style={{ color: isWinner ? 'var(--accent-green)' : 'var(--text-dim)', cursor: canEdit ? 'text' : 'default', outline: canEdit ? '1px dashed var(--border-mid)' : 'none', minWidth: 20, textAlign: 'center' }} onClick={startEdit}>
             {score}
           </span>
         )
@@ -135,94 +101,40 @@ export function BracketTab() {
     <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
       <div>
         <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Bracket</h1>
-        <p className="font-['DM_Mono'] text-xs t-muted">
-          {isAdmin ? 'Pick a format · Generate once · Enter scores directly on each match card' : 'View only — admin required to edit'}
-        </p>
+        <p className="font-['DM_Mono'] text-xs t-muted">{isAdmin ? 'Pick a format · Generate once · Enter scores directly on each match card' : 'View only — admin required to edit'}</p>
       </div>
 
       {isAdmin && (
         <div className="t-surface border t-border rounded-2xl p-4 shrink-0">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="font-['Bebas_Neue'] text-base tracking-widest t-text shrink-0">Format</span>
-
             <div className="flex gap-2">
-              {[
-                { id: 'single', icon: '⚔️', label: 'Single Elim', desc: 'One loss = out' },
-                { id: 'double', icon: '🛡️', label: 'Double Elim', desc: 'Two losses = out' },
-              ].map(opt => (
-                <div
-                  key={opt.id}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none"
-                  style={{
-                    borderColor: elimMode === opt.id ? 'var(--accent-red)' : 'var(--border)',
-                    background: elimMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
-                    cursor: hasBracket ? 'not-allowed' : 'pointer',
-                    opacity: hasBracket && elimMode !== opt.id ? 0.45 : 1,
-                  }}
-                  onClick={() => !hasBracket && setElimMode(opt.id as 'single' | 'double')}
-                >
+              {[{ id: 'single', icon: '⚔️', label: 'Single Elim', desc: 'One loss = out' }, { id: 'double', icon: '🛡️', label: 'Double Elim', desc: 'Two losses = out' }].map(opt => (
+                <div key={opt.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none" style={{ borderColor: elimMode === opt.id ? 'var(--accent-red)' : 'var(--border)', background: elimMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)', cursor: hasBracket ? 'not-allowed' : 'pointer', opacity: hasBracket && elimMode !== opt.id ? 0.45 : 1 }} onClick={() => !hasBracket && setElimMode(opt.id as 'single' | 'double')}>
                   <span className="text-base shrink-0">{opt.icon}</span>
                   <div>
-                    <div className="font-['DM_Mono'] text-xs font-bold t-text">
-                      {opt.label}
-                      {hasBracket && elimMode === opt.id && (
-                        <span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>●</span>
-                      )}
-                    </div>
+                    <div className="font-['DM_Mono'] text-xs font-bold t-text">{opt.label}{hasBracket && elimMode === opt.id && (<span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>●</span>)}</div>
                     <div className="font-['DM_Mono'] text-[10px] t-muted">{opt.desc}</div>
                   </div>
                 </div>
               ))}
             </div>
-
             <div className="h-8 w-px" style={{ background: 'var(--border-mid)' }} />
-
             <div className="flex gap-2">
-              {[
-                { id: 'bo1', label: 'BO1', desc: 'Best of 1' },
-                { id: 'bo3', label: 'BO3', desc: 'Best of 3' },
-              ].map(opt => (
-                <div
-                  key={opt.id}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none"
-                  style={{
-                    borderColor: matchFormat === opt.id ? 'var(--accent-gold)' : 'var(--border)',
-                    background: matchFormat === opt.id ? 'rgba(224,144,16,0.07)' : 'var(--bg-elevated)',
-                    cursor: hasBracket ? 'not-allowed' : 'pointer',
-                    opacity: hasBracket && matchFormat !== opt.id ? 0.45 : 1,
-                  }}
-                  onClick={() => !hasBracket && setMatchFormat(opt.id as 'bo1' | 'bo3')}
-                >
+              {[{ id: 'bo1', label: 'BO1', desc: 'Best of 1' }, { id: 'bo3', label: 'BO3', desc: 'Best of 3' }].map(opt => (
+                <div key={opt.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none" style={{ borderColor: matchFormat === opt.id ? 'var(--accent-gold)' : 'var(--border)', background: matchFormat === opt.id ? 'rgba(224,144,16,0.07)' : 'var(--bg-elevated)', cursor: hasBracket ? 'not-allowed' : 'pointer', opacity: hasBracket && matchFormat !== opt.id ? 0.45 : 1 }} onClick={() => !hasBracket && setMatchFormat(opt.id as 'bo1' | 'bo3')}>
                   <div>
-                    <div className="font-['DM_Mono'] text-xs font-bold" style={{ color: matchFormat === opt.id ? 'var(--accent-gold)' : 'var(--text)' }}>
-                      {opt.label}
-                      {hasBracket && matchFormat === opt.id && (
-                        <span className="ml-1.5 font-normal t-dim">●</span>
-                      )}
-                    </div>
+                    <div className="font-['DM_Mono'] text-xs font-bold" style={{ color: matchFormat === opt.id ? 'var(--accent-gold)' : 'var(--text)' }}>{opt.label}{hasBracket && matchFormat === opt.id && (<span className="ml-1.5 font-normal t-dim">●</span>)}</div>
                     <div className="font-['DM_Mono'] text-[10px] t-muted">{opt.desc}</div>
                   </div>
                 </div>
               ))}
             </div>
-
             <div className="flex items-center gap-2 ml-auto shrink-0">
               {!hasBracket ? (
-                <button
-                  className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
-                  style={{ background: 'var(--accent-red)' }}
-                  onClick={handleGenerate}
-                  disabled={!hasTeams || generating}
-                >
-                  {generating ? '⏳ Generating…' : '⚡ Generate Bracket'}
-                </button>
+                <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-red)' }} onClick={handleGenerate} disabled={!hasTeams || generating}>{generating ? '⏳ Generating…' : '⚡ Generate Bracket'}</button>
               ) : (
-                <button
-                  className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap"
-                  onClick={resetBracket}
-                >
-                  Reset Bracket
-                </button>
+                <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset Bracket</button>
               )}
             </div>
           </div>
@@ -238,9 +150,7 @@ export function BracketTab() {
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
-          <p className="font-['DM_Mono'] text-sm t-dim">
-            {isAdmin ? 'Pick a format and click Generate.' : 'Waiting for admin to generate the bracket.'}
-          </p>
+          <p className="font-['DM_Mono'] text-sm t-dim">{isAdmin ? 'Pick a format and click Generate.' : 'Waiting for admin to generate the bracket.'}</p>
         </div>
       )}
     </div>
@@ -264,11 +174,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
       <div className="t-surface border t-border rounded-xl p-5">
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
           {isSingle ? 'Bracket' : 'Winners Bracket'}
-          <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${
-            isSingle
-              ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]'
-              : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'
-          }`}>
+          <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${isSingle ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>
             {isSingle ? 'Single Elim' : 'Double Elim'}
           </span>
         </div>
@@ -280,12 +186,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
       {isSingle && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (
         <div className="t-surface border t-border rounded-xl p-5">
           <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent-gold)' }}>🥉 3rd Place Match</h3>
-          <ThirdPlaceDisplay
-            match={bracket.thirdPlace}
-            onScore={onThirdPlace}
-            onUndo={() => onUndo('thirdPlace', 0, 0)}
-            isAdmin={isAdmin}
-          />
+          <ThirdPlaceDisplay match={bracket.thirdPlace} onScore={onThirdPlace} onUndo={() => onUndo('thirdPlace', 0, 0)} isAdmin={isAdmin} />
         </div>
       )}
 
@@ -310,9 +211,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
           <div className="text-5xl mb-2">🏆</div>
           <h2 className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>{bracket.champion}</h2>
           <p className="font-['DM_Mono'] text-xs mt-2 t-muted">Tournament Champion</p>
-          {bracket.thirdPlace?.winner && (
-            <p className="font-['DM_Mono'] text-xs mt-1 t-dim">🥉 3rd Place: {bracket.thirdPlace.winner}</p>
-          )}
+          {bracket.thirdPlace?.winner && (<p className="font-['DM_Mono'] text-xs mt-1 t-dim">🥉 3rd Place: {bracket.thirdPlace.winner}</p>)}
         </div>
       )}
     </>
@@ -321,12 +220,9 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
 
 // ── BracketGrid ───────────────────────────────────────────────────────────────
 function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
-  rounds: BracketMatch[][];
-  section: string;
-  stageMaps: Record<string, string[]>;
+  rounds: BracketMatch[][]; section: string; stageMaps: Record<string, string[]>;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
-  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
-  isAdmin: boolean;
+  onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
 }) {
   const validRounds = rounds.map((r, i) => ({ round: r, ri: i })).filter(({ round }) => round.length > 0);
   if (validRounds.length === 0) return null;
@@ -336,9 +232,7 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
   const totalWidth = validRounds.length * COL_W - COL_GAP + 40;
   const stroke = 'var(--border-mid)';
 
-  // Connector lines anchor to the middle of the player-rows portion (top CARD_H px)
-  // which is stable regardless of whether the ScoreInput row is shown.
-  const cardCentreY = (colIdx: number, mi: number) => getMatchTop(colIdx, mi) + CARD_H / 2;
+  const cardCentreY = (colIdx: number, mi: number) => getMatchTop(section, colIdx, mi) + CARD_H / 2;
 
   return (
     <div style={{ position: 'relative', width: totalWidth, height: totalHeight, minWidth: totalWidth }}>
@@ -347,22 +241,33 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
           if (colIdx === validRounds.length - 1) return null;
           const nextColIdx = colIdx + 1;
           return round.map((_, mi) => {
-            if (mi % 2 !== 0) return null;
-            const partnerMi = mi + 1;
             const cardRight = colIdx * COL_W + CARD_W;
             const nextCardLeft = nextColIdx * COL_W;
-            const midX = cardRight + COL_GAP / 2;
-            const myCentreY = cardCentreY(colIdx, mi);
-            const partnerCentreY = cardCentreY(colIdx, partnerMi);
-            const targetCentreY = cardCentreY(nextColIdx, Math.floor(mi / 2));
-            return (
-              <g key={`conn-${colIdx}-${mi}`}>
-                <line x1={cardRight} y1={myCentreY} x2={midX} y2={myCentreY} stroke={stroke} strokeWidth={1.5} />
-                <line x1={cardRight} y1={partnerCentreY} x2={midX} y2={partnerCentreY} stroke={stroke} strokeWidth={1.5} />
-                <line x1={midX} y1={myCentreY} x2={midX} y2={partnerCentreY} stroke={stroke} strokeWidth={1.5} />
-                <line x1={midX} y1={targetCentreY} x2={nextCardLeft} y2={targetCentreY} stroke={stroke} strokeWidth={1.5} />
-              </g>
-            );
+
+            // Handle the 1:1 straight mapping for lower bracket drop-in rounds visually
+            if (section === 'lower' && colIdx % 2 === 0) {
+              const myCentreY = cardCentreY(colIdx, mi);
+              return (
+                <g key={`conn-${colIdx}-${mi}`}>
+                  <line x1={cardRight} y1={myCentreY} x2={nextCardLeft} y2={myCentreY} stroke={stroke} strokeWidth={1.5} />
+                </g>
+              );
+            } else {
+              if (mi % 2 !== 0) return null;
+              const partnerMi = mi + 1;
+              const midX = cardRight + COL_GAP / 2;
+              const myCentreY = cardCentreY(colIdx, mi);
+              const partnerCentreY = cardCentreY(colIdx, partnerMi);
+              const targetCentreY = cardCentreY(nextColIdx, Math.floor(mi / 2));
+              return (
+                <g key={`conn-${colIdx}-${mi}`}>
+                  <line x1={cardRight} y1={myCentreY} x2={midX} y2={myCentreY} stroke={stroke} strokeWidth={1.5} />
+                  <line x1={cardRight} y1={partnerCentreY} x2={midX} y2={partnerCentreY} stroke={stroke} strokeWidth={1.5} />
+                  <line x1={midX} y1={myCentreY} x2={midX} y2={partnerCentreY} stroke={stroke} strokeWidth={1.5} />
+                  <line x1={midX} y1={targetCentreY} x2={nextCardLeft} y2={targetCentreY} stroke={stroke} strokeWidth={1.5} />
+                </g>
+              );
+            }
           });
         })}
         {(() => {
@@ -378,22 +283,15 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
         const sk = `${section}_r${ri}`;
         const maps: string[] = parseStageMaps(stageMaps[sk]);
         const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
-        const label = isFinalCol
-          ? (section === 'upper' ? 'Final' : 'LB Final')
-          : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
+        const label = isFinalCol ? (section === 'upper' ? 'Final' : 'LB Final') : (section === 'upper' ? `Round ${ri + 1}` : `LR ${ri + 1}`);
 
         return round.map((match, mi) => {
-          const top = getMatchTop(colIdx, mi);
+          const top = getMatchTop(section, colIdx, mi);
           const left = colIdx * COL_W;
           return (
             <div key={`card-${colIdx}-${mi}`} style={{ position: 'absolute', top, left, width: CARD_W }}>
               {mi === 0 && (
-                <div
-                  className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim text-center"
-                  style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6, whiteSpace: 'nowrap' }}
-                >
-                  {label}
-                </div>
+                <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim text-center" style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6, whiteSpace: 'nowrap' }}>{label}</div>
               )}
               <MatchCard match={match} section={section} ri={ri} mi={mi} maps={maps} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
             </div>
@@ -406,12 +304,9 @@ function BracketGrid({ rounds, section, stageMaps, onScore, onUndo, isAdmin }: {
 
 // ── MatchCard ─────────────────────────────────────────────────────────────────
 function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
-  match: BracketMatch;
-  section: string; ri: number; mi: number;
-  maps: string[];
+  match: BracketMatch; section: string; ri: number; mi: number; maps: string[];
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
-  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
-  isAdmin: boolean;
+  onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
 }) {
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
@@ -421,7 +316,6 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
   const canUndo = isAdmin && isDone;
   const target = isBo3 ? 2 : 1;
 
-  // Keep local state in sync when match updates from server
   if (s1 !== match.score1 && !canEdit) setS1(match.score1);
   if (s2 !== match.score2 && !canEdit) setS2(match.score2);
 
@@ -432,50 +326,23 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
   };
 
   return (
-    // Wrapper is relative so the undo button can float outside without affecting card height
     <div style={{ position: 'relative' }}>
       <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
         {maps.length > 0 && (
           <div className="px-2 pt-1.5 flex flex-wrap gap-1">
-            {maps.map((m, i) => (
-              <div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']"
-                style={{ background: 'rgba(176,109,255,0.12)', color: '#b06dff', border: '1px solid rgba(176,109,255,0.3)' }}>
-                🗺 {m}
-              </div>
-            ))}
+            {maps.map((m, i) => (<div key={i} className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono']" style={{ background: 'rgba(176,109,255,0.12)', color: '#b06dff', border: '1px solid rgba(176,109,255,0.3)' }}>🗺 {m}</div>))}
           </div>
         )}
         {isBo3 && (
           <div className="px-2 pt-1">
-            <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
-              style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold" style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
           </div>
         )}
-        <PlayerRow
-          player={match.p1} score={isDone ? match.score1 : s1}
-          isWinner={isDone && match.winner === match.p1}
-          isLoser={isDone && match.winner !== match.p1}
-          showScore={isDone || !!(match.p1 && match.p2)}
-          canEdit={canEdit} isBo3={isBo3} otherScore={s2}
-          onCommit={n => { setS1(n); trySubmit(n, s2); }}
-        />
-        <PlayerRow
-          player={match.p2} score={isDone ? match.score2 : s2}
-          isWinner={isDone && match.winner === match.p2}
-          isLoser={isDone && match.winner !== match.p2}
-          showScore={isDone || !!(match.p1 && match.p2)}
-          canEdit={canEdit} isBo3={isBo3} otherScore={s1}
-          onCommit={n => { setS2(n); trySubmit(s1, n); }}
-        />
+        <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} otherScore={s2} onCommit={n => { setS1(n); trySubmit(n, s2); }} />
+        <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} otherScore={s1} onCommit={n => { setS2(n); trySubmit(s1, n); }} />
       </div>
-      {/* Undo floats to the right of the card in the COL_GAP — never adds card height */}
       {canUndo && (
-        <button
-          title="Undo this result"
-          className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer"
-          style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)', whiteSpace: 'nowrap' }}
-          onClick={() => onUndo(section, ri, mi)}
-        >↩</button>
+        <button title="Undo this result" className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)', whiteSpace: 'nowrap' }} onClick={() => onUndo(section, ri, mi)}>↩</button>
       )}
     </div>
   );
@@ -485,8 +352,7 @@ function MatchCard({ match, section, ri, mi, maps, onScore, onUndo, isAdmin }: {
 function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
   match: BracketMatch;
   onScore: (p1wins: number, p2wins: number) => Promise<void>;
-  onUndo: () => Promise<void>;
-  isAdmin: boolean;
+  onUndo: () => Promise<void>; isAdmin: boolean;
 }) {
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
@@ -502,22 +368,8 @@ function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
 
   return (
     <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
-      <PlayerRow
-        player={match.p1} score={isDone ? match.score1 : s1}
-        isWinner={isDone && match.winner === match.p1}
-        isLoser={isDone && match.winner !== match.p1}
-        showScore={isDone || !!(match.p1 && match.p2)}
-        canEdit={canEdit} isBo3={isBo3} otherScore={s2}
-        onCommit={n => { setS1(n); trySubmit(n, s2); }}
-      />
-      <PlayerRow
-        player={match.p2} score={isDone ? match.score2 : s2}
-        isWinner={isDone && match.winner === match.p2}
-        isLoser={isDone && match.winner !== match.p2}
-        showScore={isDone || !!(match.p1 && match.p2)}
-        canEdit={canEdit} isBo3={isBo3} otherScore={s1}
-        onCommit={n => { setS2(n); trySubmit(s1, n); }}
-      />
+      <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} otherScore={s2} onCommit={n => { setS1(n); trySubmit(n, s2); }} />
+      <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} otherScore={s1} onCommit={n => { setS2(n); trySubmit(s1, n); }} />
     </div>
   );
 }
@@ -526,8 +378,7 @@ function ThirdPlaceDisplay({ match, onScore, onUndo, isAdmin }: {
 function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
   gf: GrandFinal;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
-  onUndo: (section: string, ri: number, mi: number) => Promise<void>;
-  isAdmin: boolean;
+  onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
 }) {
   const isBo3 = gf.format === 'bo3';
   const [gf1s1, setGf1s1] = useState(gf.score1);
@@ -546,32 +397,14 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* GF1 */}
       <div className="flex flex-col gap-1">
         <p className="font-['DM_Mono'] text-[10px] t-dim uppercase tracking-widest">GF1</p>
         <div className="t-elevated border t-border rounded-xl overflow-hidden" style={{ width: CARD_W }}>
           {isBo3 && (
-            <div className="px-2 pt-1">
-              <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
-                style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
-            </div>
+            <div className="px-2 pt-1"><span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold" style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span></div>
           )}
-          <PlayerRow
-            player={gf.p1} score={gf1Done ? gf.score1 : gf1s1}
-            isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p1}
-            isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p1}
-            showScore={gf1Done || !!(gf.p1 && gf.p2)}
-            canEdit={!!canEditGf1} isBo3={isBo3} otherScore={gf1s2}
-            onCommit={n => { setGf1s1(n); trySubmitGf(n, gf1s2); }}
-          />
-          <PlayerRow
-            player={gf.p2} score={gf1Done ? gf.score2 : gf1s2}
-            isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p2}
-            isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p2}
-            showScore={gf1Done || !!(gf.p1 && gf.p2)}
-            canEdit={!!canEditGf1} isBo3={isBo3} otherScore={gf1s1}
-            onCommit={n => { setGf1s2(n); trySubmitGf(gf1s1, n); }}
-          />
+          <PlayerRow player={gf.p1} score={gf1Done ? gf.score1 : gf1s1} isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p1} isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p1} showScore={gf1Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf1} isBo3={isBo3} otherScore={gf1s2} onCommit={n => { setGf1s1(n); trySubmitGf(n, gf1s2); }} />
+          <PlayerRow player={gf.p2} score={gf1Done ? gf.score2 : gf1s2} isWinner={!gf.isReset && !!gf.winner && gf.winner === gf.p2} isLoser={!gf.isReset && !!gf.winner && gf.winner !== gf.p2} showScore={gf1Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf1} isBo3={isBo3} otherScore={gf1s1} onCommit={n => { setGf1s2(n); trySubmitGf(gf1s1, n); }} />
           {gf.isReset && (
             <div className="px-3 py-1.5 border-t t-border text-center" style={{ background: 'rgba(58,107,255,0.06)' }}>
               <span className="font-['DM_Mono'] text-[9px] font-bold" style={{ color: 'var(--accent)' }}>🔄 BRACKET RESET — play GF2</span>
@@ -580,43 +413,21 @@ function GrandFinalDisplay({ gf, onScore, onUndo, isAdmin }: {
         </div>
       </div>
 
-      {/* GF2 — only shown after bracket reset is triggered */}
       {gf.isReset && (
         <div className="flex flex-col gap-1">
           <p className="font-['DM_Mono'] text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--accent)' }}>GF2 — Reset Match</p>
           <div className="t-elevated border-2 rounded-xl overflow-hidden" style={{ width: CARD_W, borderColor: 'var(--accent)' }}>
             {isBo3 && (
-              <div className="px-2 pt-1">
-                <span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold"
-                  style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span>
-              </div>
+              <div className="px-2 pt-1"><span className="text-[9px] px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold" style={{ background: 'rgba(224,144,16,0.1)', color: 'var(--accent-gold)', border: '1px solid rgba(224,144,16,0.25)' }}>BO3</span></div>
             )}
-            <PlayerRow
-              player={gf.p1} score={gf2Done ? (gf.resetScore1 ?? 0) : gf2s1}
-              isWinner={gf2Done && gf.winner === gf.p1}
-              isLoser={gf2Done && gf.winner !== gf.p1}
-              showScore={gf2Done || !!(gf.p1 && gf.p2)}
-              canEdit={!!canEditGf2} isBo3={isBo3} otherScore={gf2s2}
-              onCommit={n => { setGf2s1(n); trySubmitGf(n, gf2s2); }}
-            />
-            <PlayerRow
-              player={gf.p2} score={gf2Done ? (gf.resetScore2 ?? 0) : gf2s2}
-              isWinner={gf2Done && gf.winner === gf.p2}
-              isLoser={gf2Done && gf.winner !== gf.p2}
-              showScore={gf2Done || !!(gf.p1 && gf.p2)}
-              canEdit={!!canEditGf2} isBo3={isBo3} otherScore={gf2s1}
-              onCommit={n => { setGf2s2(n); trySubmitGf(gf2s1, n); }}
-            />
+            <PlayerRow player={gf.p1} score={gf2Done ? (gf.resetScore1 ?? 0) : gf2s1} isWinner={gf2Done && gf.winner === gf.p1} isLoser={gf2Done && gf.winner !== gf.p1} showScore={gf2Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf2} isBo3={isBo3} otherScore={gf2s2} onCommit={n => { setGf2s1(n); trySubmitGf(n, gf2s2); }} />
+            <PlayerRow player={gf.p2} score={gf2Done ? (gf.resetScore2 ?? 0) : gf2s2} isWinner={gf2Done && gf.winner === gf.p2} isLoser={gf2Done && gf.winner !== gf.p2} showScore={gf2Done || !!(gf.p1 && gf.p2)} canEdit={!!canEditGf2} isBo3={isBo3} otherScore={gf2s1} onCommit={n => { setGf2s2(n); trySubmitGf(gf2s1, n); }} />
           </div>
         </div>
       )}
 
-      {/* Undo */}
       {canUndo && (
-        <button
-          className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer text-left"
-          onClick={() => onUndo('gf', 0, 0)}
-        >↩ undo last GF result</button>
+        <button className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer text-left" onClick={() => onUndo('gf', 0, 0)}>↩ undo last GF result</button>
       )}
     </div>
   );
