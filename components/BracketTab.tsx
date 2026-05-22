@@ -225,6 +225,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
 }
 
 // ── BracketGrid ───────────────────────────────────────────────────────────────
+// ── BracketGrid ───────────────────────────────────────────────────────────────
 function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, isAdmin }: {
   rounds: BracketMatch[][]; section: string; type: 'single' | 'double'; gf?: GrandFinal | null;
   stageMaps: Record<string, string[]>;
@@ -237,7 +238,9 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
   const firstRound = validRounds[0];
   const hasGF = type === 'double' && section === 'upper' && gf && (gf.p1 || gf.p2);
   
-  let offsetY = 20; 
+  // FIX: Standardized base offset increased from 20 to 40. 
+  // This guarantees the "ROUND X" labels never bleed out the top of the SVG bounding box.
+  let offsetY = 40; 
   let extraHeight = 0;
   if (hasGF) {
     const finalY = getMatchTop(section, validRounds.length - 1, 0) + CARD_H / 2;
@@ -246,7 +249,8 @@ function BracketGrid({ rounds, section, type, gf, stageMaps, onScore, onUndo, is
     extraHeight = Math.max(0, (gfHalfHeight * 2) - CARD_H);
   }
 
-  const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H + offsetY + extraHeight;
+  // FIX: Added + 20 at the end to ensure the bottom shadows never clip either
+  const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H + offsetY + extraHeight + 20;
   const gfWidth = CARD_W;
   const totalWidth = validRounds.length * COL_W - COL_GAP + (hasGF ? COL_GAP + gfWidth + 40 : 40);
   const stroke = 'var(--border-mid)';
