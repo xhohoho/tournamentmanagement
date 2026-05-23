@@ -52,9 +52,17 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { action, stageKey, mapName, slot, spinQueue } = body;
 
-  // Save the Spin Queue to the database
+  // Save the Spin Queue to the database (full replace)
   if (action === 'updateSpinQueue') {
     const next = await updateState(s => ({ ...s, spinQueue: spinQueue || [] }));
+    return NextResponse.json({ spinQueue: next.spinQueue });
+  }
+
+  // Atomically append one map to the spin queue (avoids client-side stale-state race)
+  if (action === 'appendSpinQueue') {
+    const { map } = body;
+    if (!map) return NextResponse.json({ error: 'map required' }, { status: 400 });
+    const next = await updateState(s => ({ ...s, spinQueue: [...(s.spinQueue || []), map] }));
     return NextResponse.json({ spinQueue: next.spinQueue });
   }
 
