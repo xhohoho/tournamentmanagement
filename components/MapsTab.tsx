@@ -129,8 +129,10 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = maps[Math.floor(norm / slice) % maps.length];
       onSpunMap(result);
-      // Broadcast result so users get the winner modal too
+      // Broadcast result so users get the winner modal, then clear spinState
+      // so stale result doesn't re-trigger the modal on future page refreshes
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
+      setTimeout(() => broadcastSpinState(null), 5000);
     };
     rafRef.current = requestAnimationFrame(tick);
   }, [spinning, maps, drawWheel, onSpunMap, broadcastSpinState]);
@@ -152,6 +154,11 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         const targetAngle = liveSpin.targetAngle;
         const dur = liveSpin.duration;
         const startTime = liveSpin.startTime;
+
+        // Ignore stale spins that finished before this page load (e.g. on refresh)
+        // Give a 10-second grace window for late SSE delivery of a live spin result
+        const age = Date.now() - (startTime + dur);
+        if (age > 10000) return;
 
         // If spin already finished by the time SSE reached us, snap to end
         if (Date.now() - startTime >= dur) {
