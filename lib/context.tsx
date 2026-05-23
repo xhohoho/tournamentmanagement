@@ -13,6 +13,7 @@ interface TourneyContext {
   maps: string[];
   stageMaps: Record<string, string[]>;
   spinState: import('@/lib/types').SpinState | null;
+  spinQueue: string[];
   isAdmin: boolean;
   adminToken: string | null;
   loading: boolean;
@@ -69,6 +70,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [maps, setMaps] = useState<string[]>([]);
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
   const [spinState, setSpinState] = useState<import('@/lib/types').SpinState | null>(null);
+  const [spinQueue, setSpinQueue] = useState<string[]>([]);
   const [joinKey, setJoinKeyState] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAdmin, setIsAdminState] = useState(false);
@@ -110,6 +112,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setMaps(data.maps ?? []);
       setStageMaps(data.stageMaps ?? {});
       setSpinState(data.spinState ?? null);
+      setSpinQueue(data.spinQueue ?? []);
       setJoinKeyState(data.joinKey ?? '');
       setChatMessages(data.chatMessages ?? []);
     } catch {
@@ -143,6 +146,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
           setSpinState(data.spinState ?? null);
+          setSpinQueue(data.spinQueue ?? []);
           setJoinKeyState(data.joinKey ?? '');
           setChatMessages(data.chatMessages ?? []);
         } catch { /* ignore malformed frames */ }
@@ -431,7 +435,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState,
+      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, spinQueue,
       joinKey, chatMessages,
       isAdmin, adminToken, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
