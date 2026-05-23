@@ -379,6 +379,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const resetBracket = async () => {
     await fetch('/api/bracket', { method: 'DELETE', headers: adminHeaders });
     setBracket(null);
+    setStageMaps({});
   };
 
   const setElimMode = async (mode: 'single' | 'double') => {
