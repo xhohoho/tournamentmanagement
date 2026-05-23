@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTourney } from '@/lib/context';
 import { AdminModal } from '@/components/AdminModal';
 import { PlayersTab } from '@/components/PlayersTab';
@@ -19,6 +19,8 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 export default function Home() {
   const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue } = useTourney();
+  const spinQueueRef = useRef(spinQueue);
+  useEffect(() => { spinQueueRef.current = spinQueue; }, [spinQueue]);
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
   const [spunMap, setSpunMap] = useState('');
@@ -41,7 +43,7 @@ export default function Home() {
   const handleSpunMap = async (map: string) => {
     setSpunMap(map);
     if (map && isAdmin) {
-      const newQueue = [...spinQueue, map];
+      const newQueue = [...spinQueueRef.current, map];
       await fetch('/api/maps', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
