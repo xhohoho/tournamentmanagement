@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useTourney } from '@/lib/context';
 import { AdminModal } from '@/components/AdminModal';
 import { PlayersTab } from '@/components/PlayersTab';
@@ -18,20 +18,13 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 export default function Home() {
-  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue } = useTourney();
+  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue, clearSpinQueue } = useTourney();
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
-  const [spunMap, setSpunMap] = useState('');
 
   const [dark, setDark] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
-
-  // Stable refs so RAF closures inside MapsTab always call the latest version
-  const isAdminRef = useRef(isAdmin);
-  const adminTokenRef = useRef(adminToken);
-  useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
-  useEffect(() => { adminTokenRef.current = adminToken; }, [adminToken]);
 
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
@@ -43,31 +36,6 @@ export default function Home() {
     return !prev;
   });
 
-  // DB SYNC: Handle adding a new map to the queue from a spin.
-  // Uses refs so the RAF tick in MapsTab always calls the latest version
-  // even if the component re-renders mid-animation (stale closure fix).
-  const handleSpunMap = useCallback(async (map: string) => {
-    setSpunMap(map);
-    if (map && isAdminRef.current) {
-      const token = adminTokenRef.current;
-      await fetch('/api/maps', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
-        body: JSON.stringify({ action: 'appendSpinQueue', map }),
-      });
-    }
-  }, []); // stable — reads refs at call time, not at creation time
-
-  const handleSpinResultsChange = async (newQueue: string[]) => {
-    if (isAdmin) {
-      await fetch('/api/maps', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQueue }),
-      });
-    }
-  };
-
   const handleAdminBtn = () => {
     if (isAdmin) { setIsAdmin(false); return; }
     setAdminOpen(true);
@@ -76,11 +44,7 @@ export default function Home() {
   const handleReset = async () => {
     if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
     await resetAll();
-    await fetch('/api/maps', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-      body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
-    });
+    await clearSpinQueue();
     setResetConfirm(false);
   };
 
@@ -98,7 +62,6 @@ export default function Home() {
   }
 
   return (
-    /* h-screen + overflow-hidden = page never grows, no outer scroll */
     <div className={`${dark ? 'dark' : ''} t-bg h-screen overflow-hidden flex flex-col`}>
 
       {/* Ambient gradients */}
@@ -109,7 +72,7 @@ export default function Home() {
 
       <div className="relative z-10 flex flex-col h-full min-h-0">
 
-        {/* Header — fixed height */}
+        {/* Header */}
         <header className="t-header backdrop-blur-md border-b t-border shrink-0 z-40">
           <div className="w-full px-8 py-3 flex items-center justify-between">
             <div className="font-['Bebas_Neue'] text-2xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent">
@@ -149,7 +112,7 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Tab nav — fixed height */}
+        {/* Tab nav */}
         <nav className="t-surface border-b t-border shrink-0">
           <div className="w-full px-8 flex overflow-x-auto">
             {TABS.map(tab => (
@@ -173,21 +136,18 @@ export default function Home() {
           </div>
         </nav>
 
-        {/* Main — flex-1 + min-h-0 = fills exactly what's left, no overflow */}
+        {/* Main */}
         <main className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0 flex flex-col px-8">
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
-
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={spinQueue} /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={handleSpunMap} spinResults={spinQueue} onSpinResultsChange={handleSpinResultsChange} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab /></div>
           </div>
         </main>
       </div>
 
       <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
-
-      {/* Floating Chat Panel — always mounted, toggled by button */}
       <ChatPanel open={chatOpen} onToggle={() => setChatOpen(o => !o)} />
     </div>
   );

@@ -51,6 +51,8 @@ interface TourneyContext {
 
   addMap: (name: string) => Promise<{ error?: string }>;
   removeMap: (name: string) => Promise<void>;
+  appendSpinQueue: (map: string) => Promise<void>;
+  clearSpinQueue: () => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
@@ -402,6 +404,30 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
+  const appendSpinQueue = async (map: string) => {
+    // Optimistic local update first — UI reflects immediately
+    setSpinQueue(prev => [...prev, map]);
+    // Then persist to KV
+    const res = await fetch('/api/maps', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'appendSpinQueue', map }),
+    });
+    if (!res.ok) {
+      // Roll back on failure
+      setSpinQueue(prev => prev.filter((_, i) => i !== prev.length - 1));
+    }
+  };
+
+  const clearSpinQueue = async () => {
+    setSpinQueue([]);
+    await fetch('/api/maps', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
+    });
+  };
+
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
     const res = await fetch('/api/maps', {
       method: 'PATCH',
@@ -444,7 +470,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       sendChat, clearChat,
       formTeams, resetTeams, setTeamMode,
       generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
-      addMap, removeMap, assignStage, clearStage,
+      addMap, removeMap, appendSpinQueue, clearSpinQueue, assignStage, clearStage,
       assignLeader,
       resetAll,
     }}>
