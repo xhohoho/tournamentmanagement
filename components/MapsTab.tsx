@@ -34,11 +34,13 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
 
   const handleRemoveMap = async (mapToRemove: string) => {
     await removeMap(mapToRemove);
-    if (spunMap === mapToRemove) onSpunMap('');
   };
 
+  // Restore map to pool only if not already present (no duplicates)
   const handleRestoreMap = async (mapToRestore: string) => {
-    await addMap(mapToRestore);
+    if (!maps.includes(mapToRestore)) {
+      await addMap(mapToRestore);
+    }
   };
 
   if (loading) return (
@@ -129,10 +131,9 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = maps[Math.floor(norm / slice) % maps.length];
       onSpunMap(result);
-      // Broadcast result so users get the winner modal, then clear spinState
-      // so stale result doesn't re-trigger the modal on future page refreshes
+      // Broadcast spin end so non-admin wheels stop; clear immediately (no modal for anyone)
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
-      setTimeout(() => broadcastSpinState(null), 5000);
+      setTimeout(() => broadcastSpinState(null), 1000);
     };
     rafRef.current = requestAnimationFrame(tick);
   }, [spinning, maps, drawWheel, onSpunMap, broadcastSpinState]);
@@ -156,15 +157,13 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         const startTime = liveSpin.startTime;
 
         // Ignore stale spins that finished before this page load (e.g. on refresh)
-        // Give a 10-second grace window for late SSE delivery of a live spin result
         const age = Date.now() - (startTime + dur);
         if (age > 10000) return;
 
-        // If spin already finished by the time SSE reached us, snap to end
+        // Snap wheel to final position — no modal for non-admin viewers
         if (Date.now() - startTime >= dur) {
           angleRef.current = targetAngle;
           drawWheel(angleRef.current);
-          onSpunMap(liveSpin.result);
         } else {
           setSpinning(true);
           if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -173,7 +172,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
             angleRef.current = a0 + (targetAngle - a0) * (1 - Math.pow(1 - tAbs, 4));
             drawWheel(angleRef.current);
             if (tAbs < 1) { rafRef.current = requestAnimationFrame(animate); }
-            else { setSpinning(false); onSpunMap(liveSpin.result); }
+            else { setSpinning(false); }
           };
           rafRef.current = requestAnimationFrame(animate);
         }
@@ -310,7 +309,12 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               {isAdmin && spinResults.length > 0 && (
                 <button
                   className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer whitespace-nowrap"
-                  onClick={() => onSpinResultsChange([])}
+                  onClick={async () => {
+                    // Restore all queued maps that are not already in the pool
+                    const missing = spinResults.filter(m => !maps.includes(m));
+                    for (const m of missing) await addMap(m);
+                    onSpinResultsChange([]);
+                  }}
                 >clear all</button>
               )}
             </div>
@@ -385,33 +389,15 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         </div>
       </div>
 
-      {/* RESULT MODAL OVERLAY — shown for both admin and users */}
-      {spunMap && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-[#1e1e1e] border border-[var(--border-mid)] rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="bg-[#d32f2f] text-white px-5 py-3 font-semibold text-lg">
-              We have a winner!
-            </div>
-            <div className="p-10 flex items-center justify-center border-b border-[#333]">
-              <p className="text-white text-5xl font-light tracking-wide text-center break-words">{spunMap}</p>
-            </div>
-            <div className="px-5 py-4 flex items-center justify-end gap-4 bg-[#242424]">
-              <button
-                className="text-sm text-gray-300 hover:text-white font-medium transition-colors cursor-pointer"
-                onClick={() => onSpunMap('')}
-              >
-                Close
-              </button>
-              {isAdmin && (
-                <button
-                  className="px-4 py-2 bg-[#5c7cfa] hover:bg-[#4c6cf0] text-white text-sm font-semibold rounded shadow-sm transition-colors cursor-pointer"
-                  onClick={() => { handleRemoveMap(spunMap); onSpunMap(''); }}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          </div>
+      {/* Result toast — admin only, bottom-right, auto-dismisses */}
+      {spunMap && isAdmin && (
+        <div className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 bg-[#1e1e1e] border border-[var(--border-mid)] rounded-xl px-5 py-3 shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-200">
+          <span className="font-['DM_Mono'] text-xs t-muted">🎯 Result:</span>
+          <span className="font-['Bebas_Neue'] text-lg tracking-widest t-text">{spunMap}</span>
+          <button
+            className="ml-2 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer"
+            onClick={() => onSpunMap('')}
+          >✕</button>
         </div>
       )}
     </>
