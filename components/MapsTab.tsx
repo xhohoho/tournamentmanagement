@@ -11,7 +11,7 @@ export function MapsTab() {
     maps, isAdmin, loading,
     addMap, removeMap, appendSpinQueue, clearSpinQueue,
     adminToken, spinState: liveSpin,
-    spinQueue,
+    spinQueue, removeSpinQueueItem,
   } = useTourney();
 
   const [mapInput, setMapInput] = useState('');
@@ -222,14 +222,10 @@ export function MapsTab() {
     setMapInput(''); setMapErr('');
   };
 
-  // Remove individual item from queue (admin only)
+  // Remove individual item from queue (admin only) — delegates to context
+  // so local state is updated immediately without waiting for SSE.
   const handleRemoveQueueItem = async (idx: number) => {
-    const newQ = spinQueue.filter((_, i) => i !== idx);
-    await fetch('/api/maps', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-      body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQ }),
-    });
+    await removeSpinQueueItem(idx);
   };
 
   return (

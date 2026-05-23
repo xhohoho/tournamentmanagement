@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Player, Team, Bracket, ChatMessage } from '@/lib/types';
 
 interface TourneyContext {
@@ -53,6 +53,7 @@ interface TourneyContext {
   removeMap: (name: string) => Promise<void>;
   appendSpinQueue: (map: string) => Promise<void>;
   clearSpinQueue: () => Promise<void>;
+  removeSpinQueueItem: (idx: number) => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
@@ -78,6 +79,10 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdminState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Guard: true while an appendSpinQueue write is in-flight.
+  // Prevents SSE from overwriting the optimistic local state before KV confirms.
+  const pendingSpinAppend = useRef(false);
 
   const adminHeaders = useMemo(() => ({
     'Content-Type': 'application/json',
@@ -148,7 +153,12 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
           setSpinState(data.spinState ?? null);
-          setSpinQueue(data.spinQueue ?? []);
+          // Only sync spinQueue from SSE if no local write is in-flight.
+          // Without this guard, the SSE frame that arrives between optimistic
+          // setSpinQueue and the KV write completing would roll back the result.
+          if (!pendingSpinAppend.current) {
+            setSpinQueue(data.spinQueue ?? []);
+          }
           setJoinKeyState(data.joinKey ?? '');
           setChatMessages(data.chatMessages ?? []);
         } catch { /* ignore malformed frames */ }
@@ -405,18 +415,43 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const appendSpinQueue = async (map: string) => {
-    // Optimistic local update first — UI reflects immediately
+    // Optimistic local update — UI reflects immediately
     setSpinQueue(prev => [...prev, map]);
-    // Then persist to KV
-    const res = await fetch('/api/maps', {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'appendSpinQueue', map }),
-    });
-    if (!res.ok) {
-      // Roll back on failure
-      setSpinQueue(prev => prev.filter((_, i) => i !== prev.length - 1));
+    // Block SSE from overwriting while the KV write is in-flight
+    pendingSpinAppend.current = true;
+    try {
+      const res = await fetch('/api/maps', {
+        method: 'PATCH',
+        headers: adminHeaders,
+        body: JSON.stringify({ action: 'appendSpinQueue', map }),
+      });
+      if (res.ok) {
+        // Use the authoritative KV value so we're always in sync
+        const data = await res.json();
+        setSpinQueue(data.spinQueue);
+      } else {
+        // Proper rollback: remove only the item we just appended
+        setSpinQueue(prev => prev.slice(0, -1));
+      }
+    } catch {
+      setSpinQueue(prev => prev.slice(0, -1));
+    } finally {
+      pendingSpinAppend.current = false;
     }
+  };
+
+  const removeSpinQueueItem = async (idx: number) => {
+    // Compute new queue from current state and update locally first
+    setSpinQueue(prev => {
+      const newQ = prev.filter((_, i) => i !== idx);
+      // Fire-and-forget persist (SSE will correct any drift)
+      fetch('/api/maps', {
+        method: 'PATCH',
+        headers: adminHeaders,
+        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQ }),
+      });
+      return newQ;
+    });
   };
 
   const clearSpinQueue = async () => {
@@ -457,6 +492,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps({});
     setJoinKeyState('');
     setChatMessages([]);
+    setSpinQueue([]);
+    setSpinState(null);
   };
 
   return (
@@ -470,7 +507,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       sendChat, clearChat,
       formTeams, resetTeams, setTeamMode,
       generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
-      addMap, removeMap, appendSpinQueue, clearSpinQueue, assignStage, clearStage,
+      addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, assignStage, clearStage,
       assignLeader,
       resetAll,
     }}>
