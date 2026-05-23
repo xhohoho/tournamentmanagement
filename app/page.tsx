@@ -29,13 +29,25 @@ export default function Home() {
   const [resetConfirm, setResetConfirm] = useState(false);
 
   // FETCH INITIAL QUEUE ON MOUNT
+  // FETCH INITIAL QUEUE & AUTO-SYNC FOR ALL USERS
   useEffect(() => {
-    fetch('/api/maps') // <-- UPDATE THIS URL IF YOUR ROUTE IS DIFFERENT
-      .then(res => res.json())
-      .then(data => {
-        if (data.spinQueue) setSpinResults(data.spinQueue);
-      })
-      .catch(err => console.error('Failed to load spin queue', err));
+    const fetchQueue = () => {
+      fetch('/api/maps')
+        .then(res => res.json())
+        .then(data => {
+          if (data.spinQueue) setSpinResults(data.spinQueue);
+        })
+        .catch(err => console.error('Failed to load spin queue', err));
+    };
+
+    // 1. Fetch immediately on mount
+    fetchQueue();
+
+    // 2. Poll every 3 seconds so normal users see the admin's spins live!
+    const interval = setInterval(fetchQueue, 3000);
+    
+    // Cleanup on unmount
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
