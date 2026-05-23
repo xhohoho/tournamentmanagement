@@ -18,6 +18,12 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
   const angleRef = useRef(0);
   const [spinning, setSpinning] = useState(false);
   const rafRef = useRef<number | null>(null);
+  // Stable ref to onSpunMap so the RAF tick always calls the latest version
+  const onSpunMapRef = useRef(onSpunMap);
+  useEffect(() => { onSpunMapRef.current = onSpunMap; }, [onSpunMap]);
+  // Stable ref to maps so the RAF tick reads the latest maps at spin-end
+  const mapsRef = useRef(maps);
+  useEffect(() => { mapsRef.current = maps; }, [maps]);
 
   // Persisted Default Maps
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
@@ -107,7 +113,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
   // ─── ADMIN: spin ──────────────────────────────────────────────────────────
   const spin = useCallback(() => {
     if (spinning || !maps.length) return;
-    setSpinning(true); onSpunMap('');
+    setSpinning(true); onSpunMapRef.current('');
     const extra = (5 + Math.random() * 6) * Math.PI * 2 + Math.random() * Math.PI * 2;
     const dur = 3200 + Math.random() * 1200;
     const a0 = angleRef.current;
@@ -124,19 +130,20 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       drawWheel(angleRef.current);
       if (tAbs < 1) { rafRef.current = requestAnimationFrame(tick); return; }
 
-      // Spin done
+      // Spin done — read refs for latest maps & callback (stale closure safe)
       setSpinning(false);
-      const slice = (Math.PI * 2) / maps.length;
+      const currentMaps = mapsRef.current;
+      const slice = (Math.PI * 2) / currentMaps.length;
       const pointerAngle = -Math.PI / 2;
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-      const result = maps[Math.floor(norm / slice) % maps.length];
-      onSpunMap(result);
-      // Broadcast spin end so non-admin wheels stop; clear immediately (no modal for anyone)
+      const result = currentMaps[Math.floor(norm / slice) % currentMaps.length];
+      onSpunMapRef.current(result);
+      // Broadcast spin end so non-admin wheels stop; clear after 1s
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
       setTimeout(() => broadcastSpinState(null), 1000);
     };
     rafRef.current = requestAnimationFrame(tick);
-  }, [spinning, maps, drawWheel, onSpunMap, broadcastSpinState]);
+  }, [spinning, maps.length, drawWheel, broadcastSpinState]);
 
   // ─── NON-ADMIN: mirror live spin from SSE-pushed spinState ─────────────────
   const prevSpinRef = useRef<SpinState | null>(null);

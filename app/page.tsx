@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { AdminModal } from '@/components/AdminModal';
 import { PlayersTab } from '@/components/PlayersTab';
@@ -27,6 +27,12 @@ export default function Home() {
   const [chatOpen, setChatOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
 
+  // Stable refs so RAF closures inside MapsTab always call the latest version
+  const isAdminRef = useRef(isAdmin);
+  const adminTokenRef = useRef(adminToken);
+  useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
+  useEffect(() => { adminTokenRef.current = adminToken; }, [adminToken]);
+
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
     if (stored === 'true') setDark(true);
@@ -37,18 +43,20 @@ export default function Home() {
     return !prev;
   });
 
-  // DB SYNC: Handle adding a new map to the queue from a spin
-  // Uses server-side atomic append to avoid stale-client-state race conditions
-  const handleSpunMap = async (map: string) => {
+  // DB SYNC: Handle adding a new map to the queue from a spin.
+  // Uses refs so the RAF tick in MapsTab always calls the latest version
+  // even if the component re-renders mid-animation (stale closure fix).
+  const handleSpunMap = useCallback(async (map: string) => {
     setSpunMap(map);
-    if (map && isAdmin) {
+    if (map && isAdminRef.current) {
+      const token = adminTokenRef.current;
       await fetch('/api/maps', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
         body: JSON.stringify({ action: 'appendSpinQueue', map }),
       });
     }
-  };
+  }, []); // stable — reads refs at call time, not at creation time
 
   const handleSpinResultsChange = async (newQueue: string[]) => {
     if (isAdmin) {
