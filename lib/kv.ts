@@ -17,6 +17,7 @@ export function defaultState(): TournamentState {
     chatMessages: [],
     defaultMaps: [],
     spinQueue: [],
+    spinState: null,
   };
 }
 export async function getState(): Promise<TournamentState> {

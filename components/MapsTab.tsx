@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { WHEEL_COLORS } from '@/lib/utils';
+import type { SpinState } from '@/lib/types';
 
 export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }: {
   spunMap: string;
@@ -10,13 +11,14 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
   spinResults: string[];
   onSpinResultsChange: (results: string[]) => void;
 }) {
-  const { maps, isAdmin, loading, addMap, removeMap } = useTourney();
+  const { maps, isAdmin, loading, addMap, removeMap, adminToken, spinState: liveSpin } = useTourney();
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const angleRef = useRef(0);
   const [spinning, setSpinning] = useState(false);
-  
+  const rafRef = useRef<number | null>(null);
+
   // Persisted Default Maps
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
@@ -49,6 +51,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
     </div>
   );
 
+  // ─── Draw wheel ──────────────────────────────────────────────────────────────
   const drawWheel = useCallback((angle: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -79,7 +82,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       ctx.fillStyle = '#fff';
       ctx.font = `bold ${Math.min(13, 140 / maps.length)}px Syne, sans-serif`;
       ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 4;
-      ctx.fillText(m.length > 14 ? m.slice(0, 13) + '…' : m, r - 8, 4);
+      ctx.fillText(m.length > 14 ? m.slice(0, 13) + '\u2026' : m, r - 8, 4);
       ctx.restore();
     });
 
@@ -90,26 +93,111 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
 
   useEffect(() => { drawWheel(angleRef.current); }, [maps, drawWheel]);
 
-  const spin = () => {
+  // ─── Broadcast spin state helper (admin only) ──────────────────────────────
+  const broadcastSpinState = useCallback(async (state: SpinState | null) => {
+    await fetch('/api/maps', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+      body: JSON.stringify({ action: 'updateSpinState', spinState: state }),
+    });
+  }, [adminToken]);
+
+  // ─── ADMIN: spin ──────────────────────────────────────────────────────────
+  const spin = useCallback(() => {
     if (spinning || !maps.length) return;
     setSpinning(true); onSpunMap('');
     const extra = (5 + Math.random() * 6) * Math.PI * 2 + Math.random() * Math.PI * 2;
     const dur = 3200 + Math.random() * 1200;
-    const t0 = performance.now(), a0 = angleRef.current;
+    const a0 = angleRef.current;
+    const startTime = Date.now();
+
+    // Broadcast spin start so users can mirror it
+    const targetAngle = a0 + extra;
+    broadcastSpinState({ spinning: true, startAngle: a0, targetAngle, startTime, duration: dur, result: '' });
+
     const tick = (now: number) => {
-      const t = Math.min(1, (now - t0) / dur);
-      angleRef.current = a0 + extra * (1 - Math.pow(1 - t, 4));
+      void now;
+      const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+      angleRef.current = a0 + extra * (1 - Math.pow(1 - tAbs, 4));
       drawWheel(angleRef.current);
-      if (t < 1) { requestAnimationFrame(tick); return; }
+      if (tAbs < 1) { rafRef.current = requestAnimationFrame(tick); return; }
+
+      // Spin done
       setSpinning(false);
       const slice = (Math.PI * 2) / maps.length;
       const pointerAngle = -Math.PI / 2;
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = maps[Math.floor(norm / slice) % maps.length];
       onSpunMap(result);
+      // Broadcast result so users get the winner modal too
+      broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
     };
-    requestAnimationFrame(tick);
-  };
+    rafRef.current = requestAnimationFrame(tick);
+  }, [spinning, maps, drawWheel, onSpunMap, broadcastSpinState]);
+
+  // ─── NON-ADMIN: mirror live spin from SSE-pushed spinState ─────────────────
+  const prevSpinRef = useRef<SpinState | null>(null);
+  useEffect(() => {
+    if (isAdmin) return; // admins drive their own animation
+    if (!liveSpin) return;
+
+    const prev = prevSpinRef.current;
+    prevSpinRef.current = liveSpin;
+
+    // Show result modal when spin finishes
+    if (!liveSpin.spinning && liveSpin.result) {
+      // Only fire once per result (avoid re-triggers on SSE re-push)
+      if (!prev || prev.result !== liveSpin.result || prev.spinning) {
+        const a0 = liveSpin.startAngle;
+        const targetAngle = liveSpin.targetAngle;
+        const dur = liveSpin.duration;
+        const startTime = liveSpin.startTime;
+
+        // If spin already finished by the time SSE reached us, snap to end
+        if (Date.now() - startTime >= dur) {
+          angleRef.current = targetAngle;
+          drawWheel(angleRef.current);
+          onSpunMap(liveSpin.result);
+        } else {
+          setSpinning(true);
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          const animate = () => {
+            const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+            angleRef.current = a0 + (targetAngle - a0) * (1 - Math.pow(1 - tAbs, 4));
+            drawWheel(angleRef.current);
+            if (tAbs < 1) { rafRef.current = requestAnimationFrame(animate); }
+            else { setSpinning(false); onSpunMap(liveSpin.result); }
+          };
+          rafRef.current = requestAnimationFrame(animate);
+        }
+      }
+      return;
+    }
+
+    // spinning === true: start mirroring the in-progress spin
+    if (liveSpin.spinning) {
+      if (prev?.startTime === liveSpin.startTime) return; // already running
+      setSpinning(true);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+      const a0 = liveSpin.startAngle;
+      const targetAngle = liveSpin.targetAngle;
+      const dur = liveSpin.duration;
+      const startTime = liveSpin.startTime;
+
+      const animate = () => {
+        const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+        angleRef.current = a0 + (targetAngle - a0) * (1 - Math.pow(1 - tAbs, 4));
+        drawWheel(angleRef.current);
+        if (tAbs < 1) { rafRef.current = requestAnimationFrame(animate); }
+        else { setSpinning(false); }
+      };
+      rafRef.current = requestAnimationFrame(animate);
+    }
+  }, [liveSpin, isAdmin, drawWheel, onSpunMap]);
+
+  // Cleanup RAF on unmount
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
   const handleAddMap = async () => {
     const name = mapInput.trim();
@@ -125,15 +213,20 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         <div className="shrink-0">
           <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Map Selector</h1>
           <p className="font-['DM_Mono'] text-xs t-muted">
-            {isAdmin ? 'Spin the wheel to build a map queue. Drag them directly into bracket slots.' : 'View only — admin required to edit'}
+            {isAdmin ? 'Spin the wheel to build a map queue. Drag them directly into bracket slots.' : 'Live view — spin results appear automatically'}
           </p>
         </div>
 
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
 
-          {/* Wheel panel - removed overflow-y-auto to stop panel scrolling */}
+          {/* Wheel panel */}
           <div className="t-surface border t-border rounded-2xl p-4 flex flex-col gap-3 min-h-0">
-            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text shrink-0">🎡 Wheel</h2>
+            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text shrink-0">
+              🎡 Wheel
+              {spinning && !isAdmin && (
+                <span className="ml-2 font-['DM_Mono'] text-xs t-muted animate-pulse normal-case tracking-normal">live…</span>
+              )}
+            </h2>
 
             {isAdmin && (
               <div className="shrink-0">
@@ -160,15 +253,15 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               </div>
             )}
 
-            {/* Scrolling isolated ONLY to the map list if there are too many */}
+            {/* Map list */}
             <div className="flex-1 overflow-y-auto">
               <div className="flex flex-wrap gap-2">
                 {maps.map(m => (
                   <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
                     {m}
                     {isAdmin && (
-                      <span 
-                        className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0" 
+                      <span
+                        className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0"
                         onClick={() => handleRemoveMap(m)}
                       >
                         ✕
@@ -183,14 +276,23 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
             <div className="flex flex-col items-center gap-2 mt-auto shrink-0 pb-2">
               <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
               <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
-              <button
-                className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
-                style={{ background: 'var(--accent-red)' }}
-                onClick={spin}
-                disabled={spinning || maps.length === 0}
-              >
-                🌀 SPIN
-              </button>
+              {isAdmin ? (
+                <button
+                  className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
+                  style={{ background: 'var(--accent-red)' }}
+                  onClick={spin}
+                  disabled={spinning || maps.length === 0}
+                >
+                  {spinning ? '🌀 Spinning…' : '🌀 SPIN'}
+                </button>
+              ) : (
+                <div className="mt-2 h-9 flex items-center">
+                  {spinning
+                    ? <span className="font-['DM_Mono'] text-xs t-muted animate-pulse">🌀 Admin is spinning…</span>
+                    : <span className="font-['DM_Mono'] text-xs t-dim">Waiting for admin to spin</span>
+                  }
+                </div>
+              )}
             </div>
           </div>
 
@@ -205,7 +307,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                 >clear all</button>
               )}
             </div>
-            
+
             <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-1.5">
               {spinResults.length === 0 ? (
                 <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue. The bracket automatically assigns them in order.</p>
@@ -268,7 +370,6 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                 })}
                 {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
               </div>
-
               {isAdmin && defaultMaps.filter(m => maps.includes(m)).length > 0 && (
                 <p className="font-['DM_Mono'] text-[10px] t-dim">★ = default map (stays in pool after reset)</p>
               )}
@@ -277,7 +378,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         </div>
       </div>
 
-      {/* RESULT MODAL OVERLAY */}
+      {/* RESULT MODAL OVERLAY — shown for both admin and users */}
       {spunMap && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[#1e1e1e] border border-[var(--border-mid)] rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">

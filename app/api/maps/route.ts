@@ -52,10 +52,17 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { action, stageKey, mapName, slot, spinQueue } = body;
 
-  // NEW: Save the Spin Queue to the database
+  // Save the Spin Queue to the database
   if (action === 'updateSpinQueue') {
     const next = await updateState(s => ({ ...s, spinQueue: spinQueue || [] }));
     return NextResponse.json({ spinQueue: next.spinQueue });
+  }
+
+  // Broadcast live spin state to all viewers
+  if (action === 'updateSpinState') {
+    const { spinState } = body;
+    const next = await updateState(s => ({ ...s, spinState: spinState ?? null }));
+    return NextResponse.json({ spinState: next.spinState });
   }
 
   if (action === 'assignStage') {

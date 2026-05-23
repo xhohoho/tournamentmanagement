@@ -12,6 +12,7 @@ interface TourneyContext {
   bracket: Bracket | null;
   maps: string[];
   stageMaps: Record<string, string[]>;
+  spinState: import('@/lib/types').SpinState | null;
   isAdmin: boolean;
   adminToken: string | null;
   loading: boolean;
@@ -67,6 +68,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [maps, setMaps] = useState<string[]>([]);
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
+  const [spinState, setSpinState] = useState<import('@/lib/types').SpinState | null>(null);
   const [joinKey, setJoinKeyState] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAdmin, setIsAdminState] = useState(false);
@@ -107,6 +109,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setBracket(data.bracket ?? null);
       setMaps(data.maps ?? []);
       setStageMaps(data.stageMaps ?? {});
+      setSpinState(data.spinState ?? null);
       setJoinKeyState(data.joinKey ?? '');
       setChatMessages(data.chatMessages ?? []);
     } catch {
@@ -139,6 +142,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setBracket(data.bracket ?? null);
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
+          setSpinState(data.spinState ?? null);
           setJoinKeyState(data.joinKey ?? '');
           setChatMessages(data.chatMessages ?? []);
         } catch { /* ignore malformed frames */ }
@@ -427,7 +431,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps,
+      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState,
       joinKey, chatMessages,
       isAdmin, adminToken, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
