@@ -137,7 +137,7 @@ export function MapsTab() {
 
     broadcastSpinState({ spinning: true, startAngle: a0, targetAngle, startTime, duration: dur, result: '' });
 
-    const tick = () => {
+    const tick = async () => {
       const tAbs = Math.min(1, (Date.now() - startTime) / dur);
       angleRef.current = a0 + extra * (1 - Math.pow(1 - tAbs, 4));
       drawWheel(angleRef.current);
@@ -157,7 +157,13 @@ export function MapsTab() {
 
       // Show modal and write to queue — appendSpinQueue updates context state immediately
       setSpunMap(result);
-      appendSpinQueueRef.current(result); // use ref — always has latest adminToken
+
+      // IMPORTANT: await appendSpinQueue before broadcasting spinState.
+      // Both call updateState() (read-modify-write on KV). If they fire
+      // simultaneously the spinState write races the spinQueue write and
+      // whichever lands second overwrites the other's changes, causing the
+      // queue entry to be silently lost even though the server returned 200.
+      await appendSpinQueueRef.current(result);
 
       // Broadcast for non-admin wheel sync, clear after 1s
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
