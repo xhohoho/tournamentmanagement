@@ -29,6 +29,13 @@ export function MapsTab() {
   const mapsRef = useRef(maps);
   useEffect(() => { mapsRef.current = maps; }, [maps]);
 
+  // Stable ref for appendSpinQueue so the RAF tick always uses the latest
+  // version (with the current adminToken). Without this, spin() closes over
+  // a stale appendSpinQueue that was created before the user logged in,
+  // causing the PATCH to go out without X-Admin-Token → 403 → silent rollback.
+  const appendSpinQueueRef = useRef(appendSpinQueue);
+  useEffect(() => { appendSpinQueueRef.current = appendSpinQueue; }, [appendSpinQueue]);
+
   // Persisted Default Maps (localStorage, client-only)
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
@@ -150,7 +157,7 @@ export function MapsTab() {
 
       // Show modal and write to queue — appendSpinQueue updates context state immediately
       setSpunMap(result);
-      appendSpinQueue(result);
+      appendSpinQueueRef.current(result); // use ref — always has latest adminToken
 
       // Broadcast for non-admin wheel sync, clear after 1s
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
@@ -158,7 +165,9 @@ export function MapsTab() {
     };
 
     rafRef.current = requestAnimationFrame(tick);
-  }, [spinning, maps.length, drawWheel, broadcastSpinState, appendSpinQueue]);
+  // appendSpinQueue intentionally omitted — accessed via appendSpinQueueRef
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spinning, maps.length, drawWheel, broadcastSpinState]);
 
   // ─── NON-ADMIN: mirror live spin from SSE-pushed spinState ───────────────
   const prevSpinRef = useRef<SpinState | null>(null);

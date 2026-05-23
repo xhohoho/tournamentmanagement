@@ -18,7 +18,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 export default function Home() {
-  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue, clearSpinQueue } = useTourney();
+  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue } = useTourney();
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
 
@@ -43,8 +43,7 @@ export default function Home() {
 
   const handleReset = async () => {
     if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
-    await resetAll();
-    await clearSpinQueue();
+    await resetAll(); // already clears spinQueue + spinState in both KV and local state
     setResetConfirm(false);
   };
 
