@@ -389,15 +389,31 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         </div>
       </div>
 
-      {/* Result toast — admin only, bottom-right, auto-dismisses */}
+      {/* RESULT MODAL OVERLAY — admin only */}
       {spunMap && isAdmin && (
-        <div className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 bg-[#1e1e1e] border border-[var(--border-mid)] rounded-xl px-5 py-3 shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-200">
-          <span className="font-['DM_Mono'] text-xs t-muted">🎯 Result:</span>
-          <span className="font-['Bebas_Neue'] text-lg tracking-widest t-text">{spunMap}</span>
-          <button
-            className="ml-2 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer"
-            onClick={() => onSpunMap('')}
-          >✕</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#1e1e1e] border border-[var(--border-mid)] rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="bg-[#d32f2f] text-white px-5 py-3 font-semibold text-lg">
+              We have a winner!
+            </div>
+            <div className="p-10 flex items-center justify-center border-b border-[#333]">
+              <p className="text-white text-5xl font-light tracking-wide text-center break-words">{spunMap}</p>
+            </div>
+            <div className="px-5 py-4 flex items-center justify-end gap-4 bg-[#242424]">
+              <button
+                className="text-sm text-gray-300 hover:text-white font-medium transition-colors cursor-pointer"
+                onClick={() => onSpunMap('')}
+              >
+                Close
+              </button>
+              <button
+                className="px-4 py-2 bg-[#5c7cfa] hover:bg-[#4c6cf0] text-white text-sm font-semibold rounded shadow-sm transition-colors cursor-pointer"
+                onClick={() => { handleRemoveMap(spunMap); onSpunMap(''); }}
+              >
+                Remove from pool
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

@@ -47,8 +47,6 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
         body: JSON.stringify({ action: 'appendSpinQueue', map }),
       });
-      // Auto-dismiss the result toast after 4 seconds
-      setTimeout(() => setSpunMap(''), 4000);
     }
   };
 
