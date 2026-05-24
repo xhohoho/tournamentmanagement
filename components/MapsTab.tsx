@@ -377,7 +377,7 @@ export function MapsTab() {
                     setBusy(true);
                     try {
                       const missing = spinQueue.filter(m => !maps.includes(m));
-                      clearSpinQueue();
+                      await clearSpinQueue();
                       for (const m of missing) await addMap(m);
                     } finally { setBusy(false); }
                   }}
