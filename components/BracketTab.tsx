@@ -6,7 +6,7 @@ import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal } from '@/lib/types';
 
 const CARD_W = 210;
-const CARD_H = 100; // Strictly locked height to fit map slots!
+const CARD_H = 100;
 const COL_GAP = 72;
 const COL_W = CARD_W + COL_GAP;
 
@@ -26,7 +26,31 @@ function getMatchTop(section: string, colIdx: number, matchIdx: number): number 
   return (topA + topB) / 2;
 }
 
-// ── PlayerRow ─────────────────────────────────────────────────────────────────
+// ── Trophy sparkle animation (injected once) ────────────────────────────────
+if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-style')) {
+  const s = document.createElement('style');
+  s.id = 'trophy-anim-style';
+  s.textContent = `
+    @keyframes trophy-spin { from { transform: rotate(-12deg); } to { transform: rotate(12deg); } }
+    @keyframes sparkle { 0%,100% { opacity:0; transform:scale(0.4); } 50% { opacity:1; transform:scale(1); } }
+    .trophy-spin { display:inline-block; animation: trophy-spin 0.7s ease-in-out infinite alternate; }
+    .sparkle { position:absolute; font-size:10px; animation: sparkle 1.2s ease-in-out infinite; }
+  `;
+  document.head.appendChild(s);
+}
+
+function TrophySparkle() {
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginRight: 4 }}>
+      <span className="trophy-spin" style={{ fontSize: 13 }}>🏆</span>
+      <span className="sparkle" style={{ top: -6, left: 10, animationDelay: '0s' }}>✦</span>
+      <span className="sparkle" style={{ top: 2, left: 18, animationDelay: '0.4s' }}>✦</span>
+      <span className="sparkle" style={{ top: -4, left: 22, animationDelay: '0.8s' }}>✦</span>
+    </span>
+  );
+}
+
+
 function PlayerRow({
   player, score, isWinner, isLoser, showScore, canEdit, isBo3, onCommit,
 }: {
@@ -52,8 +76,8 @@ function PlayerRow({
 
   return (
     <div className="flex items-center justify-between px-3 border-b t-border last:border-b-0" style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}>
-      <span className="text-xs font-['DM_Mono'] flex-1 truncate" style={{ color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)', fontStyle: !player ? 'italic' : undefined, opacity: isLoser ? 0.5 : 1 }}>
-        {isWinner && '✓ '}{player ?? (isLoser ? 'BYE' : 'TBD')}
+      <span className="text-xs font-['DM_Mono'] flex-1 truncate flex items-center" style={{ color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)', fontStyle: !player ? 'italic' : undefined, opacity: isLoser ? 0.5 : 1 }}>
+        {isWinner && <TrophySparkle />}{player ?? (isLoser ? 'BYE' : 'TBD')}
       </span>
       {showScore && (
         editing ? (
@@ -243,6 +267,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
   const hasLower = bracket.lower && bracket.lower.some(r => r.length > 0);
   const isBo3 = bracket.upper[0]?.[0]?.format === 'bo3';
   const globalFormat = isBo3 ? 'Best of 3' : 'Best of 1';
+  const typeLabel = isSingle ? 'Single Elim' : 'Double Elim';
 
   return (
     <>
@@ -250,22 +275,25 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
           {isSingle ? 'Bracket' : 'Upper Bracket'}
           <div className="flex gap-2">
-            <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${isSingle ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>
-              {isSingle ? 'Single Elim' : 'Double Elim'}
-            </span>
-            <span className="text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase bg-[rgba(224,144,16,0.1)] text-[var(--accent-gold)] border-[rgba(224,144,16,0.3)]">
-              {globalFormat}
-            </span>
+            <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${isSingle ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>{typeLabel}</span>
+            <span className="text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase bg-[rgba(224,144,16,0.1)] text-[var(--accent-gold)] border-[rgba(224,144,16,0.3)]">{globalFormat}</span>
           </div>
         </div>
         <div className="overflow-x-auto overflow-y-visible pb-4">
-          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} gf={bracket.grandFinal} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+          <BracketGrid rounds={bracket.upper} section="upper" type={bracket.type} gf={bracket.grandFinal ?? null} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
         </div>
       </div>
 
       {isSingle && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (
         <div className="t-surface border t-border rounded-xl p-5 shrink-0">
-          <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-4" style={{ color: 'var(--accent-gold)' }}>🥉 3rd Place Match</h3>
+          <div className="flex items-center gap-3 mb-4">
+            <h3 className="font-['Bebas_Neue'] text-xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>🥉 3rd Place Match</h3>
+            {bracket.thirdPlace.winner && (
+              <span className="font-['DM_Mono'] text-[10px] px-2 py-0.5 rounded border" style={{ color: 'var(--accent-gold)', borderColor: 'rgba(224,144,16,0.3)', background: 'rgba(224,144,16,0.08)' }}>
+                🥉 {bracket.thirdPlace.winner}
+              </span>
+            )}
+          </div>
           <ThirdPlaceDisplay match={bracket.thirdPlace} onScore={onThirdPlace} onUndo={() => onUndo('thirdPlace', 0, 0)} isAdmin={isAdmin} />
         </div>
       )}
@@ -274,17 +302,8 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
         <div className="t-surface border t-border rounded-xl p-5 shrink-0">
           <h3 className="font-['Bebas_Neue'] text-xl tracking-widest mb-6" style={{ color: 'var(--accent)' }}>Lower Bracket</h3>
           <div className="overflow-x-auto overflow-y-visible pb-4">
-            <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+            <BracketGrid rounds={bracket.lower!} section="lower" type={bracket.type} gf={null} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
           </div>
-        </div>
-      )}
-
-      {bracket.champion && (
-        <div className="rounded-2xl p-7 text-center border-2 border-[var(--accent-gold)] bg-gradient-to-br from-[rgba(224,144,16,0.10)] to-[rgba(232,41,74,0.07)] mt-4 shrink-0">
-          <div className="text-5xl mb-2">🏆</div>
-          <h2 className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>{bracket.champion}</h2>
-          <p className="font-['DM_Mono'] text-xs mt-2 t-muted">Tournament Champion</p>
-          {bracket.thirdPlace?.winner && (<p className="font-['DM_Mono'] text-xs mt-1 t-dim">🥉 3rd Place: {bracket.thirdPlace.winner}</p>)}
         </div>
       )}
     </>
@@ -293,7 +312,7 @@ function BracketDisplay({ onScore, onThirdPlace, onUndo }: {
 
 // ── BracketGrid ───────────────────────────────────────────────────────────────
 function BracketGrid({ rounds, section, type, gf, onScore, onUndo, isAdmin }: {
-  rounds: BracketMatch[][]; section: string; type: 'single' | 'double'; gf?: GrandFinal | null;
+  rounds: BracketMatch[][]; section: string; type: 'single' | 'double'; gf: GrandFinal | null;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>; isAdmin: boolean;
 }) {
@@ -301,23 +320,24 @@ function BracketGrid({ rounds, section, type, gf, onScore, onUndo, isAdmin }: {
   if (validRounds.length === 0) return null;
 
   const firstRound = validRounds[0];
-  const hasGF = type === 'double' && section === 'upper' && gf && (gf.p1 || gf.p2);
-  
-  let offsetY = 40; 
+  // Show GF column for double-elim upper bracket always (even before players are set)
+  const showGF = type === 'double' && section === 'upper' && gf != null;
+
+  let offsetY = 40;
   let extraHeight = 0;
-  if (hasGF) {
+  if (showGF && gf) {
     const finalY = getMatchTop(section, validRounds.length - 1, 0) + CARD_H / 2;
-    const gfHalfHeight = gf.isReset ? 140 : 50; 
+    const gfHalfHeight = gf.isReset ? 140 : 50;
     if (finalY < gfHalfHeight) offsetY += (gfHalfHeight - finalY);
     extraHeight = Math.max(0, (gfHalfHeight * 2) - CARD_H);
   }
 
   const totalHeight = firstRound.round.length * getSpacing(0) + CARD_H + offsetY + extraHeight + 20;
   const gfWidth = CARD_W;
-  const totalWidth = validRounds.length * COL_W - COL_GAP + (hasGF ? COL_GAP + gfWidth + 40 : 40);
+  const totalWidth = validRounds.length * COL_W - COL_GAP + (showGF ? COL_GAP + gfWidth + 40 : 40);
   const stroke = 'var(--border-mid)';
-
   const cardCentreY = (colIdx: number, mi: number) => getMatchTop(section, colIdx, mi) + CARD_H / 2 + offsetY;
+  const totalRoundsInBracket = validRounds.length; // for semi-final detection
 
   return (
     <div style={{ position: 'relative', width: totalWidth, height: totalHeight, minWidth: totalWidth }}>
@@ -328,7 +348,6 @@ function BracketGrid({ rounds, section, type, gf, onScore, onUndo, isAdmin }: {
           return round.map((_, mi) => {
             const cardRight = colIdx * COL_W + CARD_W;
             const nextCardLeft = nextColIdx * COL_W;
-
             if (section === 'lower' && colIdx % 2 === 0) {
               const myCentreY = cardCentreY(colIdx, mi);
               return (
@@ -354,24 +373,26 @@ function BracketGrid({ rounds, section, type, gf, onScore, onUndo, isAdmin }: {
             }
           });
         })}
+        {/* Line from last upper/lower column to GF */}
         {(() => {
           const lastColIdx = validRounds.length - 1;
           if (validRounds[lastColIdx].round.length !== 1) return null;
           const cardRight = lastColIdx * COL_W + CARD_W;
           const centreY = cardCentreY(lastColIdx, 0);
-          const lineLen = hasGF ? COL_GAP : 20;
+          const lineLen = showGF ? COL_GAP : 20;
           return <line x1={cardRight} y1={centreY} x2={cardRight + lineLen} y2={centreY} stroke={stroke} strokeWidth={1.5} />;
         })()}
       </svg>
 
       {validRounds.map(({ round, ri }, colIdx) => {
         const isFinalCol = colIdx === validRounds.length - 1 && round.length === 1;
-        const label = isFinalCol 
-          ? (section === 'upper' ? (type === 'double' ? 'Upper Final' : 'Final') : 'Lower Final') 
-          : (section === 'upper' ? `Round ${ri + 1}` : `Lower R${ri + 1}`);
-
+        const isSemiCol = colIdx === validRounds.length - 2 && round.length === 2 && totalRoundsInBracket >= 3;
+        const label = isFinalCol
+          ? (section === 'upper' ? (type === 'double' ? 'Upper Final' : 'Final') : 'Lower Final')
+          : isSemiCol
+            ? (section === 'upper' ? 'Semi Final' : `Lower R${ri + 1}`)
+            : (section === 'upper' ? `Round ${ri + 1}` : `Lower R${ri + 1}`);
         const isRoundBo3 = round[0]?.format === 'bo3';
-
         return round.map((match, mi) => {
           const top = getMatchTop(section, colIdx, mi) + offsetY;
           const left = colIdx * COL_W;
@@ -388,10 +409,10 @@ function BracketGrid({ rounds, section, type, gf, onScore, onUndo, isAdmin }: {
         });
       })}
 
-      {hasGF && (
+      {showGF && gf && (
         <div style={{ position: 'absolute', top: cardCentreY(validRounds.length - 1, 0), left: validRounds.length * COL_W, transform: 'translateY(-50%)', width: CARD_W }}>
-           <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase text-center mb-1.5" style={{ color: 'var(--accent)' }}>Grand Final</div>
-           <GrandFinalDisplay gf={gf} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
+          <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase text-center mb-1.5" style={{ color: 'var(--accent)' }}>Grand Final</div>
+          <GrandFinalDisplay gf={gf} onScore={onScore} onUndo={onUndo} isAdmin={isAdmin} />
         </div>
       )}
     </div>
