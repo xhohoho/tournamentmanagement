@@ -16,6 +16,7 @@ export function MapsTab() {
 
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
+  const [busy, setBusy] = useState(false); // true while any map/queue write is in-flight
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wheelWrapRef = useRef<HTMLDivElement>(null);
   const [wheelSize, setWheelSize] = useState(220);
@@ -52,14 +53,16 @@ export function MapsTab() {
   };
 
   const handleRemoveMap = async (mapToRemove: string) => {
-    await removeMap(mapToRemove);
+    if (busy) return;
+    setBusy(true);
+    try { await removeMap(mapToRemove); } finally { setBusy(false); }
   };
 
-  // Restore map to pool only if not already present (no duplicates)
   const handleRestoreMap = async (mapToRestore: string) => {
-    if (!maps.includes(mapToRestore)) {
-      await addMap(mapToRestore);
-    }
+    if (busy) return;
+    if (maps.includes(mapToRestore)) return;
+    setBusy(true);
+    try { await addMap(mapToRestore); } finally { setBusy(false); }
   };
 
   if (loading) return (
@@ -247,17 +250,21 @@ export function MapsTab() {
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
   const handleAddMap = async () => {
+    if (busy) return;
     const name = mapInput.trim();
     if (!name) return;
-    const result = await addMap(name);
-    if (result?.error) { setMapErr(result.error); return; }
-    setMapInput(''); setMapErr('');
+    setBusy(true);
+    try {
+      const result = await addMap(name);
+      if (result?.error) { setMapErr(result.error); return; }
+      setMapInput(''); setMapErr('');
+    } finally { setBusy(false); }
   };
 
-  // Remove individual item from queue (admin only) — delegates to context
-  // so local state is updated immediately without waiting for SSE.
   const handleRemoveQueueItem = async (idx: number) => {
-    await removeSpinQueueItem(idx);
+    if (busy) return;
+    setBusy(true);
+    try { await removeSpinQueueItem(idx); } finally { setBusy(false); }
   };
 
   return (
@@ -295,9 +302,10 @@ export function MapsTab() {
                     onBlur={e => (e.target.style.borderColor = '')}
                   />
                   <button
-                    className="shrink-0 px-4 py-2.5 font-bold rounded-xl text-sm text-white transition-all cursor-pointer whitespace-nowrap"
+                    className="shrink-0 px-4 py-2.5 font-bold rounded-xl text-sm text-white transition-all cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ background: 'var(--accent)' }}
                     onClick={handleAddMap}
+                    disabled={busy}
                   >
                     + Add
                   </button>
@@ -314,8 +322,8 @@ export function MapsTab() {
                     {m}
                     {isAdmin && (
                       <span
-                        className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0"
-                        onClick={() => handleRemoveMap(m)}
+                        className={`t-dim transition-colors shrink-0 ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                        onClick={() => !busy && handleRemoveMap(m)}
                       >
                         ✕
                       </span>
@@ -362,14 +370,16 @@ export function MapsTab() {
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
               {isAdmin && (
                 <button
-                  className={`shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer whitespace-nowrap
-                    ${spinQueue.length === 0 ? 'invisible pointer-events-none' : ''}`}
+                  className={`shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors whitespace-nowrap
+                    ${spinQueue.length === 0 || busy ? 'invisible pointer-events-none' : 'cursor-pointer'}`}
                   onClick={async () => {
-                    // Clear queue immediately so list disappears at once,
-                    // then restore any removed maps in the background
-                    const missing = spinQueue.filter(m => !maps.includes(m));
-                    clearSpinQueue();
-                    for (const m of missing) addMap(m);
+                    if (busy) return;
+                    setBusy(true);
+                    try {
+                      const missing = spinQueue.filter(m => !maps.includes(m));
+                      clearSpinQueue();
+                      for (const m of missing) await addMap(m);
+                    } finally { setBusy(false); }
                   }}
                 >clear all</button>
               )}
@@ -391,16 +401,18 @@ export function MapsTab() {
                         <div className="flex items-center gap-1.5 shrink-0">
                           {isRemoved && (
                             <button
-                              className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-green)] cursor-pointer transition-colors px-1 py-1"
+                              className={`font-['DM_Mono'] text-[10px] t-dim transition-colors px-1 py-1 ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
                               title="Restore map to pool"
                               onClick={() => handleRestoreMap(m)}
+                              disabled={busy}
                             >
                               ↩
                             </button>
                           )}
                           <button
-                            className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors px-1 py-1"
+                            className={`font-['DM_Mono'] text-[10px] t-dim transition-colors px-1 py-1 ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
                             onClick={() => handleRemoveQueueItem(i)}
+                            disabled={busy}
                           >
                             ✕
                           </button>

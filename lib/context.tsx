@@ -152,9 +152,6 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
           setSpinState(data.spinState ?? null);
-          // Only sync spinQueue from SSE if no local write is in-flight.
-          // Without this guard, the SSE frame that arrives between optimistic
-          // setSpinQueue and the KV write completing would roll back the result.
           if (!pendingSpinAppend.current) {
             setSpinQueue(data.spinQueue ?? []);
           }
@@ -420,9 +417,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const appendSpinQueue = async (map: string) => {
-    // Optimistic local update — UI reflects immediately
     setSpinQueue(prev => [...prev, map]);
-    // Block SSE from overwriting while the KV write is in-flight
     pendingSpinAppend.current = true;
     try {
       const res = await fetch('/api/maps', {
@@ -431,11 +426,9 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ action: 'appendSpinQueue', map }),
       });
       if (res.ok) {
-        // Use the authoritative KV value so we're always in sync
         const data = await res.json();
         setSpinQueue(data.spinQueue);
       } else {
-        // Proper rollback: remove only the item we just appended
         setSpinQueue(prev => prev.slice(0, -1));
       }
     } catch {
@@ -446,10 +439,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeSpinQueueItem = async (idx: number) => {
-    // Compute new queue from current state and update locally first
     setSpinQueue(prev => {
       const newQ = prev.filter((_, i) => i !== idx);
-      // Fire-and-forget persist (SSE will correct any drift)
       fetch('/api/maps', {
         method: 'PATCH',
         headers: adminHeaders,
