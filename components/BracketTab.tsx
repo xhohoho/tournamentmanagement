@@ -113,19 +113,14 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [generating, setGenerating] = useState(false);
   const [matchFormat, setMatchFormat] = useState<'bo1' | 'bo3'>('bo1');
 
-  const [localElim, setLocalElim] = useState(elimMode);
-  const [isUpdatingMode, setIsUpdatingMode] = useState(false);
-
-  useEffect(() => {
-    if (!isUpdatingMode) setLocalElim(elimMode);
-  }, [elimMode, isUpdatingMode]);
+  const [pendingElim, setPendingElim] = useState<'single' | 'double' | null>(null);
+  const displayElim = pendingElim ?? elimMode;
 
   const handleElimChange = async (id: 'single' | 'double') => {
-    if (hasBracket || id === localElim) return;
-    setLocalElim(id);
-    setIsUpdatingMode(true);
+    if (hasBracket || id === displayElim) return;
+    setPendingElim(id);
     await setElimMode(id);
-    setIsUpdatingMode(false);
+    setPendingElim(null);
   };
 
   if (loading) return (
@@ -161,10 +156,10 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
             <span className="font-['Bebas_Neue'] text-base tracking-widest t-text shrink-0">Format</span>
             <div className="flex gap-2">
               {[{ id: 'single', icon: '⚔️', label: 'Single Elim', desc: 'One loss = out' }, { id: 'double', icon: '🛡️', label: 'Double Elim', desc: 'Two losses = out' }].map(opt => (
-                <div key={opt.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none" style={{ borderColor: localElim === opt.id ? 'var(--accent-red)' : 'var(--border)', background: localElim === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)', cursor: hasBracket ? 'not-allowed' : 'pointer', opacity: hasBracket && localElim !== opt.id ? 0.45 : 1 }} onClick={() => handleElimChange(opt.id as 'single' | 'double')}>
+                <div key={opt.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none" style={{ borderColor: displayElim === opt.id ? 'var(--accent-red)' : 'var(--border)', background: displayElim === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)', cursor: hasBracket ? 'not-allowed' : 'pointer', opacity: hasBracket && displayElim !== opt.id ? 0.45 : 1 }} onClick={() => handleElimChange(opt.id as 'single' | 'double')}>
                   <span className="text-base shrink-0">{opt.icon}</span>
                   <div>
-                    <div className="font-['DM_Mono'] text-xs font-bold t-text">{opt.label}{hasBracket && localElim === opt.id && (<span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>●</span>)}</div>
+                    <div className="font-['DM_Mono'] text-xs font-bold t-text">{opt.label}{hasBracket && displayElim === opt.id && (<span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>●</span>)}</div>
                     <div className="font-['DM_Mono'] text-[10px] t-muted">{opt.desc}</div>
                   </div>
                 </div>
