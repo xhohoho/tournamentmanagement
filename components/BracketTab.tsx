@@ -76,8 +76,8 @@ function PlayerRow({
 
   return (
     <div className="flex items-center justify-between px-3 border-b t-border last:border-b-0" style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}>
-      <span className="text-xs font-['DM_Mono'] flex-1 truncate flex items-center" style={{ color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)', fontStyle: !player ? 'italic' : undefined, opacity: isLoser ? 0.5 : 1 }}>
-        {isWinner && <TrophySparkle />}{player ?? (isLoser ? 'BYE' : 'TBD')}
+      <span className="text-xs font-['DM_Mono'] flex-1 truncate" style={{ color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)', fontStyle: !player ? 'italic' : undefined, opacity: isLoser ? 0.5 : 1 }}>
+        {isWinner && '✓ '}{player ?? (isLoser ? 'BYE' : 'TBD')}
       </span>
       {showScore && (
         editing ? (
