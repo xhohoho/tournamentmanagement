@@ -17,6 +17,8 @@ export function MapsTab() {
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wheelWrapRef = useRef<HTMLDivElement>(null);
+  const [wheelSize, setWheelSize] = useState(220);
   const angleRef = useRef(0);
   const [spinning, setSpinning] = useState(false);
   const rafRef = useRef<number | null>(null);
@@ -110,7 +112,7 @@ export function MapsTab() {
     ctx.strokeStyle = 'var(--border-mid)'; ctx.lineWidth = 2; ctx.stroke();
   }, [maps]);
 
-  useEffect(() => { drawWheel(angleRef.current); }, [maps, drawWheel]);
+  useEffect(() => { drawWheel(angleRef.current); }, [maps, drawWheel, wheelSize]);
 
   // ─── Broadcast spin state helper (admin only) ─────────────────────────────
   const broadcastSpinState = useCallback(async (state: SpinState | null) => {
@@ -226,6 +228,19 @@ export function MapsTab() {
     }
   }, [liveSpin, isAdmin, drawWheel]);
 
+  // Dynamically size the wheel to fit its container
+  useEffect(() => {
+    const el = wheelWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      const size = Math.floor(Math.min(width, height));
+      if (size > 0) setWheelSize(size);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // Cleanup RAF on unmount
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
@@ -309,9 +324,9 @@ export function MapsTab() {
               </div>
             </div>
 
-            <div className="flex flex-col items-center gap-2 mt-auto shrink-0 pb-2">
+            <div ref={wheelWrapRef} className="flex flex-col items-center gap-2 flex-1 min-h-0 w-full justify-center pb-2">
               <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
-              <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
+              <canvas ref={canvasRef} width={wheelSize} height={wheelSize} className="rounded-full drop-shadow-sm" style={{ width: wheelSize, height: wheelSize }} />
               {isAdmin ? (
                 <button
                   className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
