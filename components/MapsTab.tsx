@@ -360,14 +360,16 @@ export function MapsTab() {
           <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4 min-h-0">
             <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
-              {isAdmin && spinQueue.length > 0 && (
+              {isAdmin && (
                 <button
-                  className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer whitespace-nowrap"
+                  className={`shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer whitespace-nowrap
+                    ${spinQueue.length === 0 ? 'invisible pointer-events-none' : ''}`}
                   onClick={async () => {
-                    // Restore removed maps back to pool, then clear queue
+                    // Clear queue immediately so list disappears at once,
+                    // then restore any removed maps in the background
                     const missing = spinQueue.filter(m => !maps.includes(m));
-                    for (const m of missing) await addMap(m);
                     clearSpinQueue();
+                    for (const m of missing) addMap(m);
                   }}
                 >clear all</button>
               )}

@@ -461,11 +461,16 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const clearSpinQueue = async () => {
     setSpinQueue([]);
-    await fetch('/api/maps', {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
-    });
+    pendingSpinAppend.current = true;
+    try {
+      await fetch('/api/maps', {
+        method: 'PATCH',
+        headers: adminHeaders,
+        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
+      });
+    } finally {
+      pendingSpinAppend.current = false;
+    }
   };
 
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
