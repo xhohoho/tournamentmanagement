@@ -378,7 +378,7 @@ export function MapsTab() {
                     try {
                       const missing = spinQueue.filter(m => !maps.includes(m));
                       await clearSpinQueue();
-                      for (const m of missing) await addMap(m);
+                      await Promise.all(missing.map(m => addMap(m)));
                     } finally { setBusy(false); }
                   }}
                 >clear all</button>
