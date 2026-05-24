@@ -234,7 +234,9 @@ export function MapsTab() {
     if (!el) return;
     const ro = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
-      const size = Math.floor(Math.min(width, height));
+      // Reserve space for pointer (≈44px) + button/status (≈44px) + gaps (≈16px)
+      const reserved = 104;
+      const size = Math.floor(Math.min(width, Math.max(0, height - reserved)));
       if (size > 0) setWheelSize(size);
     });
     ro.observe(el);
@@ -304,8 +306,8 @@ export function MapsTab() {
               </div>
             )}
 
-            {/* Map list */}
-            <div className="flex-1 overflow-y-auto">
+            {/* Map list — fixed height so it never crushes the wheel */}
+            <div className="shrink-0 max-h-[96px] overflow-y-auto">
               <div className="flex flex-wrap gap-2">
                 {maps.map(m => (
                   <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
@@ -324,12 +326,19 @@ export function MapsTab() {
               </div>
             </div>
 
-            <div ref={wheelWrapRef} className="flex flex-col items-center gap-2 flex-1 min-h-0 w-full justify-center pb-2">
-              <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
-              <canvas ref={canvasRef} width={wheelSize} height={wheelSize} className="rounded-full drop-shadow-sm" style={{ width: wheelSize, height: wheelSize }} />
+            {/* Wheel area — takes all remaining space, measures itself for canvas size */}
+            <div ref={wheelWrapRef} className="flex-1 min-h-0 w-full overflow-hidden flex flex-col items-center justify-center gap-2">
+              <span className="text-3xl rotate-90 shrink-0" style={{ color: 'var(--accent-red)' }}>▶</span>
+              <canvas
+                ref={canvasRef}
+                width={wheelSize}
+                height={wheelSize}
+                className="rounded-full drop-shadow-sm shrink-0"
+                style={{ width: wheelSize, height: wheelSize }}
+              />
               {isAdmin ? (
                 <button
-                  className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
+                  className="shrink-0 px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
                   style={{ background: 'var(--accent-red)' }}
                   onClick={spin}
                   disabled={spinning || maps.length === 0}
@@ -337,7 +346,7 @@ export function MapsTab() {
                   {spinning ? '🌀 Spinning…' : '🌀 SPIN'}
                 </button>
               ) : (
-                <div className="mt-2 h-9 flex items-center">
+                <div className="shrink-0 h-9 flex items-center">
                   {spinning
                     ? <span className="font-['DM_Mono'] text-xs t-muted animate-pulse">🌀 Admin is spinning…</span>
                     : <span className="font-['DM_Mono'] text-xs t-dim">Waiting for admin to spin</span>
