@@ -80,9 +80,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Guard: true while an appendSpinQueue write is in-flight.
-  // Prevents SSE from overwriting the optimistic local state before KV confirms.
   const pendingSpinAppend = useRef(false);
+  const pendingElimChange = useRef(false);
 
   const adminHeaders = useMemo(() => ({
     'Content-Type': 'application/json',
@@ -148,7 +147,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setRosterState(data.roster ?? []);
           setTeamModeState(data.teamMode ?? 'leader');
           setTeams(data.teams ?? []);
-          setElimModeState(data.elimMode ?? 'single');
+          if (!pendingElimChange.current) setElimModeState(data.elimMode ?? 'single');
           setBracket(data.bracket ?? null);
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
@@ -384,11 +383,16 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const setElimMode = async (mode: 'single' | 'double') => {
     setElimModeState(mode);
-    await fetch('/api/bracket', {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
-    });
+    pendingElimChange.current = true;
+    try {
+      await fetch('/api/bracket', {
+        method: 'PATCH',
+        headers: adminHeaders,
+        body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
+      });
+    } finally {
+      pendingElimChange.current = false;
+    }
   };
 
   // —— Maps ——
