@@ -376,15 +376,7 @@ function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo }: {
         </div>
       )}
 
-      {/* Champion banner */}
-      {bracket.champion && (
-        <div className="rounded-2xl p-7 text-center border-2 border-[var(--accent-gold)] bg-gradient-to-br from-[rgba(224,144,16,0.10)] to-[rgba(232,41,74,0.07)]">
-          <div className="text-5xl mb-2">🏆</div>
-          <h2 className="font-['Bebas_Neue'] text-5xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>{bracket.champion}</h2>
-          <p className="font-['DM_Mono'] text-xs mt-2 t-muted">Tournament Champion</p>
-          {bracket.thirdPlace?.winner && <p className="font-['DM_Mono'] text-xs mt-1 t-dim">🥉 3rd Place: {bracket.thirdPlace.winner}</p>}
-        </div>
-      )}
+
     </>
   );
 }
@@ -501,7 +493,6 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
   const gfTopGF1 = gfCenterY - CARD_H / 2;
 
   const stroke = 'var(--border-mid)';
-  const accentStroke = 'var(--accent)';
 
   return (
     <div style={{ position: 'relative', width: canvasW, height: canvasH, minWidth: canvasW }}>
@@ -577,14 +568,14 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
           const lbFinalX = lbFinalColIdx * COL_W + CARD_W;
           const lbFinalCY = lbCY(lbFinalColIdx, 0);
           const gfP2Y = gfTopGF1 + CARD_H / 2 + 18; // centre of GF p2 row
-          // Draw: right from LB Final → bend up/down → GF left edge at p2 row
+          // Same solid grey style as all other connectors: right → up/down → into GF p2 slot
+          const midX = lbFinalX + COL_GAP / 2;
           return (
             <path
-              d={`M ${lbFinalX} ${lbFinalCY} H ${gfColX - 24} V ${gfP2Y} H ${gfColX}`}
-              stroke={accentStroke}
+              d={`M ${lbFinalX} ${lbFinalCY} H ${midX} V ${gfP2Y} H ${gfColX}`}
+              stroke={stroke}
               strokeWidth={1.5}
               fill="none"
-              strokeDasharray="5 3"
             />
           );
         })()}
@@ -711,6 +702,8 @@ function GrandFinalCards({ gf, isAdmin, onScore, onUndo }: {
 
   const gf1Done = !!(gf.winner || gf.isReset);
   const canUndo = isAdmin && gf1Done;
+  // The winning team — either from GF1 (UB winner) or GF2 (reset winner)
+  const champion = gf.winner ?? null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -751,6 +744,23 @@ function GrandFinalCards({ gf, isAdmin, onScore, onUndo }: {
           className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] cursor-pointer text-left transition-colors"
           onClick={() => onUndo('gf', 0, 0)}
         >↩ undo last GF result</button>
+      )}
+
+      {/* Champion inline — spinning trophy with sparkles, right below the GF card */}
+      {champion && (
+        <div
+          className="rounded-xl px-4 py-3 text-center border"
+          style={{ background: 'rgba(224,144,16,0.06)', borderColor: 'rgba(224,144,16,0.35)', width: CARD_W }}
+        >
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginBottom: 4 }}>
+            <span className="trophy-spin" style={{ fontSize: 22 }}>🏆</span>
+            <span className="sparkle" style={{ top: -8, left: 14, animationDelay: '0s' }}>✦</span>
+            <span className="sparkle" style={{ top: 2, left: 24, animationDelay: '0.4s' }}>✦</span>
+            <span className="sparkle" style={{ top: -6, left: 28, animationDelay: '0.8s' }}>✦</span>
+          </div>
+          <div className="font-['Bebas_Neue'] text-lg tracking-widest" style={{ color: 'var(--accent-gold)' }}>{champion}</div>
+          <div className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-widest">Champion</div>
+        </div>
       )}
     </div>
   );
