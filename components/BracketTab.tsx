@@ -580,26 +580,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
           );
         })()}
 
-        {/* ── UB round 0 losers → LB round 0 ────────────────────────── */}
-        {lbRounds.length > 0 && ubRounds[0].map((_, mi) => {
-          const ubX = 0 * COL_W + CARD_W;
-          const ubY = ubCY(0, mi);
-          const lbX = 0 * COL_W;
-          const lbMi = Math.floor(mi / 2);
-          const lbY = lbCY(0, lbMi);
-          // Show a subtle dashed arrow down from UB R0 to LB R0
-          return (
-            <path
-              key={`drop-ub0-${mi}`}
-              d={`M ${ubX + 8} ${ubY + 6} V ${lbOriginY - 6}`}
-              stroke={stroke}
-              strokeWidth={1}
-              fill="none"
-              strokeDasharray="3 3"
-              opacity={0.4}
-            />
-          );
-        })}
+
 
       </svg>
 
