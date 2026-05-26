@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 
-const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc     ';
+const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
 const MS_PER_CHAR = 50; // lower = faster
 
 export default function BottomTicker() {
@@ -14,17 +14,26 @@ export default function BottomTicker() {
     const ruler = rulerRef.current;
     if (!el || !ruler) return;
 
-    // Measure actual rendered width of one character
     const charWidth = ruler.offsetWidth / TICKER_TEXT.length;
     const containerWidth = el.parentElement?.clientWidth ?? 600;
+
+    // How many chars needed to fill the screen
     const capacity = Math.ceil(containerWidth / charWidth) + 1;
-    const len = TICKER_TEXT.length;
+
+    // Gap between repetitions — one full screen width worth of spaces
+    const gapSize = capacity;
+    const gap = ' '.repeat(gapSize);
+
+    // Full loop string: text + gap (must be longer than capacity so only 1 copy is visible at a time)
+    const loopText = TICKER_TEXT + gap;
+
     let offset = 0;
+    const len = loopText.length;
 
     const buildDisplay = () => {
       let display = '';
       for (let i = 0; i < capacity; i++) {
-        display += TICKER_TEXT[(offset + i) % len];
+        display += loopText[(offset + i) % len];
       }
       el.textContent = display;
     };
@@ -71,7 +80,7 @@ export default function BottomTicker() {
         className="flex-1 overflow-hidden"
         style={{ height: 28, position: 'relative', background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111' }}
       >
-        {/* Invisible ruler — renders the full text off screen to measure real char width */}
+        {/* Invisible ruler to measure real char width */}
         <span
           ref={rulerRef}
           aria-hidden="true"
