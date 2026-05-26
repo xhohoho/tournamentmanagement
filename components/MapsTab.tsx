@@ -17,6 +17,39 @@ export function MapsTab() {
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
   const [busy, setBusy] = useState(false); // true while any map/queue write is in-flight
+
+  // ─── Spin Result Queue Categories ────────────────────────────────────────────
+  const CATEGORIES = ['Game 1', 'Game 2', 'Game 3', 'Decider', 'Veto', 'Reserve'] as const;
+  type Category = typeof CATEGORIES[number];
+  const [queueCategories, setQueueCategories] = useState<Record<number, Category>>(() => {
+    try { return JSON.parse(localStorage.getItem('spinQueueCategories') ?? '{}'); } catch { return {}; }
+  });
+  const [activeFilter, setActiveFilter] = useState<Category | null>(null);
+
+  const setItemCategory = (idx: number, cat: Category | null) => {
+    setQueueCategories(prev => {
+      const next = { ...prev };
+      if (cat === null) delete next[idx];
+      else next[idx] = cat;
+      localStorage.setItem('spinQueueCategories', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Reindex categories when an item is removed
+  const reindexCategories = (removedIdx: number) => {
+    setQueueCategories(prev => {
+      const next: Record<number, Category> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const ki = Number(k);
+        if (ki < removedIdx) next[ki] = v as Category;
+        else if (ki > removedIdx) next[ki - 1] = v as Category;
+        // ki === removedIdx: drop it
+      });
+      localStorage.setItem('spinQueueCategories', JSON.stringify(next));
+      return next;
+    });
+  };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wheelWrapRef = useRef<HTMLDivElement>(null);
   const [wheelSize, setWheelSize] = useState(220);
@@ -264,7 +297,18 @@ export function MapsTab() {
   const handleRemoveQueueItem = async (idx: number) => {
     if (busy) return;
     setBusy(true);
-    try { await removeSpinQueueItem(idx); } finally { setBusy(false); }
+    try { await removeSpinQueueItem(idx); reindexCategories(idx); } finally { setBusy(false); }
+  };
+
+  // Restore map pool to defaults (or all maps that appear in queue) WITHOUT clearing queue
+  const handleRestoreMapPool = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      // Re-add every map from defaultMaps (starred) that's missing from pool
+      const toRestore = defaultMaps.filter(m => !maps.includes(m));
+      await Promise.all(toRestore.map(m => addMap(m)));
+    } finally { setBusy(false); }
   };
 
   return (
@@ -369,21 +413,58 @@ export function MapsTab() {
             <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
               {isAdmin && (
-                <button
-                  className={`shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors whitespace-nowrap
-                    ${spinQueue.length === 0 || busy ? 'invisible pointer-events-none' : 'cursor-pointer'}`}
-                  onClick={async () => {
-                    if (busy) return;
-                    setBusy(true);
-                    try {
-                      const missing = spinQueue.filter(m => !maps.includes(m));
-                      await clearSpinQueue();
-                      await Promise.all(missing.map(m => addMap(m)));
-                    } finally { setBusy(false); }
-                  }}
-                >clear all</button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Restore map pool — does NOT clear queue */}
+                  {defaultMaps.length > 0 && (
+                    <button
+                      className={`font-['DM_Mono'] text-[10px] transition-colors whitespace-nowrap
+                        ${busy ? 'opacity-30 cursor-not-allowed t-dim' : 'cursor-pointer hover:text-[var(--accent-green)] t-dim'}`}
+                      title="Re-add starred default maps to pool (result history untouched)"
+                      onClick={handleRestoreMapPool}
+                      disabled={busy}
+                    >↩ restore map pool</button>
+                  )}
+                  <button
+                    className={`shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors whitespace-nowrap
+                      ${spinQueue.length === 0 || busy ? 'invisible pointer-events-none' : 'cursor-pointer'}`}
+                    onClick={async () => {
+                      if (busy) return;
+                      setBusy(true);
+                      try {
+                        const missing = spinQueue.filter(m => !maps.includes(m));
+                        await clearSpinQueue();
+                        setQueueCategories({});
+                        localStorage.removeItem('spinQueueCategories');
+                        await Promise.all(missing.map(m => addMap(m)));
+                      } finally { setBusy(false); }
+                    }}
+                  >clear all</button>
+                </div>
               )}
             </div>
+
+            {/* Category filter pills */}
+            {spinQueue.length > 0 && (
+              <div className="shrink-0 flex flex-wrap gap-1.5">
+                <button
+                  className={`font-['DM_Mono'] text-[10px] px-2.5 py-1 rounded-full border transition-colors cursor-pointer
+                    ${activeFilter === null ? 'border-[var(--accent)] text-[var(--accent)]' : 't-border t-dim hover:t-text'}`}
+                  onClick={() => setActiveFilter(null)}
+                >All</button>
+                {CATEGORIES.map(cat => {
+                  const count = spinQueue.filter((_, i) => queueCategories[i] === cat).length;
+                  if (count === 0 && activeFilter !== cat) return null;
+                  return (
+                    <button
+                      key={cat}
+                      className={`font-['DM_Mono'] text-[10px] px-2.5 py-1 rounded-full border transition-colors cursor-pointer
+                        ${activeFilter === cat ? 'border-[var(--accent)] text-[var(--accent)]' : 't-border t-dim hover:t-text'}`}
+                      onClick={() => setActiveFilter(prev => prev === cat ? null : cat)}
+                    >{cat}{count > 0 && <span className="ml-1 opacity-60">({count})</span>}</button>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-1.5">
               {spinQueue.length === 0 ? (
@@ -391,33 +472,45 @@ export function MapsTab() {
               ) : (
                 spinQueue.map((m, i) => {
                   const isRemoved = !maps.includes(m);
+                  const cat = queueCategories[i] ?? null;
+                  if (activeFilter !== null && cat !== activeFilter) return null;
                   return (
                     <div key={i} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 flex-wrap gap-2">
                       <div className="flex items-center gap-2 overflow-hidden">
                         <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{i + 1}</span>
                         <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
+                        {cat && (
+                          <span className="shrink-0 font-['DM_Mono'] text-[9px] px-1.5 py-0.5 rounded-full border border-[var(--accent)] text-[var(--accent)] opacity-80">{cat}</span>
+                        )}
                       </div>
-                      {isAdmin && (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {isRemoved && (
-                            <button
-                              className={`font-['DM_Mono'] text-[10px] t-dim transition-colors px-1 py-1 ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
-                              title="Restore map to pool"
-                              onClick={() => handleRestoreMap(m)}
-                              disabled={busy}
-                            >
-                              ↩
-                            </button>
-                          )}
+                      <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                        {/* Category selector */}
+                        {isAdmin && (
+                          <select
+                            className="font-['DM_Mono'] text-[10px] t-elevated border t-border rounded px-1 py-0.5 t-text cursor-pointer bg-transparent"
+                            value={cat ?? ''}
+                            onChange={e => setItemCategory(i, (e.target.value || null) as Category | null)}
+                          >
+                            <option value="">— tag —</option>
+                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        )}
+                        {isAdmin && isRemoved && (
+                          <button
+                            className={`font-['DM_Mono'] text-[10px] t-dim transition-colors px-1 py-1 ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
+                            title="Restore map to pool"
+                            onClick={() => handleRestoreMap(m)}
+                            disabled={busy}
+                          >↩</button>
+                        )}
+                        {isAdmin && (
                           <button
                             className={`font-['DM_Mono'] text-[10px] t-dim transition-colors px-1 py-1 ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
                             onClick={() => handleRemoveQueueItem(i)}
                             disabled={busy}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      )}
+                          >✕</button>
+                        )}
+                      </div>
                     </div>
                   );
                 })
