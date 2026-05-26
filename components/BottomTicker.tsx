@@ -1,57 +1,45 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
-const MS_PER_CHAR = 50; // lower = faster
+const PX_PER_SECOND = 100;
 
 export default function BottomTicker() {
   const spanRef = useRef<HTMLSpanElement>(null);
-  const rulerRef = useRef<HTMLSpanElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [keyframes, setKeyframes] = useState('');
+  const [duration, setDuration] = useState(0);
 
   useEffect(() => {
-    const el = spanRef.current;
-    const ruler = rulerRef.current;
-    if (!el || !ruler) return;
+    const span = spanRef.current;
+    const container = containerRef.current;
+    if (!span || !container) return;
 
-    const charWidth = ruler.offsetWidth / TICKER_TEXT.length;
-    const containerWidth = el.parentElement?.clientWidth ?? 600;
+    const textWidth = span.offsetWidth;
+    const containerWidth = container.clientWidth;
+    const totalTravel = containerWidth + textWidth;
 
-    // How many chars needed to fill the screen
-    const capacity = Math.ceil(containerWidth / charWidth) + 1;
-
-    // Gap between repetitions — one full screen width worth of spaces
-    const gapSize = capacity;
-    const gap = ' '.repeat(gapSize);
-
-    // Full loop string: text + gap (must be longer than capacity so only 1 copy is visible at a time)
-    const loopText = TICKER_TEXT + gap;
-
-    let offset = 0;
-    const len = loopText.length;
-
-    const buildDisplay = () => {
-      let display = '';
-      for (let i = 0; i < capacity; i++) {
-        display += loopText[(offset + i) % len];
+    setDuration(totalTravel / PX_PER_SECOND);
+    setKeyframes(`
+      @keyframes ticker-slide {
+        from { transform: translateX(${containerWidth}px); }
+        to   { transform: translateX(${-textWidth}px); }
       }
-      el.textContent = display;
-    };
-
-    buildDisplay();
-    const id = setInterval(() => {
-      offset = (offset + 1) % len;
-      buildDisplay();
-    }, MS_PER_CHAR);
-
-    return () => clearInterval(id);
+    `);
   }, []);
 
-  const fontStyle = {
+  const fontStyle: React.CSSProperties = {
     fontFamily: '"Courier New", Courier, monospace',
     fontWeight: 'bold',
     fontSize: 13,
-  } as const;
+    color: '#d4c59a',
+    textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
+    whiteSpace: 'nowrap',
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+  };
 
   return (
     <div
@@ -77,38 +65,20 @@ export default function BottomTicker() {
 
       {/* Ticker track */}
       <div
+        ref={containerRef}
         className="flex-1 overflow-hidden"
         style={{ height: 28, position: 'relative', background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111' }}
       >
-        {/* Invisible ruler to measure real char width */}
-        <span
-          ref={rulerRef}
-          aria-hidden="true"
-          style={{
-            ...fontStyle,
-            position: 'absolute',
-            visibility: 'hidden',
-            whiteSpace: 'nowrap',
-            pointerEvents: 'none',
-          }}
-        >
-          {TICKER_TEXT}
-        </span>
-
-        {/* Visible ticker */}
         <span
           ref={spanRef}
           style={{
             ...fontStyle,
-            display: 'block',
-            height: '100%',
-            lineHeight: '28px',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            color: '#d4c59a',
-            textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
+            // Only apply animation once keyframes are ready
+            animation: duration ? `ticker-slide ${duration}s linear infinite` : 'none',
           }}
-        />
+        >
+          {TICKER_TEXT}
+        </span>
       </div>
 
       {/* Right decorative button */}
@@ -120,6 +90,9 @@ export default function BottomTicker() {
           boxShadow: '1px 1px 0 #000', borderRadius: 2,
         }}
       />
+
+      {/* Inject keyframes with exact pixel values after measurement */}
+      {keyframes && <style>{keyframes}</style>}
     </div>
   );
 }
