@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 
 const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
-const PX_PER_SECOND = 150; // scroll speed — adjust this
+const PX_PER_SECOND = 500; // scroll speed — adjust this
 
 export default function BottomTicker() {
   const span1Ref = useRef<HTMLSpanElement>(null);
