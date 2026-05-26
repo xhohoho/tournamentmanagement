@@ -120,8 +120,9 @@ export function ChatPanel({ open, onToggle }: ChatPanelProps) {
       {/* Floating toggle button */}
       <button
         onClick={onToggle}
-        className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-lg font-['DM_Mono'] text-xs font-bold transition-all cursor-pointer"
+        className="fixed right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-lg font-['DM_Mono'] text-xs font-bold transition-all cursor-pointer"
         style={{
+          bottom: 'calc(28px + 12px)',
           background: open ? 'var(--accent)' : 'var(--bg-surface)',
           color: open ? 'white' : 'var(--text)',
           border: `1px solid ${open ? 'var(--accent)' : 'var(--border-mid)'}`,
@@ -146,8 +147,9 @@ export function ChatPanel({ open, onToggle }: ChatPanelProps) {
       {/* Panel */}
       {open && (
         <div
-          className="fixed bottom-16 right-5 z-50 flex flex-col rounded-2xl overflow-hidden shadow-2xl"
+          className="fixed right-5 z-50 flex flex-col rounded-2xl overflow-hidden shadow-2xl"
           style={{
+            bottom: 'calc(28px + 12px + 44px)', // ticker + gap + button height
             width: 320,
             height: 480,
             background: 'var(--bg-surface)',
