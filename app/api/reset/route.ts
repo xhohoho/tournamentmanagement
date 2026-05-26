@@ -16,6 +16,8 @@ export async function DELETE(req: NextRequest) {
     stageMaps: {},
     joinKey: '',
     chatMessages: [],
+    spinQueue: [],
+    spinState: null,
   }));
   const { adminPwHash: _, ...safe } = next;
   return NextResponse.json(safe);

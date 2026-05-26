@@ -3,21 +3,43 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { WHEEL_COLORS } from '@/lib/utils';
+import type { SpinState } from '@/lib/types';
 
-export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }: {
-  spunMap: string;
-  onSpunMap: (map: string) => void;
-  spinResults: string[];
-  onSpinResultsChange: (results: string[]) => void;
-}) {
-  const { maps, isAdmin, loading, addMap, removeMap } = useTourney();
+// No spin-related props — queue is owned entirely by context, not page.tsx
+export function MapsTab() {
+  const {
+    maps, isAdmin, loading,
+    addMap, removeMap, appendSpinQueue, clearSpinQueue,
+    adminToken, spinState: liveSpin,
+    spinQueue, removeSpinQueueItem,
+  } = useTourney();
+
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
+  const [busy, setBusy] = useState(false); // true while any map/queue write is in-flight
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wheelWrapRef = useRef<HTMLDivElement>(null);
+  const [wheelSize, setWheelSize] = useState(220);
   const angleRef = useRef(0);
   const [spinning, setSpinning] = useState(false);
-  
-  // Persisted Default Maps
+  const rafRef = useRef<number | null>(null);
+
+  // Modal state is fully local — no prop chain to page.tsx
+  const [spunMap, setSpunMap] = useState('');
+
+  // Stable ref so the RAF tick always reads the latest maps at spin-end,
+  // even if SSE pushed a maps update mid-animation
+  const mapsRef = useRef(maps);
+  useEffect(() => { mapsRef.current = maps; }, [maps]);
+
+  // Stable ref for appendSpinQueue so the RAF tick always uses the latest
+  // version (with the current adminToken). Without this, spin() closes over
+  // a stale appendSpinQueue that was created before the user logged in,
+  // causing the PATCH to go out without X-Admin-Token → 403 → silent rollback.
+  const appendSpinQueueRef = useRef(appendSpinQueue);
+  useEffect(() => { appendSpinQueueRef.current = appendSpinQueue; }, [appendSpinQueue]);
+
+  // Persisted Default Maps (localStorage, client-only)
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
   });
@@ -31,12 +53,16 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
   };
 
   const handleRemoveMap = async (mapToRemove: string) => {
-    await removeMap(mapToRemove);
-    if (spunMap === mapToRemove) onSpunMap('');
+    if (busy) return;
+    setBusy(true);
+    try { await removeMap(mapToRemove); } finally { setBusy(false); }
   };
 
   const handleRestoreMap = async (mapToRestore: string) => {
-    await addMap(mapToRestore);
+    if (busy) return;
+    if (maps.includes(mapToRestore)) return;
+    setBusy(true);
+    try { await addMap(mapToRestore); } finally { setBusy(false); }
   };
 
   if (loading) return (
@@ -49,6 +75,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
     </div>
   );
 
+  // ─── Draw wheel ──────────────────────────────────────────────────────────────
   const drawWheel = useCallback((angle: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -79,7 +106,7 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
       ctx.fillStyle = '#fff';
       ctx.font = `bold ${Math.min(13, 140 / maps.length)}px Syne, sans-serif`;
       ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 4;
-      ctx.fillText(m.length > 14 ? m.slice(0, 13) + '…' : m, r - 8, 4);
+      ctx.fillText(m.length > 14 ? m.slice(0, 13) + '\u2026' : m, r - 8, 4);
       ctx.restore();
     });
 
@@ -88,35 +115,156 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
     ctx.strokeStyle = 'var(--border-mid)'; ctx.lineWidth = 2; ctx.stroke();
   }, [maps]);
 
-  useEffect(() => { drawWheel(angleRef.current); }, [maps, drawWheel]);
+  useEffect(() => { drawWheel(angleRef.current); }, [maps, drawWheel, wheelSize]);
 
-  const spin = () => {
+  // ─── Broadcast spin state helper (admin only) ─────────────────────────────
+  const broadcastSpinState = useCallback(async (state: SpinState | null) => {
+    await fetch('/api/maps', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+      body: JSON.stringify({ action: 'updateSpinState', spinState: state }),
+    });
+  }, [adminToken]);
+
+  // ─── ADMIN: spin ──────────────────────────────────────────────────────────
+  // appendSpinQueue comes from context and does an optimistic local update
+  // immediately, then persists to KV. No prop callback chain — no stale closure risk.
+  const spin = useCallback(() => {
     if (spinning || !maps.length) return;
-    setSpinning(true); onSpunMap('');
+    setSpinning(true);
+    setSpunMap('');
+
     const extra = (5 + Math.random() * 6) * Math.PI * 2 + Math.random() * Math.PI * 2;
     const dur = 3200 + Math.random() * 1200;
-    const t0 = performance.now(), a0 = angleRef.current;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - t0) / dur);
-      angleRef.current = a0 + extra * (1 - Math.pow(1 - t, 4));
+    const a0 = angleRef.current;
+    const targetAngle = a0 + extra;
+    const startTime = Date.now();
+
+    broadcastSpinState({ spinning: true, startAngle: a0, targetAngle, startTime, duration: dur, result: '' });
+
+    const tick = async () => {
+      const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+      angleRef.current = a0 + extra * (1 - Math.pow(1 - tAbs, 4));
       drawWheel(angleRef.current);
-      if (t < 1) { requestAnimationFrame(tick); return; }
+
+      if (tAbs < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Spin done — read mapsRef for latest maps (safe against mid-animation SSE updates)
       setSpinning(false);
-      const slice = (Math.PI * 2) / maps.length;
+      const currentMaps = mapsRef.current;
+      const slice = (Math.PI * 2) / currentMaps.length;
       const pointerAngle = -Math.PI / 2;
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-      const result = maps[Math.floor(norm / slice) % maps.length];
-      onSpunMap(result);
+      const result = currentMaps[Math.floor(norm / slice) % currentMaps.length];
+
+      // Show modal and write to queue — appendSpinQueue updates context state immediately
+      setSpunMap(result);
+
+      // IMPORTANT: await appendSpinQueue before broadcasting spinState.
+      // Both call updateState() (read-modify-write on KV). If they fire
+      // simultaneously the spinState write races the spinQueue write and
+      // whichever lands second overwrites the other's changes, causing the
+      // queue entry to be silently lost even though the server returned 200.
+      await appendSpinQueueRef.current(result);
+
+      // Broadcast for non-admin wheel sync, clear after 1s
+      broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
+      setTimeout(() => broadcastSpinState(null), 1000);
     };
-    requestAnimationFrame(tick);
-  };
+
+    rafRef.current = requestAnimationFrame(tick);
+  // appendSpinQueue intentionally omitted — accessed via appendSpinQueueRef
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spinning, maps.length, drawWheel, broadcastSpinState]);
+
+  // ─── NON-ADMIN: mirror live spin from SSE-pushed spinState ───────────────
+  const prevSpinRef = useRef<SpinState | null>(null);
+  useEffect(() => {
+    if (isAdmin) return;
+    if (!liveSpin) return;
+
+    const prev = prevSpinRef.current;
+    prevSpinRef.current = liveSpin;
+
+    if (!liveSpin.spinning && liveSpin.result) {
+      if (!prev || prev.result !== liveSpin.result || prev.spinning) {
+        const age = Date.now() - (liveSpin.startTime + liveSpin.duration);
+        if (age > 10000) return; // stale — ignore on page refresh
+
+        const { startAngle: a0, targetAngle, startTime, duration: dur } = liveSpin;
+        if (Date.now() - startTime >= dur) {
+          // Already finished — just snap wheel to final position
+          angleRef.current = targetAngle;
+          drawWheel(angleRef.current);
+        } else {
+          setSpinning(true);
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          const animate = () => {
+            const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+            angleRef.current = a0 + (targetAngle - a0) * (1 - Math.pow(1 - tAbs, 4));
+            drawWheel(angleRef.current);
+            if (tAbs < 1) { rafRef.current = requestAnimationFrame(animate); }
+            else { setSpinning(false); }
+          };
+          rafRef.current = requestAnimationFrame(animate);
+        }
+      }
+      return;
+    }
+
+    if (liveSpin.spinning) {
+      if (prev?.startTime === liveSpin.startTime) return; // already mirroring this spin
+      setSpinning(true);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      const { startAngle: a0, targetAngle, startTime, duration: dur } = liveSpin;
+      const animate = () => {
+        const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+        angleRef.current = a0 + (targetAngle - a0) * (1 - Math.pow(1 - tAbs, 4));
+        drawWheel(angleRef.current);
+        if (tAbs < 1) { rafRef.current = requestAnimationFrame(animate); }
+        else { setSpinning(false); }
+      };
+      rafRef.current = requestAnimationFrame(animate);
+    }
+  }, [liveSpin, isAdmin, drawWheel]);
+
+  // Dynamically size the wheel to fit its container
+  useEffect(() => {
+    const el = wheelWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      // Reserve space for pointer (≈44px) + button/status (≈44px) + gaps (≈16px)
+      const reserved = 104;
+      const size = Math.floor(Math.min(width, Math.max(0, height - reserved)));
+      if (size > 0) setWheelSize(size);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Cleanup RAF on unmount
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
   const handleAddMap = async () => {
+    if (busy) return;
     const name = mapInput.trim();
     if (!name) return;
-    const result = await addMap(name);
-    if (result?.error) { setMapErr(result.error); return; }
-    setMapInput(''); setMapErr('');
+    setBusy(true);
+    try {
+      const result = await addMap(name);
+      if (result?.error) { setMapErr(result.error); return; }
+      setMapInput(''); setMapErr('');
+    } finally { setBusy(false); }
+  };
+
+  const handleRemoveQueueItem = async (idx: number) => {
+    if (busy) return;
+    setBusy(true);
+    try { await removeSpinQueueItem(idx); } finally { setBusy(false); }
   };
 
   return (
@@ -125,15 +273,20 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         <div className="shrink-0">
           <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Map Selector</h1>
           <p className="font-['DM_Mono'] text-xs t-muted">
-            {isAdmin ? 'Spin the wheel to build a map queue. Drag them directly into bracket slots.' : 'View only — admin required to edit'}
+            {isAdmin ? 'Spin the wheel to build a map queue. Drag them directly into bracket slots.' : 'Live view — spin results appear automatically'}
           </p>
         </div>
 
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
 
-          {/* Wheel panel - removed overflow-y-auto to stop panel scrolling */}
+          {/* Wheel panel */}
           <div className="t-surface border t-border rounded-2xl p-4 flex flex-col gap-3 min-h-0">
-            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text shrink-0">🎡 Wheel</h2>
+            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text shrink-0">
+              🎡 Wheel
+              {spinning && !isAdmin && (
+                <span className="ml-2 font-['DM_Mono'] text-xs t-muted animate-pulse normal-case tracking-normal">live…</span>
+              )}
+            </h2>
 
             {isAdmin && (
               <div className="shrink-0">
@@ -149,9 +302,10 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                     onBlur={e => (e.target.style.borderColor = '')}
                   />
                   <button
-                    className="shrink-0 px-4 py-2.5 font-bold rounded-xl text-sm text-white transition-all cursor-pointer whitespace-nowrap"
+                    className="shrink-0 px-4 py-2.5 font-bold rounded-xl text-sm text-white transition-all cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ background: 'var(--accent)' }}
                     onClick={handleAddMap}
+                    disabled={busy}
                   >
                     + Add
                   </button>
@@ -160,16 +314,16 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               </div>
             )}
 
-            {/* Scrolling isolated ONLY to the map list if there are too many */}
-            <div className="flex-1 overflow-y-auto">
+            {/* Map list — fixed height so it never crushes the wheel */}
+            <div className="shrink-0 max-h-[96px] overflow-y-auto">
               <div className="flex flex-wrap gap-2">
                 {maps.map(m => (
                   <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
                     {m}
                     {isAdmin && (
-                      <span 
-                        className="cursor-pointer t-dim hover:text-[var(--accent-red)] transition-colors shrink-0" 
-                        onClick={() => handleRemoveMap(m)}
+                      <span
+                        className={`t-dim transition-colors shrink-0 ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                        onClick={() => !busy && handleRemoveMap(m)}
                       >
                         ✕
                       </span>
@@ -180,17 +334,33 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
               </div>
             </div>
 
-            <div className="flex flex-col items-center gap-2 mt-auto shrink-0 pb-2">
-              <span className="text-3xl rotate-90" style={{ color: 'var(--accent-red)' }}>▶</span>
-              <canvas ref={canvasRef} width={220} height={220} className="rounded-full drop-shadow-sm shrink-0" />
-              <button
-                className="px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap mt-2"
-                style={{ background: 'var(--accent-red)' }}
-                onClick={spin}
-                disabled={spinning || maps.length === 0}
-              >
-                🌀 SPIN
-              </button>
+            {/* Wheel area — takes all remaining space, measures itself for canvas size */}
+            <div ref={wheelWrapRef} className="flex-1 min-h-0 w-full overflow-hidden flex flex-col items-center justify-center gap-2">
+              <span className="text-3xl rotate-90 shrink-0" style={{ color: 'var(--accent-red)' }}>▶</span>
+              <canvas
+                ref={canvasRef}
+                width={wheelSize}
+                height={wheelSize}
+                className="rounded-full drop-shadow-sm shrink-0"
+                style={{ width: wheelSize, height: wheelSize }}
+              />
+              {isAdmin ? (
+                <button
+                  className="shrink-0 px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+                  style={{ background: 'var(--accent-red)' }}
+                  onClick={spin}
+                  disabled={spinning || maps.length === 0}
+                >
+                  {spinning ? '🌀 Spinning…' : '🌀 SPIN'}
+                </button>
+              ) : (
+                <div className="shrink-0 h-9 flex items-center">
+                  {spinning
+                    ? <span className="font-['DM_Mono'] text-xs t-muted animate-pulse">🌀 Admin is spinning…</span>
+                    : <span className="font-['DM_Mono'] text-xs t-dim">Waiting for admin to spin</span>
+                  }
+                </div>
+              )}
             </div>
           </div>
 
@@ -198,19 +368,28 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
           <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4 min-h-0">
             <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
-              {isAdmin && spinResults.length > 0 && (
+              {isAdmin && (
                 <button
-                  className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer whitespace-nowrap"
-                  onClick={() => onSpinResultsChange([])}
+                  className={`shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors whitespace-nowrap
+                    ${spinQueue.length === 0 || busy ? 'invisible pointer-events-none' : 'cursor-pointer'}`}
+                  onClick={async () => {
+                    if (busy) return;
+                    setBusy(true);
+                    try {
+                      const missing = spinQueue.filter(m => !maps.includes(m));
+                      await clearSpinQueue();
+                      await Promise.all(missing.map(m => addMap(m)));
+                    } finally { setBusy(false); }
+                  }}
                 >clear all</button>
               )}
             </div>
-            
+
             <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-1.5">
-              {spinResults.length === 0 ? (
+              {spinQueue.length === 0 ? (
                 <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue. The bracket automatically assigns them in order.</p>
               ) : (
-                spinResults.map((m, i) => {
+                spinQueue.map((m, i) => {
                   const isRemoved = !maps.includes(m);
                   return (
                     <div key={i} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 flex-wrap gap-2">
@@ -222,16 +401,18 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                         <div className="flex items-center gap-1.5 shrink-0">
                           {isRemoved && (
                             <button
-                              className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-green)] cursor-pointer transition-colors px-1 py-1"
+                              className={`font-['DM_Mono'] text-[10px] t-dim transition-colors px-1 py-1 ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
                               title="Restore map to pool"
                               onClick={() => handleRestoreMap(m)}
+                              disabled={busy}
                             >
                               ↩
                             </button>
                           )}
                           <button
-                            className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors px-1 py-1"
-                            onClick={() => onSpinResultsChange(spinResults.filter((_, idx) => idx !== i))}
+                            className={`font-['DM_Mono'] text-[10px] t-dim transition-colors px-1 py-1 ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
+                            onClick={() => handleRemoveQueueItem(i)}
+                            disabled={busy}
                           >
                             ✕
                           </button>
@@ -268,7 +449,6 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
                 })}
                 {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
               </div>
-
               {isAdmin && defaultMaps.filter(m => maps.includes(m)).length > 0 && (
                 <p className="font-['DM_Mono'] text-[10px] t-dim">★ = default map (stays in pool after reset)</p>
               )}
@@ -277,8 +457,8 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
         </div>
       </div>
 
-      {/* RESULT MODAL OVERLAY */}
-      {spunMap && (
+      {/* RESULT MODAL — admin only */}
+      {spunMap && isAdmin && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[#1e1e1e] border border-[var(--border-mid)] rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             <div className="bg-[#d32f2f] text-white px-5 py-3 font-semibold text-lg">
@@ -290,18 +470,16 @@ export function MapsTab({ spunMap, onSpunMap, spinResults, onSpinResultsChange }
             <div className="px-5 py-4 flex items-center justify-end gap-4 bg-[#242424]">
               <button
                 className="text-sm text-gray-300 hover:text-white font-medium transition-colors cursor-pointer"
-                onClick={() => onSpunMap('')}
+                onClick={() => setSpunMap('')}
               >
                 Close
               </button>
-              {isAdmin && (
-                <button
-                  className="px-4 py-2 bg-[#5c7cfa] hover:bg-[#4c6cf0] text-white text-sm font-semibold rounded shadow-sm transition-colors cursor-pointer"
-                  onClick={() => { handleRemoveMap(spunMap); onSpunMap(''); }}
-                >
-                  Remove
-                </button>
-              )}
+              <button
+                className="px-4 py-2 bg-[#5c7cfa] hover:bg-[#4c6cf0] text-white text-sm font-semibold rounded shadow-sm transition-colors cursor-pointer"
+                onClick={() => { handleRemoveMap(spunMap); setSpunMap(''); }}
+              >
+                Remove from pool
+              </button>
             </div>
           </div>
         </div>

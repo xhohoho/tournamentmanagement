@@ -50,6 +50,16 @@ export interface ChatMessage {
   ts: number;
 }
 
+/** Broadcast spin animation state so all users can mirror the admin's wheel. */
+export interface SpinState {
+  spinning: boolean;
+  startAngle: number;
+  targetAngle: number;
+  startTime: number;   // Date.now() when admin pressed SPIN
+  duration: number;    // ms — same value used by admin
+  result: string;      // winning map (set when spin completes)
+}
+
 /** Full state stored in KV — never sent to the client as-is. */
 export interface ServerState {
   adminPwHash: string;
@@ -65,6 +75,7 @@ export interface ServerState {
   chatMessages: ChatMessage[];
   defaultMaps: string[];     // maps that are always restored after reset
   spinQueue: string[];
+  spinState: SpinState | null;  // live spin broadcast
 }
 
 /**

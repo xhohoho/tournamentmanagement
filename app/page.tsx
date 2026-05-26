@@ -18,37 +18,13 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 export default function Home() {
-  const { isAdmin, setIsAdmin, players, roster, loading, resetAll } = useTourney();
+  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue } = useTourney();
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
-  const [spunMap, setSpunMap] = useState('');
-  const [spinResults, setSpinResults] = useState<string[]>([]);
 
   const [dark, setDark] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
-
-  // FETCH INITIAL QUEUE ON MOUNT
-  // FETCH INITIAL QUEUE & AUTO-SYNC FOR ALL USERS
-  useEffect(() => {
-    const fetchQueue = () => {
-      fetch('/api/maps')
-        .then(res => res.json())
-        .then(data => {
-          if (data.spinQueue) setSpinResults(data.spinQueue);
-        })
-        .catch(err => console.error('Failed to load spin queue', err));
-    };
-
-    // 1. Fetch immediately on mount
-    fetchQueue();
-
-    // 2. Poll every 3 seconds so normal users see the admin's spins live!
-    const interval = setInterval(fetchQueue, 3000);
-    
-    // Cleanup on unmount
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
@@ -60,36 +36,6 @@ export default function Home() {
     return !prev;
   });
 
-  // DB SYNC: Handle adding a new map to the queue from a spin
-  const handleSpunMap = async (map: string) => {
-    setSpunMap(map); // Everyone gets to see the "We have a winner" modal
-    
-    // ONLY admins actually push the result to the Queue and Database
-    if (map && isAdmin) {
-      const newQueue = [...spinResults, map];
-      setSpinResults(newQueue); // Optimistic UI update
-      
-      await fetch('/api/maps', { // <-- Make sure this URL matches your route
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQueue })
-      });
-    }
-  };
-
-  // Paste this right below your handleSpunMap function!
-  const handleSpinResultsChange = async (newQueue: string[]) => {
-    setSpinResults(newQueue);
-    
-    if (isAdmin) {
-      await fetch('/api/maps', { 
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQueue })
-      });
-    }
-  };
-
   const handleAdminBtn = () => {
     if (isAdmin) { setIsAdmin(false); return; }
     setAdminOpen(true);
@@ -97,16 +43,7 @@ export default function Home() {
 
   const handleReset = async () => {
     if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
-    await resetAll();
-    
-    // Clear the queue on a full reset
-    setSpinResults([]);
-    await fetch('/api/maps', { 
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] })
-    });
-    
+    await resetAll(); // already clears spinQueue + spinState in both KV and local state
     setResetConfirm(false);
   };
 
@@ -124,7 +61,6 @@ export default function Home() {
   }
 
   return (
-    /* h-screen + overflow-hidden = page never grows, no outer scroll */
     <div className={`${dark ? 'dark' : ''} t-bg h-screen overflow-hidden flex flex-col`}>
 
       {/* Ambient gradients */}
@@ -135,7 +71,7 @@ export default function Home() {
 
       <div className="relative z-10 flex flex-col h-full min-h-0">
 
-        {/* Header — fixed height */}
+        {/* Header */}
         <header className="t-header backdrop-blur-md border-b t-border shrink-0 z-40">
           <div className="w-full px-8 py-3 flex items-center justify-between">
             <div className="font-['Bebas_Neue'] text-2xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent">
@@ -175,7 +111,7 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Tab nav — fixed height */}
+        {/* Tab nav */}
         <nav className="t-surface border-b t-border shrink-0">
           <div className="w-full px-8 flex overflow-x-auto">
             {TABS.map(tab => (
@@ -199,21 +135,18 @@ export default function Home() {
           </div>
         </nav>
 
-        {/* Main — flex-1 + min-h-0 = fills exactly what's left, no overflow */}
+        {/* Main */}
         <main className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0 flex flex-col px-8">
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
-
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={spinResults} /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab spunMap={spunMap} onSpunMap={handleSpunMap} spinResults={spinResults} onSpinResultsChange={handleSpinResultsChange} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={spinQueue} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab /></div>
           </div>
         </main>
       </div>
 
       <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
-
-      {/* Floating Chat Panel — always mounted, toggled by button */}
       <ChatPanel open={chatOpen} onToggle={() => setChatOpen(o => !o)} />
     </div>
   );

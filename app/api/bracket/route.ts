@@ -395,6 +395,6 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  const next = await updateState(s => ({ ...s, bracket: null }));
+  const next = await updateState(s => ({ ...s, bracket: null, stageMaps: {} }));
   return NextResponse.json({ bracket: next.bracket });
 }

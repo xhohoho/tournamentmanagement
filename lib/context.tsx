@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Player, Team, Bracket, ChatMessage } from '@/lib/types';
 
 interface TourneyContext {
@@ -12,6 +12,8 @@ interface TourneyContext {
   bracket: Bracket | null;
   maps: string[];
   stageMaps: Record<string, string[]>;
+  spinState: import('@/lib/types').SpinState | null;
+  spinQueue: string[];
   isAdmin: boolean;
   adminToken: string | null;
   loading: boolean;
@@ -49,6 +51,9 @@ interface TourneyContext {
 
   addMap: (name: string) => Promise<{ error?: string }>;
   removeMap: (name: string) => Promise<void>;
+  appendSpinQueue: (map: string) => Promise<void>;
+  clearSpinQueue: () => Promise<void>;
+  removeSpinQueueItem: (idx: number) => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
@@ -67,11 +72,16 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [maps, setMaps] = useState<string[]>([]);
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
+  const [spinState, setSpinState] = useState<import('@/lib/types').SpinState | null>(null);
+  const [spinQueue, setSpinQueue] = useState<string[]>([]);
   const [joinKey, setJoinKeyState] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAdmin, setIsAdminState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const pendingSpinAppend = useRef(false);
+  const pendingElimChange = useRef(false);
 
   const adminHeaders = useMemo(() => ({
     'Content-Type': 'application/json',
@@ -107,6 +117,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setBracket(data.bracket ?? null);
       setMaps(data.maps ?? []);
       setStageMaps(data.stageMaps ?? {});
+      setSpinState(data.spinState ?? null);
+      setSpinQueue(data.spinQueue ?? []);
       setJoinKeyState(data.joinKey ?? '');
       setChatMessages(data.chatMessages ?? []);
     } catch {
@@ -135,10 +147,14 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setRosterState(data.roster ?? []);
           setTeamModeState(data.teamMode ?? 'leader');
           setTeams(data.teams ?? []);
-          setElimModeState(data.elimMode ?? 'single');
+          if (!pendingElimChange.current) setElimModeState(data.elimMode ?? 'single');
           setBracket(data.bracket ?? null);
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
+          setSpinState(data.spinState ?? null);
+          if (!pendingSpinAppend.current) {
+            setSpinQueue(data.spinQueue ?? []);
+          }
           setJoinKeyState(data.joinKey ?? '');
           setChatMessages(data.chatMessages ?? []);
         } catch { /* ignore malformed frames */ }
@@ -359,15 +375,21 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const resetBracket = async () => {
     await fetch('/api/bracket', { method: 'DELETE', headers: adminHeaders });
     setBracket(null);
+    setStageMaps({});
   };
 
   const setElimMode = async (mode: 'single' | 'double') => {
     setElimModeState(mode);
-    await fetch('/api/bracket', {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
-    });
+    pendingElimChange.current = true;
+    try {
+      await fetch('/api/bracket', {
+        method: 'PATCH',
+        headers: adminHeaders,
+        body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
+      });
+    } finally {
+      pendingElimChange.current = false;
+    }
   };
 
   // —— Maps ——
@@ -392,6 +414,54 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     const data = await res.json();
     setMaps(data.maps);
     setStageMaps(data.stageMaps);
+  };
+
+  const appendSpinQueue = async (map: string) => {
+    setSpinQueue(prev => [...prev, map]);
+    pendingSpinAppend.current = true;
+    try {
+      const res = await fetch('/api/maps', {
+        method: 'PATCH',
+        headers: adminHeaders,
+        body: JSON.stringify({ action: 'appendSpinQueue', map }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSpinQueue(data.spinQueue);
+      } else {
+        setSpinQueue(prev => prev.slice(0, -1));
+      }
+    } catch {
+      setSpinQueue(prev => prev.slice(0, -1));
+    } finally {
+      pendingSpinAppend.current = false;
+    }
+  };
+
+  const removeSpinQueueItem = async (idx: number) => {
+    setSpinQueue(prev => {
+      const newQ = prev.filter((_, i) => i !== idx);
+      fetch('/api/maps', {
+        method: 'PATCH',
+        headers: adminHeaders,
+        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQ }),
+      });
+      return newQ;
+    });
+  };
+
+  const clearSpinQueue = async () => {
+    setSpinQueue([]);
+    pendingSpinAppend.current = true;
+    try {
+      await fetch('/api/maps', {
+        method: 'PATCH',
+        headers: adminHeaders,
+        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
+      });
+    } finally {
+      pendingSpinAppend.current = false;
+    }
   };
 
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
@@ -423,11 +493,13 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps({});
     setJoinKeyState('');
     setChatMessages([]);
+    setSpinQueue([]);
+    setSpinState(null);
   };
 
   return (
     <Ctx.Provider value={{
-      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps,
+      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, spinQueue,
       joinKey, chatMessages,
       isAdmin, adminToken, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
@@ -436,7 +508,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       sendChat, clearChat,
       formTeams, resetTeams, setTeamMode,
       generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
-      addMap, removeMap, assignStage, clearStage,
+      addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, assignStage, clearStage,
       assignLeader,
       resetAll,
     }}>
