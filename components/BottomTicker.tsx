@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
-const PX_PER_SECOND = 100;
+const PX_PER_SECOND = 500;
 
 export default function BottomTicker() {
   const spanRef = useRef<HTMLSpanElement>(null);
