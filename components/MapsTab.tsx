@@ -28,6 +28,7 @@ export function MapsTab() {
     try { return JSON.parse(localStorage.getItem('spinItemCategory') ?? '{}'); } catch { return {}; }
   });
   const [newCatInput, setNewCatInput] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const saveCategories = (cats: string[]) => {
     setCategories(cats);
@@ -47,7 +48,7 @@ export function MapsTab() {
 
   const removeCategory = (cat: string) => {
     saveCategories(categories.filter(c => c !== cat));
-    // unassign all items that were in this category
+    if (activeCategory === cat) setActiveCategory(null);
     const next = { ...itemCategory };
     Object.keys(next).forEach(k => { if (next[Number(k)] === cat) delete next[Number(k)]; });
     saveItemCategory(next);
@@ -320,7 +321,7 @@ export function MapsTab() {
     try { await removeSpinQueueItem(idx); reindexCategories(idx); } finally { setBusy(false); }
   };
 
-  // Restore map pool to defaults (or all maps that appear in queue) WITHOUT clearing queue
+  // Restore map pool to defaults WITHOUT clearing queue
   const handleRestoreMapPool = async () => {
     if (busy) return;
     setBusy(true);
@@ -334,16 +335,11 @@ export function MapsTab() {
   const buildGroups = () => {
     const grouped: Array<{ cat: string | null; items: Array<{ idx: number; map: string }> }> = [];
     categories.forEach(cat => {
-      const items = spinQueue
-        .map((m, i) => ({ idx: i, map: m }))
-        .filter(({ idx }) => itemCategory[idx] === cat);
+      const items = spinQueue.map((m, i) => ({ idx: i, map: m })).filter(({ idx }) => itemCategory[idx] === cat);
       grouped.push({ cat, items });
     });
-    // Uncategorised
-    const uncat = spinQueue
-      .map((m, i) => ({ idx: i, map: m }))
-      .filter(({ idx }) => !itemCategory[idx]);
-    if (uncat.length > 0) grouped.push({ cat: null, items: uncat });
+    const uncat = spinQueue.map((m, i) => ({ idx: i, map: m })).filter(({ idx }) => !itemCategory[idx]);
+    if (uncat.length > 0 || categories.length === 0) grouped.push({ cat: null, items: uncat });
     return grouped;
   };
 
@@ -446,30 +442,33 @@ export function MapsTab() {
 
           {/* Spin Results panel */}
           <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-3 min-h-0">
-            {/* Header */}
+
+            {/* Header row */}
             <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
               {isAdmin && (
-                <div className="flex items-center gap-3 flex-wrap">
-                  {defaultMaps.length > 0 && (
-                    <button
-                      className={`font-['DM_Mono'] text-[10px] whitespace-nowrap t-dim transition-colors
-                        ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
-                      title="Re-add starred default maps to pool (result history untouched)"
-                      onClick={handleRestoreMapPool}
-                      disabled={busy}
-                    >↩ restore map pool</button>
-                  )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Restore map pool — does NOT clear queue */}
                   <button
-                    className={`font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors whitespace-nowrap
-                      ${spinQueue.length === 0 || busy ? 'invisible pointer-events-none' : 'cursor-pointer'}`}
+                    className={`font-['DM_Mono'] text-[10px] whitespace-nowrap t-dim transition-colors
+                      ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
+                    title="Re-add starred default maps to pool (result history untouched)"
+                    onClick={handleRestoreMapPool}
+                    disabled={busy}
+                  >↩ restore pool</button>
+                  {/* Clear all — clear queue AND restore pool */}
+                  <button
+                    className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
+                      ${spinQueue.length === 0 || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
                     onClick={async () => {
-                      if (busy) return;
+                      if (busy || spinQueue.length === 0) return;
                       setBusy(true);
                       try {
-                        const missing = spinQueue.filter(m => !maps.includes(m));
                         await clearSpinQueue();
                         saveItemCategory({});
+                        // restore default map pool
+                        const toRestore = defaultMaps.filter(m => !maps.includes(m));
+                        await Promise.all(toRestore.map(m => addMap(m)));
                       } finally { setBusy(false); }
                     }}
                   >clear all</button>
@@ -477,31 +476,15 @@ export function MapsTab() {
               )}
             </div>
 
-            {/* Category manager (admin) */}
+            {/* Category list — each row is a category with a tick to select it */}
             {isAdmin && (
-              <div className="shrink-0 t-elevated border t-border rounded-xl p-3 flex flex-col gap-2">
-                <p className="font-['DM_Mono'] text-[10px] t-muted tracking-widest">CATEGORIES</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {categories.map(cat => (
-                    <span
-                      key={cat}
-                      className="inline-flex items-center gap-1 font-['DM_Mono'] text-[10px] px-2 py-1 rounded-full border t-border t-text"
-                    >
-                      {cat}
-                      <button
-                        className="t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer leading-none"
-                        onClick={() => removeCategory(cat)}
-                        title="Remove category"
-                      >✕</button>
-                    </span>
-                  ))}
-                  {categories.length === 0 && <span className="font-['DM_Mono'] text-[10px] t-dim">No categories yet</span>}
-                </div>
+              <div className="shrink-0 flex flex-col gap-1.5">
+                {/* Add new category input */}
                 <div className="flex gap-2">
                   <input
                     type="text"
                     className="flex-1 t-elevated border t-border rounded-lg px-2.5 py-1 font-['DM_Mono'] text-[11px] t-text outline-none"
-                    placeholder="e.g. Upper 1st Round"
+                    placeholder="Add category e.g. Upper 1st Round"
                     value={newCatInput}
                     onChange={e => setNewCatInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addCategory()}
@@ -512,66 +495,108 @@ export function MapsTab() {
                     onClick={addCategory}
                   >+ Add</button>
                 </div>
+                {/* Category rows with tick buttons */}
+                {categories.map(cat => {
+                  const isActive = activeCategory === cat;
+                  const count = spinQueue.filter((_, i) => itemCategory[i] === cat).length;
+                  return (
+                    <div
+                      key={cat}
+                      className="flex items-center gap-2 t-elevated border rounded-lg px-3 py-1.5 transition-colors"
+                      style={{ borderColor: isActive ? 'var(--accent)' : 'var(--border-mid)' }}
+                    >
+                      {/* Tick button — select this category */}
+                      <button
+                        className="shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors cursor-pointer"
+                        style={{
+                          background: isActive ? 'var(--accent)' : 'transparent',
+                          borderColor: isActive ? 'var(--accent)' : 'var(--border-mid)',
+                          color: '#fff',
+                        }}
+                        onClick={() => setActiveCategory(isActive ? null : cat)}
+                        title={isActive ? 'Deselect category' : 'Select category'}
+                      >
+                        {isActive && <span style={{ fontSize: 11, lineHeight: 1 }}>✓</span>}
+                      </button>
+                      <span className="flex-1 font-['DM_Mono'] text-[11px] t-text truncate">{cat}</span>
+                      <span className="font-['DM_Mono'] text-[10px] t-dim shrink-0">{count > 0 ? `${count} map${count > 1 ? 's' : ''}` : ''}</span>
+                      <button
+                        className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer leading-none"
+                        onClick={() => removeCategory(cat)}
+                        title="Remove category"
+                      >✕</button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            {/* Grouped results */}
-            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3">
+            {/* Grouped results list */}
+            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3 min-h-0">
               {spinQueue.length === 0 ? (
-                <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue. The bracket automatically assigns them in order.</p>
+                <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue.</p>
               ) : (
-                buildGroups().map(({ cat, items }, gi) => (
+                buildGroups().map(({ cat, items }) => (
                   <div key={cat ?? '__uncat'} className="flex flex-col gap-1">
-                    {/* Group header */}
-                    <div className="flex items-center gap-2">
-                      <span className="font-['DM_Mono'] text-[10px] tracking-widest font-bold"
-                        style={{ color: cat ? 'var(--accent)' : 'var(--text-dim)' }}
-                      >{cat ? cat.toUpperCase() : 'UNCATEGORISED'}</span>
-                      <div className="flex-1 h-px" style={{ background: cat ? 'var(--accent)' : 'var(--border-mid)', opacity: 0.4 }} />
-                    </div>
-                    {/* Items in group */}
-                    {items.length === 0 ? (
-                      <p className="font-['DM_Mono'] text-[10px] t-dim pl-2 italic">No maps assigned</p>
-                    ) : (
-                      items.map(({ idx, map: m }) => {
-                        const isRemoved = !maps.includes(m);
-                        return (
-                          <div key={idx} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2">
-                            <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                              <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{idx + 1}</span>
-                              <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              {isAdmin && (
-                                <select
-                                  className="font-['DM_Mono'] text-[10px] t-elevated border t-border rounded px-1 py-0.5 t-text cursor-pointer bg-transparent max-w-[100px]"
-                                  value={itemCategory[idx] ?? ''}
-                                  onChange={e => assignItemCategory(idx, e.target.value || null)}
-                                >
-                                  <option value="">— move —</option>
-                                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                              )}
-                              {isAdmin && isRemoved && (
-                                <button
-                                  className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
-                                  title="Restore map to pool"
-                                  onClick={() => handleRestoreMap(m)}
-                                  disabled={busy}
-                                >↩</button>
-                              )}
-                              {isAdmin && (
-                                <button
-                                  className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
-                                  onClick={() => handleRemoveQueueItem(idx)}
-                                  disabled={busy}
-                                >✕</button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
+                    {/* Group header — only show if there are categories defined */}
+                    {categories.length > 0 && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <span
+                          className="font-['DM_Mono'] text-[10px] tracking-widest font-bold shrink-0"
+                          style={{ color: cat ? 'var(--accent)' : 'var(--text-dim)' }}
+                        >{cat ? cat.toUpperCase() : 'UNCATEGORISED'}</span>
+                        <div className="flex-1 h-px" style={{ background: cat ? 'var(--accent)' : 'var(--border-mid)', opacity: 0.35 }} />
+                      </div>
                     )}
+                    {items.length === 0 && cat !== null && (
+                      <p className="font-['DM_Mono'] text-[10px] t-dim pl-2 italic">No maps yet</p>
+                    )}
+                    {items.map(({ idx, map: m }) => {
+                      const isRemoved = !maps.includes(m);
+                      const thisCat = itemCategory[idx] ?? null;
+                      return (
+                        <div key={idx} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2">
+                          <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                            <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{idx + 1}</span>
+                            <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Per-item category tick buttons — abbreviated label */}
+                            {isAdmin && categories.length > 0 && categories.map(c => {
+                              const active = thisCat === c;
+                              return (
+                                <button
+                                  key={c}
+                                  title={active ? `Unassign from ${c}` : `Assign to ${c}`}
+                                  className="font-['DM_Mono'] text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer shrink-0"
+                                  style={{
+                                    borderColor: active ? 'var(--accent)' : 'var(--border-mid)',
+                                    color: active ? 'var(--accent)' : 'var(--text-dim)',
+                                    background: active ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+                                  }}
+                                  onClick={() => assignItemCategory(idx, active ? null : c)}
+                                >{c.split(' ').map((w: string) => w[0]).join('')}</button>
+                              );
+                            })}
+                            {isAdmin && isRemoved && (
+                              <button
+                                className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
+                                title="Restore map to pool"
+                                onClick={() => handleRestoreMap(m)}
+                                disabled={busy}
+                              >↩</button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
+                                onClick={() => handleRemoveQueueItem(idx)}
+                                disabled={busy}
+                              >✕</button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ))
               )}
