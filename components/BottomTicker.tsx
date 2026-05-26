@@ -3,16 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 
 const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
-const PX_PER_SECOND = 500;
+const PX_PER_SECOND = 100;
+const GAP = '8rem'; // space between end of text and start of next loop
 
 export default function BottomTicker() {
   const span1Ref = useRef<HTMLSpanElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
   const [duration, setDuration] = useState<number | null>(null);
 
   useEffect(() => {
     const span = span1Ref.current;
     if (!span) return;
+    // offsetWidth = text width + gap — this is exactly one full scroll unit
     setDuration(span.offsetWidth / PX_PER_SECOND);
   }, []);
 
@@ -44,13 +45,11 @@ export default function BottomTicker() {
         style={{ height: 28, background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111' }}
       >
         <div
-          ref={trackRef}
           style={{
             display: 'flex',
             height: '100%',
             alignItems: 'center',
             whiteSpace: 'nowrap',
-            // Don't animate at all until duration is known — prevents the initial jump
             animation: duration ? `ticker-scroll ${duration}s linear infinite` : 'none',
             willChange: 'transform',
             fontFamily: '"Courier New", Courier, monospace',
@@ -60,8 +59,8 @@ export default function BottomTicker() {
             textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
           }}
         >
-          <span ref={span1Ref} style={{ paddingRight: '100vw' }}>{TICKER_TEXT}</span>
-          <span style={{ paddingRight: '100vw' }}>{TICKER_TEXT}</span>
+          <span ref={span1Ref} style={{ paddingRight: GAP }}>{TICKER_TEXT}</span>
+          <span style={{ paddingRight: GAP }}>{TICKER_TEXT}</span>
         </div>
       </div>
 
