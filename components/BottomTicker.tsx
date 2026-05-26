@@ -1,24 +1,19 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
-const PX_PER_SECOND = 500; // scroll speed — adjust this
+const PX_PER_SECOND = 500;
 
 export default function BottomTicker() {
   const span1Ref = useRef<HTMLSpanElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const [duration, setDuration] = useState<number | null>(null);
 
   useEffect(() => {
     const span = span1Ref.current;
-    const track = trackRef.current;
-    if (!span || !track) return;
-
-    // Total width of one unit = text width + gap (100vw)
-    const oneUnitWidth = span.offsetWidth;
-    const duration = oneUnitWidth / PX_PER_SECOND;
-
-    track.style.animationDuration = `${duration}s`;
+    if (!span) return;
+    setDuration(span.offsetWidth / PX_PER_SECOND);
   }, []);
 
   return (
@@ -55,8 +50,8 @@ export default function BottomTicker() {
             height: '100%',
             alignItems: 'center',
             whiteSpace: 'nowrap',
-            animation: 'ticker-scroll linear infinite',
-            animationDuration: '10s', // placeholder, overwritten in useEffect
+            // Don't animate at all until duration is known — prevents the initial jump
+            animation: duration ? `ticker-scroll ${duration}s linear infinite` : 'none',
             willChange: 'transform',
             fontFamily: '"Courier New", Courier, monospace',
             fontWeight: 'bold',
