@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Bebas_Neue, DM_Mono, Syne } from 'next/font/google';
 import './globals.css';
 import { TourneyProvider } from '@/lib/context';
+import BottomTicker from '@/components/BottomTicker';
 
 const bebasNeue = Bebas_Neue({
   weight: '400',
@@ -33,10 +34,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${bebasNeue.variable} ${dmMono.variable} ${syne.variable}`}>
-      <body className="min-h-screen overflow-x-hidden">
+      <body className="min-h-screen overflow-x-hidden pb-7">
         <TourneyProvider>
           {children}
         </TourneyProvider>
+        <BottomTicker />
       </body>
     </html>
   );
