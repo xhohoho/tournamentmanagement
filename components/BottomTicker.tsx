@@ -23,23 +23,11 @@ export default function BottomTicker() {
     setDuration(totalTravel / PX_PER_SECOND);
     setKeyframes(`
       @keyframes ticker-slide {
-        from { transform: translateX(${containerWidth}px); }
-        to   { transform: translateX(${-textWidth}px); }
+        from { left: ${containerWidth}px; }
+        to   { left: ${-textWidth}px; }
       }
     `);
   }, []);
-
-  const fontStyle: React.CSSProperties = {
-    fontFamily: '"Courier New", Courier, monospace',
-    fontWeight: 'bold',
-    fontSize: 13,
-    color: '#d4c59a',
-    textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
-    whiteSpace: 'nowrap',
-    position: 'absolute',
-    top: '50%',
-    transform: 'translateY(-50%)',
-  };
 
   return (
     <div
@@ -67,13 +55,28 @@ export default function BottomTicker() {
       <div
         ref={containerRef}
         className="flex-1 overflow-hidden"
-        style={{ height: 28, position: 'relative', background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111' }}
+        style={{
+          height: 28,
+          position: 'relative',
+          background: '#0d0d08',
+          borderTop: '1px solid #5a5a52',
+          borderBottom: '1px solid #111',
+        }}
       >
         <span
           ref={spanRef}
           style={{
-            ...fontStyle,
-            // Only apply animation once keyframes are ready
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            whiteSpace: 'nowrap',
+            fontFamily: '"Courier New", Courier, monospace',
+            fontWeight: 'bold',
+            fontSize: 13,
+            color: '#d4c59a',
+            textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
             animation: duration ? `ticker-slide ${duration}s linear infinite` : 'none',
           }}
         >
@@ -91,7 +94,6 @@ export default function BottomTicker() {
         }}
       />
 
-      {/* Inject keyframes with exact pixel values after measurement */}
       {keyframes && <style>{keyframes}</style>}
     </div>
   );
