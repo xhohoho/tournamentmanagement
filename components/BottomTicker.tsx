@@ -7,14 +7,16 @@ const PX_PER_SECOND = 100;
 
 export default function BottomTicker() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const spanRef = useRef<HTMLSpanElement>(null);
   const [duration, setDuration] = useState<number | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
-    // The track is 2x the container width (two spans, each 100% of container)
-    // So one full loop = container width
-    setDuration(container.clientWidth / PX_PER_SECOND);
+    const span = spanRef.current;
+    if (!container || !span) return;
+    // Total travel = container width + text width (enters from right edge, exits at left edge)
+    const totalTravel = container.clientWidth + span.offsetWidth;
+    setDuration(totalTravel / PX_PER_SECOND);
   }, []);
 
   return (
@@ -43,54 +45,26 @@ export default function BottomTicker() {
       <div
         ref={containerRef}
         className="flex-1 overflow-hidden"
-        style={{ height: 28, background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111' }}
+        style={{ height: 28, background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111', position: 'relative' }}
       >
-        <div
+        <span
+          ref={spanRef}
           style={{
-            display: 'flex',
-            height: '100%',
-            alignItems: 'center',
+            position: 'absolute',
             whiteSpace: 'nowrap',
+            top: '50%',
+            transform: 'translateY(-50%)',
             animation: duration ? `ticker-scroll ${duration}s linear infinite` : 'none',
             willChange: 'transform',
+            fontFamily: '"Courier New", Courier, monospace',
+            fontWeight: 'bold',
+            fontSize: 13,
+            color: '#d4c59a',
+            textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
           }}
         >
-          {/*
-            Each span is exactly 100% of the container width.
-            span1 starts at 0 and scrolls to -100% (off left).
-            span2 starts right behind it at +100% and fills in.
-            translateX(-50%) moves the whole track by exactly one container width = seamless.
-          */}
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              minWidth: '100%',
-              fontFamily: '"Courier New", Courier, monospace',
-              fontWeight: 'bold',
-              fontSize: 13,
-              color: '#d4c59a',
-              textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
-            }}
-          >
-            {TICKER_TEXT}
-          </span>
-          <span
-            aria-hidden="true"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              minWidth: '100%',
-              fontFamily: '"Courier New", Courier, monospace',
-              fontWeight: 'bold',
-              fontSize: 13,
-              color: '#d4c59a',
-              textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
-            }}
-          >
-            {TICKER_TEXT}
-          </span>
-        </div>
+          {TICKER_TEXT}
+        </span>
       </div>
 
       {/* Right decorative button */}
@@ -105,8 +79,8 @@ export default function BottomTicker() {
 
       <style>{`
         @keyframes ticker-scroll {
-          from { transform: translateX(0); }
-          to   { transform: translateX(-50%); }
+          from { left: 100%; }
+          to   { left: -100%; }
         }
       `}</style>
     </div>
