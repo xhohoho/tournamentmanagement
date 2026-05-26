@@ -3,9 +3,6 @@
 const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
 
 export default function BottomTicker() {
-  // Duplicate the text so the loop is seamless
-  const text = `${TICKER_TEXT}\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0`;
-
   return (
     <div
       className="w-full flex items-center shrink-0"
@@ -49,7 +46,6 @@ export default function BottomTicker() {
             height: '100%',
             alignItems: 'center',
             whiteSpace: 'nowrap',
-            /* Two copies side-by-side so the second one slides in as the first exits */
             animation: 'ticker-scroll 12s linear infinite',
             willChange: 'transform',
             fontFamily: '"Courier New", Courier, monospace',
@@ -59,9 +55,9 @@ export default function BottomTicker() {
             textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
           }}
         >
-          <span style={{ paddingRight: '4rem' }}>{text}</span>
-          {/* Duplicate — seamlessly follows the first span */}
-          <span style={{ paddingRight: '4rem' }}>{text}</span>
+          {/* Gap is paddingRight on each span — no hardcoded spaces in the text */}
+          <span style={{ paddingRight: '100vw' }}>{TICKER_TEXT}</span>
+          <span style={{ paddingRight: '100vw' }}>{TICKER_TEXT}</span>
         </div>
       </div>
 
