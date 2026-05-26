@@ -8,6 +8,7 @@ import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
 import { MapsTab } from '@/components/MapsTab';
 import { ChatPanel } from '@/components/ChatPanel';
+import BottomTicker from '@/components/BottomTicker';
 import type { TabId } from '@/lib/types';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
@@ -144,6 +145,8 @@ export default function Home() {
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab /></div>
           </div>
         </main>
+
+        <BottomTicker />
       </div>
 
       <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />

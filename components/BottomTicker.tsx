@@ -1,5 +1,5 @@
 const TICKER_TEXT =
-  'Shop : https://suddenattack.safie.cc';
+  'Sama-sama la kita bersedekah, bukan mintak toke barang free je haha';
 
 export default function BottomTicker() {
   return (
@@ -12,6 +12,9 @@ export default function BottomTicker() {
         .ticker-strip {
           animation: ticker-scroll 22s linear infinite;
           will-change: transform;
+          display: flex;
+          white-space: nowrap;
+          min-width: 200%;
         }
         .ticker-root:hover .ticker-strip {
           animation-play-state: paused;
@@ -19,7 +22,7 @@ export default function BottomTicker() {
       `}</style>
 
       <div
-        className="ticker-root fixed bottom-0 left-0 w-full z-50 flex items-center"
+        className="ticker-root w-full flex items-center shrink-0"
         style={{
           height: 28,
           background: '#1a1a14',
@@ -46,7 +49,7 @@ export default function BottomTicker() {
 
         {/* scrolling track */}
         <div
-          className="flex-1 flex items-center overflow-hidden"
+          className="flex-1 overflow-hidden flex items-center"
           style={{
             height: 28,
             background: '#0d0d08',
@@ -54,9 +57,9 @@ export default function BottomTicker() {
             borderBottom: '1px solid #111',
           }}
         >
-          {/* 4 copies — translateX(-50%) loops seamlessly */}
-          <div className="ticker-strip flex whitespace-nowrap">
-            {[0, 1, 2, 3].map((i) => (
+          {/* 2 copies — translateX(-50%) shifts exactly one copy, loops seamlessly */}
+          <div className="ticker-strip">
+            {[0, 1].map((i) => (
               <span
                 key={i}
                 style={{
@@ -65,7 +68,8 @@ export default function BottomTicker() {
                   fontSize: 13,
                   color: '#d4c59a',
                   textShadow: '1px 1px 0 #000',
-                  paddingRight: 80,
+                  paddingRight: 120,
+                  display: 'inline-block',
                 }}
               >
                 {TICKER_TEXT}
