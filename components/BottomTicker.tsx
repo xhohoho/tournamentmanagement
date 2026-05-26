@@ -1,22 +1,42 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
-const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
-const PX_PER_SECOND = 100;
+const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc     '; // trailing spaces = gap before it wraps
+const MS_PER_CHAR = 50; // lower = faster
 
 export default function BottomTicker() {
-  const containerRef = useRef<HTMLDivElement>(null);
   const spanRef = useRef<HTMLSpanElement>(null);
-  const [duration, setDuration] = useState<number | null>(null);
 
   useEffect(() => {
-    const container = containerRef.current;
-    const span = spanRef.current;
-    if (!container || !span) return;
-    // Total travel = container width + text width (enters from right edge, exits at left edge)
-    const totalTravel = container.clientWidth + span.offsetWidth;
-    setDuration(totalTravel / PX_PER_SECOND);
+    const el = spanRef.current;
+    if (!el) return;
+
+    // Fill the display with enough chars to cover the container
+    // Then rotate: shift first char to end every tick
+    let offset = 0;
+
+    const buildDisplay = () => {
+      const containerWidth = el.parentElement?.clientWidth ?? 600;
+      // How many chars fit? Use a rough estimate based on monospace char width (~8px at 13px font)
+      const CHAR_WIDTH = 8;
+      const capacity = Math.ceil(containerWidth / CHAR_WIDTH) + 1;
+      const len = TICKER_TEXT.length;
+
+      let display = '';
+      for (let i = 0; i < capacity; i++) {
+        display += TICKER_TEXT[(offset + i) % len];
+      }
+      el.textContent = display;
+    };
+
+    buildDisplay();
+    const id = setInterval(() => {
+      offset = (offset + 1) % TICKER_TEXT.length;
+      buildDisplay();
+    }, MS_PER_CHAR);
+
+    return () => clearInterval(id);
   }, []);
 
   return (
@@ -43,28 +63,24 @@ export default function BottomTicker() {
 
       {/* Ticker track */}
       <div
-        ref={containerRef}
         className="flex-1 overflow-hidden"
-        style={{ height: 28, background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111', position: 'relative' }}
+        style={{ height: 28, background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111' }}
       >
         <span
           ref={spanRef}
           style={{
-            position: 'absolute',
+            display: 'block',
+            height: '100%',
+            lineHeight: '28px',
             whiteSpace: 'nowrap',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            animation: duration ? `ticker-scroll ${duration}s linear infinite` : 'none',
-            willChange: 'transform',
+            overflow: 'hidden',
             fontFamily: '"Courier New", Courier, monospace',
             fontWeight: 'bold',
             fontSize: 13,
             color: '#d4c59a',
             textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
           }}
-        >
-          {TICKER_TEXT}
-        </span>
+        />
       </div>
 
       {/* Right decorative button */}
@@ -76,13 +92,6 @@ export default function BottomTicker() {
           boxShadow: '1px 1px 0 #000', borderRadius: 2,
         }}
       />
-
-      <style>{`
-        @keyframes ticker-scroll {
-          from { left: 100%; }
-          to   { left: -100%; }
-        }
-      `}</style>
     </div>
   );
 }
