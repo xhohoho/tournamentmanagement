@@ -2,27 +2,26 @@
 
 import { useEffect, useRef } from 'react';
 
-const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc     '; // trailing spaces = gap before it wraps
+const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc     ';
 const MS_PER_CHAR = 50; // lower = faster
 
 export default function BottomTicker() {
   const spanRef = useRef<HTMLSpanElement>(null);
+  const rulerRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const el = spanRef.current;
-    if (!el) return;
+    const ruler = rulerRef.current;
+    if (!el || !ruler) return;
 
-    // Fill the display with enough chars to cover the container
-    // Then rotate: shift first char to end every tick
+    // Measure actual rendered width of one character
+    const charWidth = ruler.offsetWidth / TICKER_TEXT.length;
+    const containerWidth = el.parentElement?.clientWidth ?? 600;
+    const capacity = Math.ceil(containerWidth / charWidth) + 1;
+    const len = TICKER_TEXT.length;
     let offset = 0;
 
     const buildDisplay = () => {
-      const containerWidth = el.parentElement?.clientWidth ?? 600;
-      // How many chars fit? Use a rough estimate based on monospace char width (~8px at 13px font)
-      const CHAR_WIDTH = 8;
-      const capacity = Math.ceil(containerWidth / CHAR_WIDTH) + 1;
-      const len = TICKER_TEXT.length;
-
       let display = '';
       for (let i = 0; i < capacity; i++) {
         display += TICKER_TEXT[(offset + i) % len];
@@ -32,12 +31,18 @@ export default function BottomTicker() {
 
     buildDisplay();
     const id = setInterval(() => {
-      offset = (offset + 1) % TICKER_TEXT.length;
+      offset = (offset + 1) % len;
       buildDisplay();
     }, MS_PER_CHAR);
 
     return () => clearInterval(id);
   }, []);
+
+  const fontStyle = {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontWeight: 'bold',
+    fontSize: 13,
+  } as const;
 
   return (
     <div
@@ -64,19 +69,33 @@ export default function BottomTicker() {
       {/* Ticker track */}
       <div
         className="flex-1 overflow-hidden"
-        style={{ height: 28, background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111' }}
+        style={{ height: 28, position: 'relative', background: '#0d0d08', borderTop: '1px solid #5a5a52', borderBottom: '1px solid #111' }}
       >
+        {/* Invisible ruler — renders the full text off screen to measure real char width */}
+        <span
+          ref={rulerRef}
+          aria-hidden="true"
+          style={{
+            ...fontStyle,
+            position: 'absolute',
+            visibility: 'hidden',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+          }}
+        >
+          {TICKER_TEXT}
+        </span>
+
+        {/* Visible ticker */}
         <span
           ref={spanRef}
           style={{
+            ...fontStyle,
             display: 'block',
             height: '100%',
             lineHeight: '28px',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
-            fontFamily: '"Courier New", Courier, monospace',
-            fontWeight: 'bold',
-            fontSize: 13,
             color: '#d4c59a',
             textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
           }}
