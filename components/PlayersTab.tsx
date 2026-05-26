@@ -344,9 +344,9 @@ export function PlayersTab() {
             )}
           </div>
 
-          <div className="px-3 py-1.5 border-t t-border shrink-0 flex items-center justify-between">
-            <span className="font-['DM_Mono'] text-[9px] t-dim">by submission order</span>
-            {isAdmin && <span className="font-['DM_Mono'] text-[9px]" style={{ color: 'var(--accent-gold)' }}>click to add to roster</span>}
+          <div className="px-3 py-1.5 border-t t-border shrink-0 flex items-center justify-between" style={{ minHeight: 32 }}>
+            <span className="font-['DM_Mono'] text-[10px] t-dim">by submission order</span>
+            {isAdmin && <span className="font-['DM_Mono'] text-[10px]" style={{ color: 'var(--accent-gold)' }}>click to add to roster</span>}
           </div>
         </div>
 
@@ -437,7 +437,7 @@ export function PlayersTab() {
             )}
           </div>
 
-          <div className="px-3 py-1.5 border-t t-border shrink-0">
+          <div className="px-3 py-1.5 border-t t-border shrink-0 flex items-center" style={{ minHeight: 32 }}>
             <span
               className="font-['DM_Mono'] text-[10px] font-bold"
               style={{ color: rosterValid ? 'var(--accent-green)' : 'var(--accent-red)' }}
