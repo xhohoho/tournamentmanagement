@@ -5,7 +5,7 @@ import { useTourney } from '@/lib/context';
 import { WHEEL_COLORS } from '@/lib/utils';
 import type { SpinState } from '@/lib/types';
 
-export function MapsTab() {
+export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory: string | null; setActiveCategory: (cat: string | null) => void }) {
   const {
     maps, isAdmin, loading,
     addMap, removeMap, appendSpinQueue, clearSpinQueue,
@@ -26,7 +26,7 @@ export function MapsTab() {
   const [itemCategory, setItemCategoryState] = useState<Record<number, string>>(serverItemCategory);
   const [newCatInput, setNewCatInput] = useState('');
   // activeCategory = which category is "checked" — next spin result auto-assigns here
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  // (lifted to page.tsx so BracketTab's Spin Queue filters to the active category)
   // Ref so the RAF spin closure can always read the latest value without stale closure issues
   const activeCategoryRef = useRef<string | null>(null);
   useEffect(() => { activeCategoryRef.current = activeCategory; }, [activeCategory]);

@@ -19,7 +19,13 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 export default function Home() {
-  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue } = useTourney();
+  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue, spinItemCategory } = useTourney();
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  // Filter spin queue to only items whose category is active (checked), or all items if no category is active
+  const filteredSpinResults = activeCategory
+    ? spinQueue.filter((_, i) => spinItemCategory[i] === activeCategory)
+    : spinQueue;
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
 
@@ -141,8 +147,8 @@ export default function Home() {
           <div className="flex-1 min-h-0 flex flex-col px-8">
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={spinQueue} /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={filteredSpinResults} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab activeCategory={activeCategory} setActiveCategory={setActiveCategory} /></div>
           </div>
         </main>
 
