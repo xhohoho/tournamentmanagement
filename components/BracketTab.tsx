@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTourney } from '@/lib/context';
 import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal, Bracket } from '@/lib/types';
@@ -228,12 +228,50 @@ function MatchCard({
 
 // ─── BracketTab ────────────────────────────────────────────────────────────────
 export function BracketTab({ spinResults }: { spinResults: string[] }) {
-  const { bracket, elimMode, teams, isAdmin, loading, setElimMode, generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
+  const { bracket, elimMode, teams, isAdmin, loading, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, shuffleState } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [matchFormat, setMatchFormat] = useState<'bo1' | 'bo3'>('bo1');
   const [pendingElim, setPendingElim] = useState<'single' | 'double' | null>(null);
   const displayElim = pendingElim ?? elimMode;
+
+  // ── Shuffle animation ─────────────────────────────────────────────────────────────────────
+  // Track which slotKeys are currently visible based on elapsed time
+  const [revealedSlots, setRevealedSlots] = useState<Set<string>>(new Set());
+  const shuffleRafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!shuffleState) {
+      // Animation done or not active — show everything
+      setRevealedSlots(new Set('__all__'));
+      if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current);
+      return;
+    }
+    setRevealedSlots(new Set()); // reset
+    const { startTime, delayMs, reveals } = shuffleState;
+
+    const tick = () => {
+      const elapsed = Date.now() - startTime;
+      const revealedCount = Math.floor(elapsed / delayMs);
+      const newSet = new Set<string>();
+      for (let i = 0; i < Math.min(revealedCount, reveals.length); i++) {
+        newSet.add(reveals[i].slotKey);
+      }
+      setRevealedSlots(newSet);
+      if (revealedCount < reveals.length) {
+        shuffleRafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    shuffleRafRef.current = requestAnimationFrame(tick);
+    return () => { if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current); };
+  }, [shuffleState]);
+
+  // Helper for child components: is this slot revealed?
+  const isSlotRevealed = (slotKey: string) =>
+    revealedSlots.has('__all__') || revealedSlots.has(slotKey);
+
+  const isShuffling = !!shuffleState;
 
   const handleElimChange = async (id: 'single' | 'double') => {
     if (hasBracket || id === displayElim) return;
@@ -252,12 +290,13 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
 
   const hasTeams = teams.length >= 2;
   const hasBracket = !!bracket;
+  const isSeeded = hasBracket && !!bracket?.upper[0]?.some(m => m.p1 || m.p2);
 
   return (
     <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0 relative">
       <div>
         <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Bracket</h1>
-        <p className="font-['DM_Mono'] text-xs t-muted">{isAdmin ? 'Pick a format · Generate once · Click score numbers on each card to edit' : 'View only — admin required to edit'}</p>
+        <p className="font-['DM_Mono'] text-xs t-muted">{isAdmin ? 'Pick a format · Generate structure · Shuffle teams in · Click score numbers to edit' : 'View only — admin required to edit'}</p>
       </div>
 
       {isAdmin && (
@@ -289,20 +328,26 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
             <div className="flex items-center gap-2 ml-auto shrink-0">
               {!hasBracket ? (
                 <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-red)' }} onClick={async () => { if (!isAdmin || generating) return; setErr(''); setGenerating(true); const r = await generateBracket(matchFormat); setGenerating(false); if (r?.error) setErr(r.error); }} disabled={!hasTeams || generating}>{generating ? '⏳ Generating…' : '⚡ Generate Bracket'}</button>
+              ) : !isSeeded ? (
+                <>
+                  <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-green)' }} onClick={async () => { if (!isAdmin || seeding || isShuffling) return; setErr(''); setSeeding(true); const r = await seedBracket(matchFormat); setSeeding(false); if (r?.error) setErr(r.error); }} disabled={seeding || isShuffling}>{seeding || isShuffling ? '🎲 Shuffling…' : '🎲 Shuffle Teams'}</button>
+                  <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset</button>
+                </>
               ) : (
                 <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset Bracket</button>
               )}
             </div>
           </div>
           {!hasTeams && <p className="font-['DM_Mono'] text-[11px] mt-2" style={{ color: 'var(--accent-red)' }}>⚠ Form teams first.</p>}
-          {hasBracket && <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">⚠ Format locked — reset to change.</p>}
+          {hasBracket && !isSeeded && <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">⚠ Format locked — click Shuffle to place teams, or Reset to start over.</p>}
+          {isSeeded && <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">⚠ Format locked — reset to change.</p>}
           {err && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-red)' }}>{err}</p>}
         </div>
       )}
 
       {bracket ? (
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          <BracketDisplay bracket={bracket} isAdmin={isAdmin} onScore={updateScore} onThirdPlace={updateThirdPlace} onUndo={undoMatch} />
+          <BracketDisplay bracket={bracket} isAdmin={isAdmin} onScore={updateScore} onThirdPlace={updateThirdPlace} onUndo={undoMatch} isSlotRevealed={isSlotRevealed} />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
@@ -329,11 +374,12 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
 }
 
 // ─── BracketDisplay — top-level router ───────────────────────────────────────
-function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo }: {
+function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo, isSlotRevealed }: {
   bracket: Bracket; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
+  isSlotRevealed: (slotKey: string) => boolean;
 }) {
   const isBo3 = bracket.upper[0]?.[0]?.format === 'bo3';
   const globalFormat = isBo3 ? 'Best of 3' : 'Best of 1';
@@ -351,8 +397,8 @@ function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo }: {
         </div>
         <div className="overflow-x-auto overflow-y-visible pb-4">
           {bracket.type === 'single'
-            ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} />
-            : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} />
+            ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
+            : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
           }
         </div>
       </div>
@@ -372,6 +418,9 @@ function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo }: {
             onScore={(p1w, p2w) => onThirdPlace(p1w, p2w)}
             onUndo={() => onUndo('thirdPlace', 0, 0)}
             isAdmin={isAdmin}
+            p1SlotKey="m_thirdPlace_0_0_p1"
+            p2SlotKey="m_thirdPlace_0_0_p2"
+            isSlotRevealed={isSlotRevealed}
           />
         </div>
       )}
@@ -382,10 +431,11 @@ function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo }: {
 }
 
 // ─── SingleElimCanvas ─────────────────────────────────────────────────────────
-function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
+function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }: {
   bracket: Bracket; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
+  isSlotRevealed: (slotKey: string) => boolean;
 }) {
   const rounds = bracket.upper.filter(r => r.length > 0);
   if (rounds.length === 0) return null;
@@ -439,6 +489,9 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
               onScore={(p1w, p2w) => onScore('upper', colIdx, mi, p1w, p2w)}
               onUndo={() => onUndo('upper', colIdx, mi)}
               isAdmin={isAdmin}
+              p1SlotKey={`m_upper_${colIdx}_${mi}_p1`}
+              p2SlotKey={`m_upper_${colIdx}_${mi}_p2`}
+              isSlotRevealed={isSlotRevealed}
             />
           </div>
         ));
@@ -448,10 +501,11 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
 }
 
 // ─── DoubleElimCanvas — UB + LB + GF on ONE canvas with connecting lines ─────
-function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
+function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }: {
   bracket: Bracket; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
+  isSlotRevealed: (slotKey: string) => boolean;
 }) {
   const ubRounds = bracket.upper.filter(r => r.length > 0);
   const lbRounds = (bracket.lower || []).filter(r => r.length > 0);
@@ -611,18 +665,16 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
               onScore={(p1w, p2w) => onScore('upper', colIdx, mi, p1w, p2w)}
               onUndo={() => onUndo('upper', colIdx, mi)}
               isAdmin={isAdmin}
-            />
-          </div>
-        ));
-      })}
-
-      {/* ── GF Column ─────────────────────────────────────────────────── */}
+              p1SlotKey={`m_upper_${colIdx}_${mi}_p1`}
+              p2SlotKey={`m_upper_${colIdx}_${mi}_p2`}
+              isSlotRevealed={isSlotRevealed}
+            /> ─────────────────────────────────────────────────── */}
       {gf && (
         <div style={{ position: 'absolute', top: gfTopGF1 - HEADER_H, left: gfColX }}>
           <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold mb-1.5" style={{ color: 'var(--accent)' }}>
             Grand Final
           </div>
-          <GrandFinalCards gf={gf} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} />
+          <GrandFinalCards gf={gf} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
         </div>
       )}
 
@@ -654,6 +706,9 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
               onScore={(p1w, p2w) => onScore('lower', colIdx, mi, p1w, p2w)}
               onUndo={() => onUndo('lower', colIdx, mi)}
               isAdmin={isAdmin}
+              p1SlotKey={`m_lower_${colIdx}_${mi}_p1`}
+              p2SlotKey={`m_lower_${colIdx}_${mi}_p2`}
+              isSlotRevealed={isSlotRevealed}
             />
           </div>
         ));
