@@ -105,6 +105,11 @@ export function MapsTab() {
     );
   };
 
+  // ─── Restore helpers ──────────────────────────────────────────────────────────
+  // All unique maps that appear in the spin queue but are no longer in the wheel pool
+  const getMissingFromPool = () =>
+    [...new Set(spinQueue)].filter(m => !maps.includes(m));
+
   // ─── Drag handlers ────────────────────────────────────────────────────────────
   const handleUncatDragStart = (queueIdx: number) => {
     dragQueueIdxRef.current = queueIdx;
@@ -178,6 +183,30 @@ export function MapsTab() {
     if (maps.includes(mapToRestore)) return;
     setBusy(true);
     try { await addMap(mapToRestore); } finally { setBusy(false); }
+  };
+
+  // ↩ restore pool — add back every map that's in the queue but missing from the wheel, keep results
+  const handleRestoreMapPool = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const missing = getMissingFromPool();
+      if (missing.length > 0) await Promise.all(missing.map(m => addMap(m)));
+    } finally { setBusy(false); }
+  };
+
+  // clear all — restore all maps to wheel AND wipe the result queue
+  const handleClearAll = async () => {
+    if (busy || spinQueue.length === 0) return;
+    setBusy(true);
+    try {
+      const missing = getMissingFromPool();
+      // Restore missing maps first, then clear queue
+      if (missing.length > 0) await Promise.all(missing.map(m => addMap(m)));
+      await clearSpinQueue();
+      saveItemCategory({});
+      setUncatOrder([]);
+    } finally { setBusy(false); }
   };
 
   if (loading) return (
@@ -259,16 +288,13 @@ export function MapsTab() {
       const result = currentMaps[Math.floor(norm / slice) % currentMaps.length];
       setSpunMap(result);
 
-      // The new item will be appended at index = current queue length
       const newItemIdx = spinQueueLenRef.current;
       await appendSpinQueueRef.current(result);
 
-      // Auto-assign to active category if one is checked — read via ref to avoid stale closure
       const cat = activeCategoryRef.current;
       if (cat) {
         const next = { ...itemCategoryRef.current, [newItemIdx]: cat };
         saveItemCategory(next);
-        // Keep it out of uncatOrder (the useEffect sync won't add it since it's already categorised)
       }
 
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
@@ -352,15 +378,6 @@ export function MapsTab() {
     try { await removeSpinQueueItem(idx); reindexCategories(idx); } finally { setBusy(false); }
   };
 
-  const handleRestoreMapPool = async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const toRestore = defaultMaps.filter(m => !maps.includes(m));
-      await Promise.all(toRestore.map(m => addMap(m)));
-    } finally { setBusy(false); }
-  };
-
   const buildGroups = () => {
     const grouped: Array<{ cat: string | null; items: Array<{ idx: number; map: string }> }> = [];
     categories.forEach(cat => {
@@ -373,6 +390,8 @@ export function MapsTab() {
     if (uncatItems.length > 0 || categories.length === 0) grouped.push({ cat: null, items: uncatItems });
     return grouped;
   };
+
+  const missingFromPool = getMissingFromPool();
 
   return (
     <>
@@ -470,24 +489,21 @@ export function MapsTab() {
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
               {isAdmin && (
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* restore pool — add back all maps that are in the queue but removed from wheel */}
                   <button
-                    className={`font-['DM_Mono'] text-[10px] whitespace-nowrap t-dim transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
+                    className={`font-['DM_Mono'] text-[10px] whitespace-nowrap t-dim transition-colors
+                      ${busy || missingFromPool.length === 0 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
+                    title={missingFromPool.length === 0 ? 'All maps already in pool' : `Restore ${missingFromPool.length} map(s) back to wheel`}
                     onClick={handleRestoreMapPool}
-                    disabled={busy}
+                    disabled={busy || missingFromPool.length === 0}
                   >↩ restore pool</button>
+                  {/* clear all — restore maps to wheel AND clear the result queue */}
                   <button
-                    className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap ${spinQueue.length === 0 || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
-                    onClick={async () => {
-                      if (busy || spinQueue.length === 0) return;
-                      setBusy(true);
-                      try {
-                        await clearSpinQueue();
-                        saveItemCategory({});
-                        setUncatOrder([]);
-                        const toRestore = defaultMaps.filter(m => !maps.includes(m));
-                        await Promise.all(toRestore.map(m => addMap(m)));
-                      } finally { setBusy(false); }
-                    }}
+                    className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
+                      ${spinQueue.length === 0 || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                    title="Restore all maps to wheel and clear result queue"
+                    onClick={handleClearAll}
+                    disabled={busy || spinQueue.length === 0}
                   >clear all</button>
                 </div>
               )}
@@ -539,7 +555,7 @@ export function MapsTab() {
                               background: isActive ? 'var(--accent)' : 'transparent',
                               borderColor: isActive ? 'var(--accent)' : 'var(--border-mid)',
                             }}
-                            title={isActive ? `Deactivate — spins go to uncategorised` : `Activate — next spins auto-assign here`}
+                            title={isActive ? 'Deactivate — spins go to uncategorised' : 'Activate — next spins auto-assign here'}
                             onClick={() => setActiveCategory(isActive ? null : cat)}
                           >
                             {isActive && (
@@ -616,7 +632,7 @@ export function MapsTab() {
                               {isAdmin && isRemoved && (
                                 <button
                                   className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
-                                  title="Restore map to pool"
+                                  title="Restore this map to pool"
                                   onClick={() => handleRestoreMap(m)}
                                   disabled={busy}
                                 >↩</button>
