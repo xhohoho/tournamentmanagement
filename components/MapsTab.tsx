@@ -19,8 +19,6 @@ export function MapsTab() {
   const [busy, setBusy] = useState(false); // true while any map/queue write is in-flight
 
   // ─── Spin Result Queue Categories ────────────────────────────────────────────
-  // categories: ordered list of group names admin has created
-  // itemCategory: map from queue index → category name (or null = uncategorised)
   const [categories, setCategories] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('spinCategories') ?? '[]'); } catch { return []; }
   });
@@ -29,6 +27,25 @@ export function MapsTab() {
   });
   const [newCatInput, setNewCatInput] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  // ─── Drag state for uncategorised items ──────────────────────────────────────
+  const [uncatOrder, setUncatOrder] = useState<number[]>([]);
+  const dragItemRef = useRef<number | null>(null);   // index in uncatOrder
+  const dragOverRef = useRef<number | null>(null);   // index in uncatOrder
+
+  // Keep uncatOrder in sync with spinQueue changes
+  useEffect(() => {
+    const uncatIdxs = spinQueue
+      .map((_, i) => i)
+      .filter(i => !itemCategory[i]);
+    setUncatOrder(prev => {
+      // keep existing order, add new entries at end, remove stale
+      const kept = prev.filter(i => uncatIdxs.includes(i));
+      const added = uncatIdxs.filter(i => !prev.includes(i));
+      return [...kept, ...added];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spinQueue.length]);
 
   const saveCategories = (cats: string[]) => {
     setCategories(cats);
@@ -70,7 +87,36 @@ export function MapsTab() {
       else if (ki > removedIdx) next[ki - 1] = v;
     });
     saveItemCategory(next);
+    // Also reindex uncatOrder
+    setUncatOrder(prev =>
+      prev
+        .filter(i => i !== removedIdx)
+        .map(i => (i > removedIdx ? i - 1 : i))
+    );
   };
+
+  // ─── Drag handlers for uncategorised items ────────────────────────────────
+  const handleDragStart = (orderIdx: number) => {
+    dragItemRef.current = orderIdx;
+  };
+  const handleDragEnter = (orderIdx: number) => {
+    dragOverRef.current = orderIdx;
+    if (dragItemRef.current === null || dragItemRef.current === orderIdx) return;
+    setUncatOrder(prev => {
+      const next = [...prev];
+      const from = dragItemRef.current!;
+      const to = orderIdx;
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      dragItemRef.current = to;
+      return next;
+    });
+  };
+  const handleDragEnd = () => {
+    dragItemRef.current = null;
+    dragOverRef.current = null;
+  };
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wheelWrapRef = useRef<HTMLDivElement>(null);
   const [wheelSize, setWheelSize] = useState(220);
@@ -78,18 +124,11 @@ export function MapsTab() {
   const [spinning, setSpinning] = useState(false);
   const rafRef = useRef<number | null>(null);
 
-  // Modal state is fully local — no prop chain to page.tsx
   const [spunMap, setSpunMap] = useState('');
 
-  // Stable ref so the RAF tick always reads the latest maps at spin-end,
-  // even if SSE pushed a maps update mid-animation
   const mapsRef = useRef(maps);
   useEffect(() => { mapsRef.current = maps; }, [maps]);
 
-  // Stable ref for appendSpinQueue so the RAF tick always uses the latest
-  // version (with the current adminToken). Without this, spin() closes over
-  // a stale appendSpinQueue that was created before the user logged in,
-  // causing the PATCH to go out without X-Admin-Token → 403 → silent rollback.
   const appendSpinQueueRef = useRef(appendSpinQueue);
   useEffect(() => { appendSpinQueueRef.current = appendSpinQueue; }, [appendSpinQueue]);
 
@@ -181,8 +220,6 @@ export function MapsTab() {
   }, [adminToken]);
 
   // ─── ADMIN: spin ──────────────────────────────────────────────────────────
-  // appendSpinQueue comes from context and does an optimistic local update
-  // immediately, then persists to KV. No prop callback chain — no stale closure risk.
   const spin = useCallback(() => {
     if (spinning || !maps.length) return;
     setSpinning(true);
@@ -206,7 +243,6 @@ export function MapsTab() {
         return;
       }
 
-      // Spin done — read mapsRef for latest maps (safe against mid-animation SSE updates)
       setSpinning(false);
       const currentMaps = mapsRef.current;
       const slice = (Math.PI * 2) / currentMaps.length;
@@ -214,23 +250,15 @@ export function MapsTab() {
       const norm = ((pointerAngle - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = currentMaps[Math.floor(norm / slice) % currentMaps.length];
 
-      // Show modal and write to queue — appendSpinQueue updates context state immediately
       setSpunMap(result);
 
-      // IMPORTANT: await appendSpinQueue before broadcasting spinState.
-      // Both call updateState() (read-modify-write on KV). If they fire
-      // simultaneously the spinState write races the spinQueue write and
-      // whichever lands second overwrites the other's changes, causing the
-      // queue entry to be silently lost even though the server returned 200.
       await appendSpinQueueRef.current(result);
 
-      // Broadcast for non-admin wheel sync, clear after 1s
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
       setTimeout(() => broadcastSpinState(null), 1000);
     };
 
     rafRef.current = requestAnimationFrame(tick);
-  // appendSpinQueue intentionally omitted — accessed via appendSpinQueueRef
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spinning, maps.length, drawWheel, broadcastSpinState]);
 
@@ -246,11 +274,10 @@ export function MapsTab() {
     if (!liveSpin.spinning && liveSpin.result) {
       if (!prev || prev.result !== liveSpin.result || prev.spinning) {
         const age = Date.now() - (liveSpin.startTime + liveSpin.duration);
-        if (age > 10000) return; // stale — ignore on page refresh
+        if (age > 10000) return;
 
         const { startAngle: a0, targetAngle, startTime, duration: dur } = liveSpin;
         if (Date.now() - startTime >= dur) {
-          // Already finished — just snap wheel to final position
           angleRef.current = targetAngle;
           drawWheel(angleRef.current);
         } else {
@@ -270,7 +297,7 @@ export function MapsTab() {
     }
 
     if (liveSpin.spinning) {
-      if (prev?.startTime === liveSpin.startTime) return; // already mirroring this spin
+      if (prev?.startTime === liveSpin.startTime) return;
       setSpinning(true);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       const { startAngle: a0, targetAngle, startTime, duration: dur } = liveSpin;
@@ -285,13 +312,11 @@ export function MapsTab() {
     }
   }, [liveSpin, isAdmin, drawWheel]);
 
-  // Dynamically size the wheel to fit its container
   useEffect(() => {
     const el = wheelWrapRef.current;
     if (!el) return;
     const ro = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
-      // Reserve space for pointer (≈44px) + button/status (≈44px) + gaps (≈16px)
       const reserved = 104;
       const size = Math.floor(Math.min(width, Math.max(0, height - reserved)));
       if (size > 0) setWheelSize(size);
@@ -300,7 +325,6 @@ export function MapsTab() {
     return () => ro.disconnect();
   }, []);
 
-  // Cleanup RAF on unmount
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
   const handleAddMap = async () => {
@@ -321,7 +345,6 @@ export function MapsTab() {
     try { await removeSpinQueueItem(idx); reindexCategories(idx); } finally { setBusy(false); }
   };
 
-  // Restore map pool to defaults WITHOUT clearing queue
   const handleRestoreMapPool = async () => {
     if (busy) return;
     setBusy(true);
@@ -331,15 +354,18 @@ export function MapsTab() {
     } finally { setBusy(false); }
   };
 
-  // Build grouped view: each category + uncategorised at the bottom
+  // Build grouped view: categories first, then uncategorised
   const buildGroups = () => {
     const grouped: Array<{ cat: string | null; items: Array<{ idx: number; map: string }> }> = [];
     categories.forEach(cat => {
       const items = spinQueue.map((m, i) => ({ idx: i, map: m })).filter(({ idx }) => itemCategory[idx] === cat);
       grouped.push({ cat, items });
     });
-    const uncat = spinQueue.map((m, i) => ({ idx: i, map: m })).filter(({ idx }) => !itemCategory[idx]);
-    if (uncat.length > 0 || categories.length === 0) grouped.push({ cat: null, items: uncat });
+    // Uncategorised — respect drag order
+    const uncatItems = uncatOrder
+      .filter(i => i < spinQueue.length && !itemCategory[i])
+      .map(i => ({ idx: i, map: spinQueue[i] }));
+    if (uncatItems.length > 0 || categories.length === 0) grouped.push({ cat: null, items: uncatItems });
     return grouped;
   };
 
@@ -390,7 +416,7 @@ export function MapsTab() {
               </div>
             )}
 
-            {/* Map list — fixed height so it never crushes the wheel */}
+            {/* Map list */}
             <div className="shrink-0 max-h-[96px] overflow-y-auto">
               <div className="flex flex-wrap gap-2">
                 {maps.map(m => (
@@ -410,7 +436,7 @@ export function MapsTab() {
               </div>
             </div>
 
-            {/* Wheel area — takes all remaining space, measures itself for canvas size */}
+            {/* Wheel area */}
             <div ref={wheelWrapRef} className="flex-1 min-h-0 w-full overflow-hidden flex flex-col items-center justify-center gap-2">
               <span className="text-3xl rotate-90 shrink-0" style={{ color: 'var(--accent-red)' }}>▶</span>
               <canvas
@@ -448,7 +474,6 @@ export function MapsTab() {
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
               {isAdmin && (
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Restore map pool — does NOT clear queue */}
                   <button
                     className={`font-['DM_Mono'] text-[10px] whitespace-nowrap t-dim transition-colors
                       ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
@@ -456,7 +481,6 @@ export function MapsTab() {
                     onClick={handleRestoreMapPool}
                     disabled={busy}
                   >↩ restore pool</button>
-                  {/* Clear all — clear queue AND restore pool */}
                   <button
                     className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
                       ${spinQueue.length === 0 || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
@@ -466,7 +490,7 @@ export function MapsTab() {
                       try {
                         await clearSpinQueue();
                         saveItemCategory({});
-                        // restore default map pool
+                        setUncatOrder([]);
                         const toRestore = defaultMaps.filter(m => !maps.includes(m));
                         await Promise.all(toRestore.map(m => addMap(m)));
                       } finally { setBusy(false); }
@@ -476,11 +500,11 @@ export function MapsTab() {
               )}
             </div>
 
-            {/* Category list — each row is a category with a tick to select it */}
+            {/* Category list — plain text rows, checkbox = activate */}
             {isAdmin && (
-              <div className="shrink-0 flex flex-col gap-1.5">
+              <div className="shrink-0 flex flex-col gap-1">
                 {/* Add new category input */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-1">
                   <input
                     type="text"
                     className="flex-1 t-elevated border t-border rounded-lg px-2.5 py-1 font-['DM_Mono'] text-[11px] t-text outline-none"
@@ -495,34 +519,41 @@ export function MapsTab() {
                     onClick={addCategory}
                   >+ Add</button>
                 </div>
-                {/* Category rows with tick buttons */}
+
+                {/* Plain text category rows */}
                 {categories.map(cat => {
                   const isActive = activeCategory === cat;
                   const count = spinQueue.filter((_, i) => itemCategory[i] === cat).length;
                   return (
                     <div
                       key={cat}
-                      className="flex items-center gap-2 t-elevated border rounded-lg px-3 py-1.5 transition-colors"
-                      style={{ borderColor: isActive ? 'var(--accent)' : 'var(--border-mid)' }}
+                      className="flex items-center gap-2.5 px-1 py-0.5 rounded cursor-pointer select-none group"
+                      onClick={() => setActiveCategory(isActive ? null : cat)}
                     >
-                      {/* Tick button — select this category */}
-                      <button
-                        className="shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors cursor-pointer"
+                      {/* Checkbox */}
+                      <div
+                        className="shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors"
                         style={{
                           background: isActive ? 'var(--accent)' : 'transparent',
                           borderColor: isActive ? 'var(--accent)' : 'var(--border-mid)',
-                          color: '#fff',
                         }}
-                        onClick={() => setActiveCategory(isActive ? null : cat)}
-                        title={isActive ? 'Deselect category' : 'Select category'}
                       >
-                        {isActive && <span style={{ fontSize: 11, lineHeight: 1 }}>✓</span>}
-                      </button>
-                      <span className="flex-1 font-['DM_Mono'] text-[11px] t-text truncate">{cat}</span>
-                      <span className="font-['DM_Mono'] text-[10px] t-dim shrink-0">{count > 0 ? `${count} map${count > 1 ? 's' : ''}` : ''}</span>
+                        {isActive && (
+                          <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                            <path d="M1 3.5L3.5 6L8 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                      <span
+                        className="flex-1 font-['DM_Mono'] text-[11px] transition-colors"
+                        style={{ color: isActive ? 'var(--accent)' : 'var(--text-base)' }}
+                      >{cat}</span>
+                      {count > 0 && (
+                        <span className="font-['DM_Mono'] text-[10px] t-dim shrink-0">{count}</span>
+                      )}
                       <button
-                        className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer leading-none"
-                        onClick={() => removeCategory(cat)}
+                        className="shrink-0 font-['DM_Mono'] text-[10px] t-dim opacity-0 group-hover:opacity-100 hover:text-[var(--accent-red)] transition-all cursor-pointer leading-none"
+                        onClick={e => { e.stopPropagation(); removeCategory(cat); }}
                         title="Remove category"
                       >✕</button>
                     </div>
@@ -537,10 +568,10 @@ export function MapsTab() {
                 <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue.</p>
               ) : (
                 buildGroups().map(({ cat, items }) => (
-                  <div key={cat ?? '__uncat'} className="flex flex-col gap-1">
-                    {/* Group header — only show if there are categories defined */}
+                  <div key={cat ?? '__uncat'} className="flex flex-col gap-0.5">
+                    {/* Group header */}
                     {categories.length > 0 && (
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 mb-0.5">
                         <span
                           className="font-['DM_Mono'] text-[10px] tracking-widest font-bold shrink-0"
                           style={{ color: cat ? 'var(--accent)' : 'var(--text-dim)' }}
@@ -551,33 +582,50 @@ export function MapsTab() {
                     {items.length === 0 && cat !== null && (
                       <p className="font-['DM_Mono'] text-[10px] t-dim pl-2 italic">No maps yet</p>
                     )}
-                    {items.map(({ idx, map: m }) => {
+
+                    {/* Items — draggable only in uncategorised section */}
+                    {items.map(({ idx, map: m }, orderIdx) => {
                       const isRemoved = !maps.includes(m);
-                      const thisCat = itemCategory[idx] ?? null;
+                      const isDraggable = cat === null && isAdmin;
                       return (
-                        <div key={idx} className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2">
+                        <div
+                          key={idx}
+                          draggable={isDraggable}
+                          onDragStart={isDraggable ? () => handleDragStart(orderIdx) : undefined}
+                          onDragEnter={isDraggable ? () => handleDragEnter(orderIdx) : undefined}
+                          onDragEnd={isDraggable ? handleDragEnd : undefined}
+                          onDragOver={isDraggable ? e => e.preventDefault() : undefined}
+                          className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2 transition-opacity"
+                          style={{
+                            cursor: isDraggable ? 'grab' : 'default',
+                            opacity: dragItemRef.current === orderIdx ? 0.45 : 1,
+                          }}
+                        >
                           <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                            {/* Drag handle — only uncategorised */}
+                            {isDraggable && (
+                              <span className="shrink-0 t-dim text-sm leading-none select-none" style={{ cursor: 'grab' }}>⠿</span>
+                            )}
                             <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{idx + 1}</span>
+                            {/* Checkbox — assigns to active category */}
+                            {isAdmin && activeCategory && cat === null && (
+                              <button
+                                className="shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer"
+                                style={{
+                                  background: 'transparent',
+                                  borderColor: 'var(--accent)',
+                                }}
+                                title={`Assign to ${activeCategory}`}
+                                onClick={() => assignItemCategory(idx, activeCategory)}
+                              >
+                                <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                                  <path d="M1 3.5L3.5 6L8 1" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            )}
                             <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            {/* Per-item category tick buttons — abbreviated label */}
-                            {isAdmin && categories.length > 0 && categories.map(c => {
-                              const active = thisCat === c;
-                              return (
-                                <button
-                                  key={c}
-                                  title={active ? `Unassign from ${c}` : `Assign to ${c}`}
-                                  className="font-['DM_Mono'] text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer shrink-0"
-                                  style={{
-                                    borderColor: active ? 'var(--accent)' : 'var(--border-mid)',
-                                    color: active ? 'var(--accent)' : 'var(--text-dim)',
-                                    background: active ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
-                                  }}
-                                  onClick={() => assignItemCategory(idx, active ? null : c)}
-                                >{c.split(' ').map((w: string) => w[0]).join('')}</button>
-                              );
-                            })}
                             {isAdmin && isRemoved && (
                               <button
                                 className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
