@@ -184,12 +184,16 @@ function MapSlots({ matchKey, isBo3, isAdmin }: { matchKey: string; isBo3: boole
 // ─── MatchCard ────────────────────────────────────────────────────────────────
 function MatchCard({
   match, matchKey, onScore, onUndo, isAdmin, highlightBorder,
+  p1SlotKey, p2SlotKey, isSlotRevealed,
 }: {
   match: BracketMatch; matchKey: string;
   onScore: (p1wins: number, p2wins: number) => void;
   onUndo: () => void;
   isAdmin: boolean;
-  highlightBorder?: string; // CSS color override for special cards (GF2)
+  highlightBorder?: string;
+  p1SlotKey?: string;
+  p2SlotKey?: string;
+  isSlotRevealed?: (slotKey: string) => boolean;
 }) {
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
@@ -201,6 +205,9 @@ function MatchCard({
   const canUndo = isAdmin && isDone;
   const isModified = s1 !== match.score1 || s2 !== match.score2;
 
+  const p1Revealed = !p1SlotKey || !isSlotRevealed || isSlotRevealed(p1SlotKey);
+  const p2Revealed = !p2SlotKey || !isSlotRevealed || isSlotRevealed(p2SlotKey);
+
   const borderStyle = highlightBorder ? { borderColor: highlightBorder, borderWidth: 2 } : {};
 
   return (
@@ -209,8 +216,8 @@ function MatchCard({
         className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col"
         style={{ width: CARD_W, height: CARD_H, ...borderStyle }}
       >
-        <PlayerRow player={match.p1} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
-        <PlayerRow player={match.p2} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
+        <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
+        <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
         <MapSlots matchKey={matchKey} isBo3={isBo3} isAdmin={isAdmin} />
       </div>
       {isModified && (
@@ -668,7 +675,12 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
               p1SlotKey={`m_upper_${colIdx}_${mi}_p1`}
               p2SlotKey={`m_upper_${colIdx}_${mi}_p2`}
               isSlotRevealed={isSlotRevealed}
-            /> ─────────────────────────────────────────────────── */}
+            />
+          </div>
+        ));
+      })}
+
+      {/* ── Grand Final Column ─────────────────────────────────────────── */}
       {gf && (
         <div style={{ position: 'absolute', top: gfTopGF1 - HEADER_H, left: gfColX }}>
           <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold mb-1.5" style={{ color: 'var(--accent)' }}>
@@ -719,10 +731,11 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
 
 // ─── GrandFinalCards ─────────────────────────────────────────────────────────
 // Renders GF1 (and optionally GF2) as stacked cards; called from DoubleElimCanvas.
-function GrandFinalCards({ gf, isAdmin, onScore, onUndo }: {
+function GrandFinalCards({ gf, isAdmin, onScore, onUndo, isSlotRevealed }: {
   gf: GrandFinal; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
+  isSlotRevealed: (slotKey: string) => boolean;
 }) {
   // Build pseudo BracketMatch objects so we can reuse MatchCard
   const gf1: BracketMatch = {
@@ -752,6 +765,9 @@ function GrandFinalCards({ gf, isAdmin, onScore, onUndo }: {
           onScore={(p1w, p2w) => onScore('gf', 0, 0, p1w, p2w)}
           onUndo={() => onUndo('gf', 0, 0)}
           isAdmin={isAdmin}
+          p1SlotKey="m_gf_0_0_p1"
+          p2SlotKey="m_gf_0_0_p2"
+          isSlotRevealed={isSlotRevealed}
         />
         {gf.isReset && (
           <div className="mt-1 px-3 py-1 rounded-lg text-center" style={{ background: 'rgba(58,107,255,0.06)', border: '1px solid rgba(58,107,255,0.2)' }}>
@@ -771,6 +787,9 @@ function GrandFinalCards({ gf, isAdmin, onScore, onUndo }: {
             onUndo={() => onUndo('gf', 0, 0)}
             isAdmin={isAdmin}
             highlightBorder="var(--accent)"
+            p1SlotKey="m_gf_0_1_p1"
+            p2SlotKey="m_gf_0_1_p2"
+            isSlotRevealed={isSlotRevealed}
           />
         </div>
       )}
