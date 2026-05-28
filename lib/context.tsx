@@ -14,6 +14,8 @@ interface TourneyContext {
   stageMaps: Record<string, string[]>;
   spinState: import('@/lib/types').SpinState | null;
   spinQueue: string[];
+  spinCategories: string[];
+  spinItemCategory: Record<number, string>;
   isAdmin: boolean;
   adminToken: string | null;
   loading: boolean;
@@ -54,6 +56,7 @@ interface TourneyContext {
   appendSpinQueue: (map: string) => Promise<void>;
   clearSpinQueue: () => Promise<void>;
   removeSpinQueueItem: (idx: number) => Promise<void>;
+  saveSpinCategories: (cats: string[], itemCat: Record<number, string>) => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
