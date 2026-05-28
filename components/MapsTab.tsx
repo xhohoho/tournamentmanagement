@@ -25,16 +25,24 @@ export function MapsTab() {
     try { return JSON.parse(localStorage.getItem('spinItemCategory') ?? '{}'); } catch { return {}; }
   });
   const [newCatInput, setNewCatInput] = useState('');
-  // activeCategory = which category is "checked" (next spin result goes here, or drag target)
+  // activeCategory = which category is "checked" — next spin result auto-assigns here
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  // Ref so the RAF spin closure can always read the latest value without stale closure issues
+  const activeCategoryRef = useRef<string | null>(null);
+  useEffect(() => { activeCategoryRef.current = activeCategory; }, [activeCategory]);
+
+  // itemCategory ref — same reason: spin tick reads it after await
+  const itemCategoryRef = useRef(itemCategory);
+  useEffect(() => { itemCategoryRef.current = itemCategory; }, [itemCategory]);
+
+  // spinQueue length ref — used to know the index of the newly appended item
+  const spinQueueLenRef = useRef(spinQueue.length);
+  useEffect(() => { spinQueueLenRef.current = spinQueue.length; }, [spinQueue.length]);
 
   // ─── Drag state ───────────────────────────────────────────────────────────────
   const [uncatOrder, setUncatOrder] = useState<number[]>([]);
-  // queueIdx of the item being dragged
   const dragQueueIdxRef = useRef<number | null>(null);
-  // orderIdx within uncatOrder while reordering
   const dragOverUncatRef = useRef<number | null>(null);
-  // category section being hovered for drop
   const [dropTargetCat, setDropTargetCat] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,6 +61,7 @@ export function MapsTab() {
   };
   const saveItemCategory = (map: Record<number, string>) => {
     setItemCategoryState(map);
+    itemCategoryRef.current = map;
     localStorage.setItem('spinItemCategory', JSON.stringify(map));
   };
 
@@ -66,17 +75,16 @@ export function MapsTab() {
   const removeCategory = (cat: string) => {
     saveCategories(categories.filter(c => c !== cat));
     if (activeCategory === cat) setActiveCategory(null);
-    const next = { ...itemCategory };
+    const next = { ...itemCategoryRef.current };
     Object.keys(next).forEach(k => { if (next[Number(k)] === cat) delete next[Number(k)]; });
     saveItemCategory(next);
   };
 
   const assignItemCategory = (idx: number, cat: string | null) => {
-    const next = { ...itemCategory };
+    const next = { ...itemCategoryRef.current };
     if (cat === null) delete next[idx];
     else next[idx] = cat;
     saveItemCategory(next);
-    // If moving out of uncat, remove from uncatOrder
     if (cat !== null) {
       setUncatOrder(prev => prev.filter(i => i !== idx));
     } else {
@@ -86,7 +94,7 @@ export function MapsTab() {
 
   const reindexCategories = (removedIdx: number) => {
     const next: Record<number, string> = {};
-    Object.entries(itemCategory).forEach(([k, v]) => {
+    Object.entries(itemCategoryRef.current).forEach(([k, v]) => {
       const ki = Number(k);
       if (ki < removedIdx) next[ki] = v;
       else if (ki > removedIdx) next[ki - 1] = v;
@@ -98,11 +106,9 @@ export function MapsTab() {
   };
 
   // ─── Drag handlers ────────────────────────────────────────────────────────────
-  // Dragging an uncategorised item
   const handleUncatDragStart = (queueIdx: number) => {
     dragQueueIdxRef.current = queueIdx;
   };
-  // Hovering over another uncat item — reorder preview
   const handleUncatDragEnter = (orderIdx: number) => {
     dragOverUncatRef.current = orderIdx;
     const draggingQueueIdx = dragQueueIdxRef.current;
@@ -121,15 +127,11 @@ export function MapsTab() {
     dragOverUncatRef.current = null;
     setDropTargetCat(null);
   };
-
-  // Hovering over a category drop zone
   const handleCatDragOver = (e: React.DragEvent, cat: string) => {
     e.preventDefault();
     setDropTargetCat(cat);
   };
-  const handleCatDragLeave = () => {
-    setDropTargetCat(null);
-  };
+  const handleCatDragLeave = () => setDropTargetCat(null);
   const handleCatDrop = (e: React.DragEvent, cat: string) => {
     e.preventDefault();
     const queueIdx = dragQueueIdxRef.current;
@@ -256,7 +258,19 @@ export function MapsTab() {
       const norm = ((-Math.PI / 2 - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = currentMaps[Math.floor(norm / slice) % currentMaps.length];
       setSpunMap(result);
+
+      // The new item will be appended at index = current queue length
+      const newItemIdx = spinQueueLenRef.current;
       await appendSpinQueueRef.current(result);
+
+      // Auto-assign to active category if one is checked — read via ref to avoid stale closure
+      const cat = activeCategoryRef.current;
+      if (cat) {
+        const next = { ...itemCategoryRef.current, [newItemIdx]: cat };
+        saveItemCategory(next);
+        // Keep it out of uncatOrder (the useEffect sync won't add it since it's already categorised)
+      }
+
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
       setTimeout(() => broadcastSpinState(null), 1000);
     };
@@ -347,7 +361,6 @@ export function MapsTab() {
     } finally { setBusy(false); }
   };
 
-  // Build grouped view
   const buildGroups = () => {
     const grouped: Array<{ cat: string | null; items: Array<{ idx: number; map: string }> }> = [];
     categories.forEach(cat => {
@@ -453,7 +466,6 @@ export function MapsTab() {
           {/* ── Spin Results panel ──────────────────────────────────────────── */}
           <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-3 min-h-0">
 
-            {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
               {isAdmin && (
@@ -481,7 +493,6 @@ export function MapsTab() {
               )}
             </div>
 
-            {/* Add category input — admin only */}
             {isAdmin && (
               <div className="shrink-0 flex gap-2">
                 <input
@@ -500,7 +511,6 @@ export function MapsTab() {
               </div>
             )}
 
-            {/* Grouped results list */}
             <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 min-h-0">
               {spinQueue.length === 0 && categories.length === 0 ? (
                 <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Spin the wheel to build a map queue.</p>
@@ -517,14 +527,11 @@ export function MapsTab() {
                       onDragLeave={cat !== null ? handleCatDragLeave : undefined}
                       onDrop={cat !== null ? e => handleCatDrop(e, cat) : undefined}
                     >
-                      {/* ── Group header row ── */}
+                      {/* Group header */}
                       <div
                         className="flex items-center gap-2 mb-1 mt-0.5 rounded-md px-1 py-0.5 transition-colors"
-                        style={{
-                          background: isDropTarget ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent',
-                        }}
+                        style={{ background: isDropTarget ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent' }}
                       >
-                        {/* Checkbox on the header — activate/deactivate category */}
                         {cat !== null && isAdmin && (
                           <button
                             className="shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer"
@@ -532,7 +539,7 @@ export function MapsTab() {
                               background: isActive ? 'var(--accent)' : 'transparent',
                               borderColor: isActive ? 'var(--accent)' : 'var(--border-mid)',
                             }}
-                            title={isActive ? `Deactivate ${cat}` : `Activate ${cat} — drag maps here or click ✓ on items`}
+                            title={isActive ? `Deactivate — spins go to uncategorised` : `Activate — next spins auto-assign here`}
                             onClick={() => setActiveCategory(isActive ? null : cat)}
                           >
                             {isActive && (
@@ -545,20 +552,18 @@ export function MapsTab() {
 
                         <span
                           className="font-['DM_Mono'] text-[10px] tracking-widest font-bold shrink-0 select-none"
-                          style={{ color: cat ? (isActive ? 'var(--accent)' : 'var(--accent)') : 'var(--text-dim)' }}
+                          style={{ color: cat ? 'var(--accent)' : 'var(--text-dim)' }}
                         >{cat ? cat.toUpperCase() : 'UNCATEGORISED'}</span>
 
                         <div
-                          className="flex-1 h-px transition-colors"
+                          className="flex-1 h-px transition-all"
                           style={{ background: cat ? 'var(--accent)' : 'var(--border-mid)', opacity: isDropTarget ? 0.8 : 0.35 }}
                         />
 
-                        {/* Drop hint when dragging */}
                         {isDropTarget && (
                           <span className="font-['DM_Mono'] text-[9px] shrink-0" style={{ color: 'var(--accent)' }}>drop here</span>
                         )}
 
-                        {/* Remove category button */}
                         {cat !== null && isAdmin && (
                           <button
                             className="shrink-0 font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] transition-colors cursor-pointer leading-none opacity-40 hover:opacity-100"
@@ -573,11 +578,10 @@ export function MapsTab() {
                           className="font-['DM_Mono'] text-[10px] t-dim pl-2 italic py-1.5 rounded border border-dashed transition-colors"
                           style={{ borderColor: isDropTarget ? 'var(--accent)' : 'transparent' }}
                         >
-                          {isDropTarget ? 'Release to assign' : 'No maps yet — drag from uncategorised'}
+                          {isDropTarget ? 'Release to assign' : isActive ? 'Next spin result goes here' : 'No maps yet — drag from uncategorised'}
                         </p>
                       )}
 
-                      {/* Items */}
                       {items.map(({ idx, map: m }, orderIdx) => {
                         const isRemoved = !maps.includes(m);
                         const isUncat = cat === null;
@@ -602,7 +606,6 @@ export function MapsTab() {
                               <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {/* Unassign from category */}
                               {isAdmin && !isUncat && (
                                 <button
                                   className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--text-base)] transition-colors cursor-pointer px-1"
@@ -635,7 +638,6 @@ export function MapsTab() {
               )}
             </div>
 
-            {/* Map pool defaults */}
             <div className="shrink-0">
               <hr className="t-border my-2" />
               <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-2">MAP POOL DEFAULTS</p>
@@ -666,7 +668,6 @@ export function MapsTab() {
         </div>
       </div>
 
-      {/* Result modal — admin only */}
       {spunMap && isAdmin && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[#1e1e1e] border border-[var(--border-mid)] rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
