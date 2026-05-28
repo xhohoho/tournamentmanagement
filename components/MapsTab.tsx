@@ -45,6 +45,10 @@ export function MapsTab() {
   const dragOverUncatRef = useRef<number | null>(null);
   const [dropTargetCat, setDropTargetCat] = useState<string | null>(null);
 
+  // catOrders: per-category ordered list of queue indices
+  const [catOrders, setCatOrders] = useState<Record<string, number[]>>({});
+  const dragSourceCatRef = useRef<string | null>(null);
+
   useEffect(() => {
     const uncatIdxs = spinQueue.map((_, i) => i).filter(i => !itemCategory[i]);
     setUncatOrder(prev => {
@@ -52,8 +56,20 @@ export function MapsTab() {
       const added = uncatIdxs.filter(i => !prev.includes(i));
       return [...kept, ...added];
     });
+    // Sync catOrders for each category
+    setCatOrders(prev => {
+      const next: Record<string, number[]> = {};
+      categories.forEach(cat => {
+        const catIdxs = spinQueue.map((_, i) => i).filter(i => itemCategory[i] === cat);
+        const prevOrder = prev[cat] ?? [];
+        const kept = prevOrder.filter(i => catIdxs.includes(i));
+        const added = catIdxs.filter(i => !prevOrder.includes(i));
+        next[cat] = [...kept, ...added];
+      });
+      return next;
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spinQueue.length]);
+  }, [spinQueue.length, categories.length]);
 
   const saveCategories = (cats: string[]) => {
     setCategories(cats);
@@ -87,8 +103,18 @@ export function MapsTab() {
     saveItemCategory(next);
     if (cat !== null) {
       setUncatOrder(prev => prev.filter(i => i !== idx));
+      setCatOrders(prev => {
+        const prevCat = prev[cat] ?? [];
+        return { ...prev, [cat]: prevCat.includes(idx) ? prevCat : [...prevCat, idx] };
+      });
     } else {
       setUncatOrder(prev => prev.includes(idx) ? prev : [...prev, idx]);
+      // Remove from all category orders
+      setCatOrders(prev => {
+        const updated: Record<string, number[]> = {};
+        Object.entries(prev).forEach(([c, arr]) => { updated[c] = arr.filter(i => i !== idx); });
+        return updated;
+      });
     }
   };
 
@@ -103,6 +129,15 @@ export function MapsTab() {
     setUncatOrder(prev =>
       prev.filter(i => i !== removedIdx).map(i => (i > removedIdx ? i - 1 : i))
     );
+    setCatOrders(prev => {
+      const updated: Record<string, number[]> = {};
+      Object.entries(prev).forEach(([cat, arr]) => {
+        updated[cat] = arr
+          .filter(i => i !== removedIdx)
+          .map(i => (i > removedIdx ? i - 1 : i));
+      });
+      return updated;
+    });
   };
 
   // ─── Restore helpers ──────────────────────────────────────────────────────────
@@ -110,14 +145,16 @@ export function MapsTab() {
   const getMissingFromPool = () =>
     [...new Set(spinQueue)].filter(m => !maps.includes(m));
 
-  // ─── Drag handlers ────────────────────────────────────────────────────────────
+  // ─── Drag handlers ─────────────────────────────────────────────────────────────
+  // Uncat drag
   const handleUncatDragStart = (queueIdx: number) => {
     dragQueueIdxRef.current = queueIdx;
+    dragSourceCatRef.current = null;
   };
   const handleUncatDragEnter = (orderIdx: number) => {
     dragOverUncatRef.current = orderIdx;
     const draggingQueueIdx = dragQueueIdxRef.current;
-    if (draggingQueueIdx === null) return;
+    if (draggingQueueIdx === null || dragSourceCatRef.current !== null) return;
     setUncatOrder(prev => {
       const fromOrderIdx = prev.indexOf(draggingQueueIdx);
       if (fromOrderIdx === -1 || fromOrderIdx === orderIdx) return prev;
@@ -130,8 +167,34 @@ export function MapsTab() {
   const handleUncatDragEnd = () => {
     dragQueueIdxRef.current = null;
     dragOverUncatRef.current = null;
+    dragSourceCatRef.current = null;
     setDropTargetCat(null);
   };
+
+  // Categorised drag (reorder within same category)
+  const handleCatItemDragStart = (queueIdx: number, cat: string) => {
+    dragQueueIdxRef.current = queueIdx;
+    dragSourceCatRef.current = cat;
+  };
+  const handleCatItemDragEnter = (orderIdx: number, cat: string) => {
+    const draggingQueueIdx = dragQueueIdxRef.current;
+    if (draggingQueueIdx === null || dragSourceCatRef.current !== cat) return;
+    setCatOrders(prev => {
+      const arr = [...(prev[cat] ?? [])];
+      const fromOrderIdx = arr.indexOf(draggingQueueIdx);
+      if (fromOrderIdx === -1 || fromOrderIdx === orderIdx) return prev;
+      const [moved] = arr.splice(fromOrderIdx, 1);
+      arr.splice(orderIdx, 0, moved);
+      return { ...prev, [cat]: arr };
+    });
+  };
+  const handleCatItemDragEnd = () => {
+    dragQueueIdxRef.current = null;
+    dragSourceCatRef.current = null;
+    setDropTargetCat(null);
+  };
+
+  // Drop onto category zone (from uncategorised)
   const handleCatDragOver = (e: React.DragEvent, cat: string) => {
     e.preventDefault();
     setDropTargetCat(cat);
@@ -143,6 +206,7 @@ export function MapsTab() {
     if (queueIdx === null) return;
     assignItemCategory(queueIdx, cat);
     dragQueueIdxRef.current = null;
+    dragSourceCatRef.current = null;
     setDropTargetCat(null);
   };
 
@@ -163,6 +227,22 @@ export function MapsTab() {
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
   });
+
+  // knownMaps = every map ever added — never shrinks, used for MAP POOL DEFAULTS
+  const [knownMaps, setKnownMaps] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('knownMaps') ?? '[]'); } catch { return []; }
+  });
+
+  // Sync knownMaps whenever the live maps pool gains new entries
+  useEffect(() => {
+    setKnownMaps(prev => {
+      const added = maps.filter(m => !prev.includes(m));
+      if (added.length === 0) return prev;
+      const next = [...prev, ...added];
+      localStorage.setItem('knownMaps', JSON.stringify(next));
+      return next;
+    });
+  }, [maps]);
 
   const toggleDefault = (map: string) => {
     setDefaultMaps(prev => {
@@ -206,6 +286,7 @@ export function MapsTab() {
       await clearSpinQueue();
       saveItemCategory({});
       setUncatOrder([]);
+      setCatOrders({});
     } finally { setBusy(false); }
   };
 
@@ -381,7 +462,14 @@ export function MapsTab() {
   const buildGroups = () => {
     const grouped: Array<{ cat: string | null; items: Array<{ idx: number; map: string }> }> = [];
     categories.forEach(cat => {
-      const items = spinQueue.map((m, i) => ({ idx: i, map: m })).filter(({ idx }) => itemCategory[idx] === cat);
+      const catOrder = catOrders[cat] ?? [];
+      // Use catOrder for ordering, fall back to natural order for any stragglers
+      const catIdxs = spinQueue.map((_, i) => i).filter(i => itemCategory[i] === cat);
+      const orderedIdxs = [
+        ...catOrder.filter(i => catIdxs.includes(i)),
+        ...catIdxs.filter(i => !catOrder.includes(i)),
+      ];
+      const items = orderedIdxs.map(i => ({ idx: i, map: spinQueue[i] }));
       grouped.push({ cat, items });
     });
     const uncatItems = uncatOrder
@@ -601,15 +689,15 @@ export function MapsTab() {
                       {items.map(({ idx, map: m }, orderIdx) => {
                         const isRemoved = !maps.includes(m);
                         const isUncat = cat === null;
-                        const isDraggable = isUncat && isAdmin;
+                        const isDraggable = isAdmin;
 
                         return (
                           <div
                             key={idx}
                             draggable={isDraggable}
-                            onDragStart={isDraggable ? () => handleUncatDragStart(idx) : undefined}
-                            onDragEnter={isDraggable ? () => handleUncatDragEnter(orderIdx) : undefined}
-                            onDragEnd={isDraggable ? handleUncatDragEnd : undefined}
+                            onDragStart={isDraggable ? () => (isUncat ? handleUncatDragStart(idx) : handleCatItemDragStart(idx, cat!)) : undefined}
+                            onDragEnter={isDraggable ? () => (isUncat ? handleUncatDragEnter(orderIdx) : handleCatItemDragEnter(orderIdx, cat!)) : undefined}
+                            onDragEnd={isDraggable ? (isUncat ? handleUncatDragEnd : handleCatItemDragEnd) : undefined}
                             onDragOver={isDraggable ? e => e.preventDefault() : undefined}
                             className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2 transition-opacity"
                             style={{ cursor: isDraggable ? 'grab' : 'default' }}
@@ -622,13 +710,6 @@ export function MapsTab() {
                               <span className="font-['DM_Mono'] text-sm t-text truncate">🗺 {m}</span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {isAdmin && !isUncat && (
-                                <button
-                                  className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--text-base)] transition-colors cursor-pointer px-1"
-                                  title="Move back to uncategorised"
-                                  onClick={() => assignItemCategory(idx, null)}
-                                >↩</button>
-                              )}
                               {isAdmin && isRemoved && (
                                 <button
                                   className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
@@ -658,14 +739,19 @@ export function MapsTab() {
               <hr className="t-border my-2" />
               <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-2">MAP POOL DEFAULTS</p>
               <div className="flex flex-wrap gap-2 mb-2">
-                {maps.map(m => {
+                {knownMaps.map(m => {
                   const isDefault = defaultMaps.includes(m);
+                  const isInPool = maps.includes(m);
                   return (
-                    <div key={m} className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5 shrink-0">
+                    <div
+                      key={m}
+                      className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5 shrink-0"
+                      style={{ opacity: isInPool ? 1 : 0.45 }}
+                    >
                       <span className="truncate max-w-[150px]">{m}</span>
                       {isAdmin && (
                         <button
-                          title={isDefault ? 'Remove from defaults' : 'Set as default map'}
+                          title={isDefault ? 'Unstar — remove from defaults' : 'Star — mark as default map'}
                           className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
                           style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
                           onClick={() => toggleDefault(m)}
@@ -674,10 +760,10 @@ export function MapsTab() {
                     </div>
                   );
                 })}
-                {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
+                {knownMaps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
               </div>
-              {isAdmin && defaultMaps.filter(m => maps.includes(m)).length > 0 && (
-                <p className="font-['DM_Mono'] text-[10px] t-dim">★ = default map (stays in pool after reset)</p>
+              {isAdmin && (
+                <p className="font-['DM_Mono'] text-[10px] t-dim">★ = stays in pool after reset · faded = currently removed from wheel</p>
               )}
             </div>
           </div>
