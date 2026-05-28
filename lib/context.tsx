@@ -22,7 +22,7 @@ interface TourneyContext {
   adminToken: string | null;
   loading: boolean;
 
-  joinKey: string;          // empty = no key required; non-empty = key active
+  joinKey: string;
   chatMessages: ChatMessage[];
 
   setIsAdmin: (v: boolean) => void;
@@ -70,6 +70,39 @@ interface TourneyContext {
 
 const Ctx = createContext<TourneyContext | null>(null);
 
+// ─── Shared shuffleState updater ──────────────────────────────────────────────
+// Used identically in both refresh() and the SSE onmessage handler.
+// localRef: ref holding the startTime of a shuffle *this client* triggered.
+// While it matches the incoming startTime, SSE re-pushes are ignored so the
+// server's setTimeout cannot kill the local animation mid-run.
+function applyShuffleState(
+  prev: import('@/lib/types').ShuffleState | null,
+  next: import('@/lib/types').ShuffleState | null,
+  localRef: React.MutableRefObject<number | null>,
+): import('@/lib/types').ShuffleState | null {
+  if (!next) {
+    // Server cleared shuffleState.
+    if (localRef.current !== null) {
+      // This client owns the animation — block the null until the full
+      // duration has elapsed so the local RAF can finish.
+      if (!prev) { localRef.current = null; return null; }
+      const totalMs = prev.reveals.length * prev.delayMs + 1200;
+      if (Date.now() - prev.startTime >= totalMs) {
+        localRef.current = null;
+        return null;
+      }
+      return prev; // keep running
+    }
+    return null; // viewer — accept null immediately
+  }
+  // Non-null incoming state.
+  // If this client owns this exact shuffle, ignore SSE re-pushes (same startTime).
+  if (localRef.current === next.startTime) return prev ?? next;
+  // New or different shuffle from server — accept if different startTime.
+  if (!prev) return next;
+  return prev.startTime === next.startTime ? prev : next;
+}
+
 export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [roster, setRosterState] = useState<string[]>([]);
@@ -93,6 +126,9 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const pendingSpinAppend = useRef(false);
   const pendingElimChange = useRef(false);
+  // Holds the startTime of a shuffle triggered by THIS client.
+  // applyShuffleState uses it to block SSE from killing our local animation.
+  const localShuffleStartTimeRef = useRef<number | null>(null);
 
   const adminHeaders = useMemo(() => ({
     'Content-Type': 'application/json',
@@ -106,7 +142,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
         fetch('/api/admin/auth', {
           method: 'DELETE',
           headers: { 'X-Admin-Token': adminToken },
-        }).catch(() => {/* best-effort */});
+        }).catch(() => {});
       }
       setAdminToken(null);
     }
@@ -129,17 +165,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setMaps(data.maps ?? []);
       setStageMaps(data.stageMaps ?? {});
       setSpinState(data.spinState ?? null);
-      setShuffleState(prev => {
-        const next = data.shuffleState ?? null;
-        if (!next) {
-          if (!prev) return null;
-          const totalMs = prev.reveals.length * prev.delayMs + 1200;
-          if (Date.now() - prev.startTime >= totalMs) return null;
-          return prev;
-        }
-        if (!prev) return next;
-        return prev.startTime === next.startTime ? prev : next;
-      });
+      setShuffleState(prev => applyShuffleState(prev, data.shuffleState ?? null, localShuffleStartTimeRef));
       setSpinQueue(data.spinQueue ?? []);
       setSpinCategories(data.spinCategories ?? []);
       setSpinItemCategory(data.spinItemCategory ?? {});
@@ -177,25 +203,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
           setSpinState(data.spinState ?? null);
-          // Only update shuffleState from SSE when:
-          // - It's a genuinely new shuffle (different startTime) — accept it
-          // - It's null (server cleared it) — only accept if enough time has
-          //   passed that our local animation must also be done, preventing
-          //   the SSE from killing the animation mid-run.
-          setShuffleState(prev => {
-            const next = data.shuffleState ?? null;
-            if (!next) {
-              // Server cleared shuffleState. Only apply if local animation is
-              // also done (startTime + full duration has elapsed).
-              if (!prev) return null;
-              const totalMs = prev.reveals.length * prev.delayMs + 1200;
-              if (Date.now() - prev.startTime >= totalMs) return null;
-              // Animation still in progress — keep prev so RAF keeps running.
-              return prev;
-            }
-            if (!prev) return next;
-            return prev.startTime === next.startTime ? prev : next;
-          });
+          setShuffleState(prev => applyShuffleState(prev, data.shuffleState ?? null, localShuffleStartTimeRef));
           if (!pendingSpinAppend.current) {
             setSpinQueue(data.spinQueue ?? []);
             setSpinCategories(data.spinCategories ?? []);
@@ -398,7 +406,12 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setBracket(data.bracket);
-    if (data.shuffleState) setShuffleState(data.shuffleState);
+    // Lock shuffleState against SSE interference for this client (MapsTab pattern).
+    // applyShuffleState will block any SSE push with the same startTime.
+    if (data.shuffleState) {
+      localShuffleStartTimeRef.current = data.shuffleState.startTime;
+      setShuffleState(data.shuffleState);
+    }
     return {};
   };
 
