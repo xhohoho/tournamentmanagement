@@ -224,16 +224,17 @@ export function MapsTab() {
   const appendSpinQueueRef = useRef(appendSpinQueue);
   useEffect(() => { appendSpinQueueRef.current = appendSpinQueue; }, [appendSpinQueue]);
 
+  // defaultMaps = starred maps — persistent, survive clear/reset
   const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
   });
 
-  // knownMaps = every map ever added — never shrinks, used for MAP POOL DEFAULTS
+  // knownMaps = every map ever added — never shrinks, used for MAP POOL DEFAULTS display
   const [knownMaps, setKnownMaps] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('knownMaps') ?? '[]'); } catch { return []; }
   });
 
-  // Sync knownMaps whenever the live maps pool gains new entries
+  // Grow knownMaps whenever new maps appear in the live pool
   useEffect(() => {
     setKnownMaps(prev => {
       const added = maps.filter(m => !prev.includes(m));
@@ -275,14 +276,17 @@ export function MapsTab() {
     } finally { setBusy(false); }
   };
 
-  // clear all — restore all maps to wheel AND wipe the result queue
+  // clear all — restore only starred maps to wheel, remove non-starred, wipe spin queue
   const handleClearAll = async () => {
     if (busy || spinQueue.length === 0) return;
     setBusy(true);
     try {
-      const missing = getMissingFromPool();
-      // Restore missing maps first, then clear queue
-      if (missing.length > 0) await Promise.all(missing.map(m => addMap(m)));
+      // Remove non-starred maps from pool
+      const toRemove = maps.filter(m => !defaultMaps.includes(m));
+      if (toRemove.length > 0) await Promise.all(toRemove.map(m => removeMap(m)));
+      // Restore starred maps that were removed from pool
+      const toRestore = defaultMaps.filter(m => !maps.includes(m));
+      if (toRestore.length > 0) await Promise.all(toRestore.map(m => addMap(m)));
       await clearSpinQueue();
       saveItemCategory({});
       setUncatOrder([]);
@@ -751,7 +755,7 @@ export function MapsTab() {
                       <span className="truncate max-w-[150px]">{m}</span>
                       {isAdmin && (
                         <button
-                          title={isDefault ? 'Unstar — remove from defaults' : 'Star — mark as default map'}
+                          title={isDefault ? 'Unstar — will be removed on next reset' : 'Star — keep in pool after reset'}
                           className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
                           style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
                           onClick={() => toggleDefault(m)}
@@ -763,7 +767,7 @@ export function MapsTab() {
                 {knownMaps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
               </div>
               {isAdmin && (
-                <p className="font-['DM_Mono'] text-[10px] t-dim">★ = stays in pool after reset · faded = currently removed from wheel</p>
+                <p className="font-['DM_Mono'] text-[10px] t-dim">★ = survives reset · unstarred maps are removed on clear · faded = not in wheel</p>
               )}
             </div>
           </div>
