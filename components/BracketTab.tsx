@@ -424,7 +424,8 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
         const isBo3 = round[0]?.format === 'bo3';
         const isFinal = colIdx === rounds.length - 1 && round.length === 1;
         const isSemi = colIdx === rounds.length - 2 && round.length === 2 && rounds.length >= 3;
-        const label = isFinal ? 'Final' : isSemi ? 'Semi Final' : `Round ${colIdx + 1}`;
+        const isQuarter = colIdx === rounds.length - 3 && round.length === 4 && rounds.length >= 4;
+        const label = isFinal ? 'Final' : isSemi ? 'Semi Final' : isQuarter ? 'Quarter Final' : `Round ${colIdx + 1}`;
         return round.map((match, mi) => (
           <div key={`se-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: ubCardTop(colIdx, mi) + OFFSET_Y, left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
@@ -596,8 +597,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo }: {
       {ubRounds.map((round, colIdx) => {
         const isBo3 = round[0]?.format === 'bo3';
         const isFinal = colIdx === ubRounds.length - 1 && round.length === 1;
-        const isSemi = colIdx === ubRounds.length - 2 && round.length === 2 && ubRounds.length >= 3;
-        const label = isFinal ? 'Upper Final' : isSemi ? 'Semi Final' : `Round ${colIdx + 1}`;
+        const label = isFinal ? 'Upper Final' : `Winners Round ${colIdx + 1}`;
         return round.map((match, mi) => (
           <div key={`ub-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: ubOriginY + ubCardTop(colIdx, mi), left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
