@@ -14,6 +14,7 @@ export function MapsTab() {
     spinCategories: serverCategories,
     spinItemCategory: serverItemCategory,
     saveSpinCategories,
+    defaultMaps, saveDefaultMaps,
   } = useTourney();
 
   const [mapInput, setMapInput] = useState('');
@@ -231,33 +232,12 @@ export function MapsTab() {
   const appendSpinQueueRef = useRef(appendSpinQueue);
   useEffect(() => { appendSpinQueueRef.current = appendSpinQueue; }, [appendSpinQueue]);
 
-  // defaultMaps = starred maps — persistent, survive clear/reset
-  const [defaultMaps, setDefaultMaps] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('defaultMaps') ?? '[]'); } catch { return []; }
-  });
-
-  // knownMaps = every map ever added — never shrinks, used for MAP POOL DEFAULTS display
-  const [knownMaps, setKnownMaps] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('knownMaps') ?? '[]'); } catch { return []; }
-  });
-
-  // Grow knownMaps whenever new maps appear in the live pool
-  useEffect(() => {
-    setKnownMaps(prev => {
-      const added = maps.filter(m => !prev.includes(m));
-      if (added.length === 0) return prev;
-      const next = [...prev, ...added];
-      localStorage.setItem('knownMaps', JSON.stringify(next));
-      return next;
-    });
-  }, [maps]);
-
+  // defaultMaps and knownMaps now come from server via context — no localStorage
   const toggleDefault = (map: string) => {
-    setDefaultMaps(prev => {
-      const next = prev.includes(map) ? prev.filter(m => m !== map) : [...prev, map];
-      localStorage.setItem('defaultMaps', JSON.stringify(next));
-      return next;
-    });
+    const next = defaultMaps.includes(map)
+      ? defaultMaps.filter(m => m !== map)
+      : [...defaultMaps, map];
+    saveDefaultMaps(next);
   };
 
   const handleRemoveMap = async (mapToRemove: string) => {

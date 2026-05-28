@@ -60,6 +60,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ spinQueue: next.spinQueue });
   }
 
+  // Save default (starred) maps and known maps list
+  if (action === 'updateDefaultMaps') {
+    const { defaultMaps } = body;
+    const next = await updateState(s => ({
+      ...s,
+      ...(defaultMaps !== undefined ? { defaultMaps } : {}),
+    }));
+    return NextResponse.json({ defaultMaps: next.defaultMaps });
+  }
+
   // Save spin categories and item assignments
   if (action === 'updateSpinCategories') {
     const { spinCategories, spinItemCategory } = body;

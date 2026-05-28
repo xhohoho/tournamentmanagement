@@ -16,6 +16,7 @@ interface TourneyContext {
   spinQueue: string[];
   spinCategories: string[];
   spinItemCategory: Record<number, string>;
+  defaultMaps: string[];
   isAdmin: boolean;
   adminToken: string | null;
   loading: boolean;
@@ -57,6 +58,7 @@ interface TourneyContext {
   clearSpinQueue: () => Promise<void>;
   removeSpinQueueItem: (idx: number) => Promise<void>;
   saveSpinCategories: (cats: string[], itemCat: Record<number, string>) => Promise<void>;
+  saveDefaultMaps: (starred: string[]) => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
@@ -79,6 +81,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [spinQueue, setSpinQueue] = useState<string[]>([]);
   const [spinCategories, setSpinCategories] = useState<string[]>([]);
   const [spinItemCategory, setSpinItemCategory] = useState<Record<number, string>>({});
+  const [defaultMaps, setDefaultMaps] = useState<string[]>([]);
   const [joinKey, setJoinKeyState] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAdmin, setIsAdminState] = useState(false);
@@ -126,6 +129,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setSpinQueue(data.spinQueue ?? []);
       setSpinCategories(data.spinCategories ?? []);
       setSpinItemCategory(data.spinItemCategory ?? {});
+      setDefaultMaps(data.defaultMaps ?? []);
       setJoinKeyState(data.joinKey ?? '');
       setChatMessages(data.chatMessages ?? []);
     } catch {
@@ -163,6 +167,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
             setSpinQueue(data.spinQueue ?? []);
             setSpinCategories(data.spinCategories ?? []);
             setSpinItemCategory(data.spinItemCategory ?? {});
+            setDefaultMaps(data.defaultMaps ?? []);
           }
           setJoinKeyState(data.joinKey ?? '');
           setChatMessages(data.chatMessages ?? []);
@@ -473,6 +478,15 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const saveDefaultMaps = async (starred: string[]) => {
+    setDefaultMaps(starred);
+    await fetch('/api/maps', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'updateDefaultMaps', defaultMaps: starred }),
+    });
+  };
+
   const saveSpinCategories = async (cats: string[], itemCat: Record<number, string>) => {
     setSpinCategories(cats);
     setSpinItemCategory(itemCat);
@@ -521,7 +535,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, spinQueue,
-      spinCategories, spinItemCategory,
+      spinCategories, spinItemCategory, defaultMaps,
       joinKey, chatMessages,
       isAdmin, adminToken, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
@@ -530,7 +544,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       sendChat, clearChat,
       formTeams, resetTeams, setTeamMode,
       generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
-      addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveSpinCategories, assignStage, clearStage,
+      addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       assignLeader,
       resetAll,
     }}>
