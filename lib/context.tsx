@@ -124,6 +124,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setStageMaps(data.stageMaps ?? {});
       setSpinState(data.spinState ?? null);
       setSpinQueue(data.spinQueue ?? []);
+      setSpinCategories(data.spinCategories ?? []);
+      setSpinItemCategory(data.spinItemCategory ?? {});
       setJoinKeyState(data.joinKey ?? '');
       setChatMessages(data.chatMessages ?? []);
     } catch {
@@ -159,6 +161,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setSpinState(data.spinState ?? null);
           if (!pendingSpinAppend.current) {
             setSpinQueue(data.spinQueue ?? []);
+            setSpinCategories(data.spinCategories ?? []);
+            setSpinItemCategory(data.spinItemCategory ?? {});
           }
           setJoinKeyState(data.joinKey ?? '');
           setChatMessages(data.chatMessages ?? []);
@@ -467,6 +471,16 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     } finally {
       pendingSpinAppend.current = false;
     }
+  };
+
+  const saveSpinCategories = async (cats: string[], itemCat: Record<number, string>) => {
+    setSpinCategories(cats);
+    setSpinItemCategory(itemCat);
+    await fetch('/api/maps', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'updateSpinCategories', spinCategories: cats, spinItemCategory: itemCat }),
+    });
   };
 
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
