@@ -18,6 +18,7 @@ export function defaultState(): TournamentState {
     defaultMaps: [],
     spinQueue: [],
     spinState: null,
+    shuffleState: null,
     spinCategories: [],
     spinItemCategory: {},
   };

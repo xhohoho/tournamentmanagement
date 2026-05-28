@@ -50,6 +50,19 @@ export interface ChatMessage {
   ts: number;
 }
 
+/** One reveal event in the bracket shuffle animation. */
+export interface ShuffleReveal {
+  slotKey: string;  // e.g. 'm_upper_0_0_p1'
+  team: string;
+}
+
+/** Broadcast shuffle animation so all clients animate in sync. */
+export interface ShuffleState {
+  startTime: number;  // Date.now() when shuffle was triggered
+  delayMs: number;    // ms between each reveal
+  reveals: ShuffleReveal[];
+}
+
 /** Broadcast spin animation state so all users can mirror the admin's wheel. */
 export interface SpinState {
   spinning: boolean;
@@ -76,6 +89,7 @@ export interface ServerState {
   defaultMaps: string[];     // maps that are always restored after reset
   spinQueue: string[];
   spinState: SpinState | null;  // live spin broadcast
+  shuffleState: ShuffleState | null; // live bracket shuffle broadcast
   spinCategories: string[];              // ordered category names
   spinItemCategory: Record<number, string>; // spinQueue index -> category name
 }

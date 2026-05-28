@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { shuffle, nextPow2 } from '@/lib/utils';
 import { verifyAdminToken } from '@/app/api/admin/auth/route';
-import type { BracketMatch, GrandFinal, Bracket } from '@/lib/types';
+import type { BracketMatch, GrandFinal, Bracket, ShuffleReveal } from '@/lib/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -167,26 +167,97 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  const { elimMode, matchFormat = 'bo1' } = await req.json();
+  const body = await req.json();
+  const { elimMode, matchFormat = 'bo1', action = 'generate' } = body;
   const fmt: 'bo1' | 'bo3' = matchFormat === 'bo3' ? 'bo3' : 'bo1';
   const state = await getState();
 
   if (state.teams.length < 2) return NextResponse.json({ error: 'Need at least 2 teams' }, { status: 400 });
 
-  const names = shuffle(state.teams.map(t => t.name));
-  let bracket: Bracket;
+  // ── action: 'generate' — build empty skeleton, no teams placed ──────────────
+  if (action === 'generate') {
+    const teamCount = state.teams.length;
+    let bracket: Bracket;
 
-  if (elimMode === 'single') {
-    const upperRaw = buildSE(names, fmt);
-    const thirdPlace = names.length >= 4 ? emptyMatch(fmt) : undefined;
-    bracket = sweepBracket({ type: 'single', upper: upperRaw, thirdPlace, champion: null });
-  } else {
-    const { upper: upperRaw, lower: lowerRaw } = buildDE(names, fmt);
-    bracket = sweepBracket({ type: 'double', upper: upperRaw, lower: lowerRaw, grandFinal: emptyMatch(fmt), champion: null });
+    if (elimMode === 'single') {
+      const size = nextPow2(teamCount);
+      const r0: BracketMatch[] = Array.from({ length: size / 2 }, () => emptyMatch(fmt));
+      const rounds: BracketMatch[][] = [r0];
+      let prev = r0;
+      while (prev.length > 1) {
+        const next: BracketMatch[] = [];
+        for (let i = 0; i < prev.length; i += 2) next.push(emptyMatch(fmt));
+        rounds.push(next);
+        prev = next;
+      }
+      const thirdPlace = teamCount >= 4 ? emptyMatch(fmt) : undefined;
+      bracket = { type: 'single', upper: rounds, thirdPlace, champion: null };
+    } else {
+      const { upper: upperRaw, lower: lowerRaw } = buildDE(Array(state.teams.length).fill(''), fmt);
+      // Clear any accidental placeholders — all slots empty
+      upperRaw.forEach(r => r.forEach(m => { m.p1 = null; m.p2 = null; }));
+      lowerRaw.forEach(r => r.forEach(m => { m.p1 = null; m.p2 = null; }));
+      bracket = { type: 'double', upper: upperRaw, lower: lowerRaw, grandFinal: emptyMatch(fmt), champion: null };
+    }
+
+    const next = await updateState(s => ({ ...s, bracket, elimMode, shuffleState: null }));
+    return NextResponse.json({ bracket: next.bracket });
   }
 
-  const next = await updateState(s => ({ ...s, bracket, elimMode }));
-  return NextResponse.json({ bracket: next.bracket });
+  // ── action: 'seed' — shuffle teams into bracket + broadcast animation ───────
+  if (action === 'seed') {
+    const state2 = await getState();
+    const B = state2.bracket;
+    if (!B) return NextResponse.json({ error: 'Generate bracket structure first' }, { status: 400 });
+
+    const names = shuffle(state2.teams.map(t => t.name));
+    let seeded: Bracket;
+
+    if (B.type === 'single') {
+      const upperRaw = buildSE(names, fmt);
+      const thirdPlace = names.length >= 4 ? emptyMatch(fmt) : undefined;
+      seeded = sweepBracket({ type: 'single', upper: upperRaw, thirdPlace, champion: null });
+    } else {
+      const { upper: upperRaw, lower: lowerRaw } = buildDE(names, fmt);
+      seeded = sweepBracket({ type: 'double', upper: upperRaw, lower: lowerRaw, grandFinal: emptyMatch(fmt), champion: null });
+    }
+
+    // Build reveal sequence: collect all p1/p2 slots that have a team name
+    const reveals: ShuffleReveal[] = [];
+    seeded.upper.forEach((round, ri) =>
+      round.forEach((m, mi) => {
+        if (m.p1) reveals.push({ slotKey: `m_upper_${ri}_${mi}_p1`, team: m.p1 });
+        if (m.p2) reveals.push({ slotKey: `m_upper_${ri}_${mi}_p2`, team: m.p2 });
+      })
+    );
+    if (seeded.lower) {
+      seeded.lower.forEach((round, ri) =>
+        round.forEach((m, mi) => {
+          if (m.p1) reveals.push({ slotKey: `m_lower_${ri}_${mi}_p1`, team: m.p1 });
+          if (m.p2) reveals.push({ slotKey: `m_lower_${ri}_${mi}_p2`, team: m.p2 });
+        })
+      );
+    }
+    // Shuffle the reveal order for drama
+    const shuffledReveals = shuffle(reveals);
+    const DELAY_MS = 180;
+    const totalDuration = shuffledReveals.length * DELAY_MS + 800;
+    const startTime = Date.now();
+
+    const shuffleState = { startTime, delayMs: DELAY_MS, reveals: shuffledReveals };
+
+    // Write seeded bracket + shuffleState together
+    const next = await updateState(s => ({ ...s, bracket: seeded, shuffleState }));
+
+    // Schedule clearing shuffleState after animation completes
+    setTimeout(async () => {
+      await updateState(s => ({ ...s, shuffleState: null }));
+    }, totalDuration);
+
+    return NextResponse.json({ bracket: next.bracket, shuffleState });
+  }
+
+  return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
 
 export async function PATCH(req: NextRequest) {

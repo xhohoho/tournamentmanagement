@@ -13,6 +13,7 @@ interface TourneyContext {
   maps: string[];
   stageMaps: Record<string, string[]>;
   spinState: import('@/lib/types').SpinState | null;
+  shuffleState: import('@/lib/types').ShuffleState | null;
   spinQueue: string[];
   spinCategories: string[];
   spinItemCategory: Record<number, string>;
@@ -46,6 +47,7 @@ interface TourneyContext {
   setTeamMode: (mode: 'leader' | 'random') => Promise<void>;
 
   generateBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string }>;
+  seedBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string }>;
   updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   undoMatch: (section: string, ri: number, mi: number) => Promise<void>;
   updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
@@ -78,6 +80,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [maps, setMaps] = useState<string[]>([]);
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
   const [spinState, setSpinState] = useState<import('@/lib/types').SpinState | null>(null);
+  const [shuffleState, setShuffleState] = useState<import('@/lib/types').ShuffleState | null>(null);
   const [spinQueue, setSpinQueue] = useState<string[]>([]);
   const [spinCategories, setSpinCategories] = useState<string[]>([]);
   const [spinItemCategory, setSpinItemCategory] = useState<Record<number, string>>({});
@@ -126,6 +129,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setMaps(data.maps ?? []);
       setStageMaps(data.stageMaps ?? {});
       setSpinState(data.spinState ?? null);
+      setShuffleState(data.shuffleState ?? null);
       setSpinQueue(data.spinQueue ?? []);
       setSpinCategories(data.spinCategories ?? []);
       setSpinItemCategory(data.spinItemCategory ?? {});
@@ -163,6 +167,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
           setSpinState(data.spinState ?? null);
+          setShuffleState(data.shuffleState ?? null);
           if (!pendingSpinAppend.current) {
             setSpinQueue(data.spinQueue ?? []);
             setSpinCategories(data.spinCategories ?? []);
@@ -348,11 +353,24 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     const res = await fetch('/api/bracket', {
       method: 'POST',
       headers: adminHeaders,
-      body: JSON.stringify({ elimMode, matchFormat }),
+      body: JSON.stringify({ elimMode, matchFormat, action: 'generate' }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setBracket(data.bracket);
+    return {};
+  };
+
+  const seedBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
+    const res = await fetch('/api/bracket', {
+      method: 'POST',
+      headers: adminHeaders,
+      body: JSON.stringify({ elimMode, matchFormat, action: 'seed' }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setBracket(data.bracket);
+    if (data.shuffleState) setShuffleState(data.shuffleState);
     return {};
   };
 
