@@ -77,6 +77,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
   const [spinState, setSpinState] = useState<import('@/lib/types').SpinState | null>(null);
   const [spinQueue, setSpinQueue] = useState<string[]>([]);
+  const [spinCategories, setSpinCategories] = useState<string[]>([]);
+  const [spinItemCategory, setSpinItemCategory] = useState<Record<number, string>>({});
   const [joinKey, setJoinKeyState] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAdmin, setIsAdminState] = useState(false);
