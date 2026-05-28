@@ -251,27 +251,25 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const shuffleStartTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
+    console.log('[shuffle effect] shuffleState changed:', shuffleState ? `startTime=${shuffleState.startTime}` : 'null', '| shuffleStartTimeRef:', shuffleStartTimeRef.current);
     if (!shuffleState) {
-      // Animation done or not active — show everything
+      console.log('[shuffle effect] → null path, setting __all__');
       shuffleStartTimeRef.current = null;
       setRevealedSlots(new Set('__all__'));
       if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current);
       shuffleRafRef.current = null;
       return;
     }
-    // If this is the same shuffle run, don't restart — SSE re-pushes the same
-    // shuffleState with a new object reference every 1500ms, which would
-    // cancel+restart the RAF and wipe revealedSlots each time.
-    if (shuffleStartTimeRef.current === shuffleState.startTime) return;
+    if (shuffleStartTimeRef.current === shuffleState.startTime) {
+      console.log('[shuffle effect] → same startTime, skipping');
+      return;
+    }
+    console.log('[shuffle effect] → new shuffle, starting RAF');
     shuffleStartTimeRef.current = shuffleState.startTime;
-
-    // Cancel any previous RAF before starting fresh
     if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current);
     shuffleRafRef.current = null;
-
-    setRevealedSlots(new Set()); // reset for fresh shuffle
+    setRevealedSlots(new Set());
     const { startTime, delayMs, reveals } = shuffleState;
-
     const tick = () => {
       const elapsed = Date.now() - startTime;
       const revealedCount = Math.floor(elapsed / delayMs);
@@ -287,8 +285,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
       }
     };
     shuffleRafRef.current = requestAnimationFrame(tick);
-    // No cleanup cancellation here — the startTime guard above handles re-renders
-    // from SSE re-pushes without cancelling an in-progress animation.
   }, [shuffleState]);
 
   // Helper for child components: is this slot revealed?
@@ -296,6 +292,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
     revealedSlots.has('__all__') || revealedSlots.has(slotKey);
 
   const isShuffling = !!shuffleState;
+  console.log('[BracketTab render] shuffleState:', shuffleState ? `startTime=${shuffleState.startTime}` : 'null', '| revealedSlots size:', revealedSlots.size, '| hasAll:', revealedSlots.has('__all__'));
 
   const handleElimChange = async (id: 'single' | 'double') => {
     if (hasBracket || id === displayElim) return;
