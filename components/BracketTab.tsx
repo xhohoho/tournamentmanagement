@@ -248,14 +248,22 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [revealedSlots, setRevealedSlots] = useState<Set<string>>(new Set());
   const shuffleRafRef = useRef<number | null>(null);
 
+  const shuffleStartTimeRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!shuffleState) {
       // Animation done or not active — show everything
+      shuffleStartTimeRef.current = null;
       setRevealedSlots(new Set('__all__'));
       if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current);
       return;
     }
-    setRevealedSlots(new Set()); // reset
+    // Guard: if this is the same shuffle (same startTime), don't reset — the
+    // SSE may re-push the same shuffleState object with a new reference.
+    if (shuffleStartTimeRef.current === shuffleState.startTime) return;
+    shuffleStartTimeRef.current = shuffleState.startTime;
+
+    setRevealedSlots(new Set()); // reset for fresh shuffle
     const { startTime, delayMs, reveals } = shuffleState;
 
     const tick = () => {

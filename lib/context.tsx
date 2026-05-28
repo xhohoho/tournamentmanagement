@@ -167,7 +167,15 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
           setSpinState(data.spinState ?? null);
-          setShuffleState(data.shuffleState ?? null);
+          // Only update shuffleState from SSE if it's a genuinely new shuffle
+          // (different startTime) or clearing to null. Avoids re-triggering the
+          // reveal animation when SSE re-pushes the same shuffleState object.
+          setShuffleState(prev => {
+            const next = data.shuffleState ?? null;
+            if (!next) return null;
+            if (!prev) return next;
+            return prev.startTime === next.startTime ? prev : next;
+          });
           if (!pendingSpinAppend.current) {
             setSpinQueue(data.spinQueue ?? []);
             setSpinCategories(data.spinCategories ?? []);
