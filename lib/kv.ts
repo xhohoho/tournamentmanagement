@@ -18,6 +18,8 @@ export function defaultState(): TournamentState {
     defaultMaps: [],
     spinQueue: [],
     spinState: null,
+    spinCategories: [],
+    spinItemCategory: {},
   };
 }
 export async function getState(): Promise<TournamentState> {

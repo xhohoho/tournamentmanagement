@@ -9,7 +9,9 @@ export async function GET() {
   return NextResponse.json({ 
     maps: state.maps, 
     stageMaps: state.stageMaps,
-    spinQueue: state.spinQueue || [] 
+    spinQueue: state.spinQueue || [],
+    spinCategories: state.spinCategories || [],
+    spinItemCategory: state.spinItemCategory || {},
   });
 }
 
@@ -56,6 +58,17 @@ export async function PATCH(req: NextRequest) {
   if (action === 'updateSpinQueue') {
     const next = await updateState(s => ({ ...s, spinQueue: spinQueue || [] }));
     return NextResponse.json({ spinQueue: next.spinQueue });
+  }
+
+  // Save spin categories and item assignments
+  if (action === 'updateSpinCategories') {
+    const { spinCategories, spinItemCategory } = body;
+    const next = await updateState(s => ({
+      ...s,
+      ...(spinCategories !== undefined ? { spinCategories } : {}),
+      ...(spinItemCategory !== undefined ? { spinItemCategory } : {}),
+    }));
+    return NextResponse.json({ spinCategories: next.spinCategories, spinItemCategory: next.spinItemCategory });
   }
 
   // Atomically append one map to the spin queue (avoids client-side stale-state race)

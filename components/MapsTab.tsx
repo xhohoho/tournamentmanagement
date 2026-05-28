@@ -11,6 +11,9 @@ export function MapsTab() {
     addMap, removeMap, appendSpinQueue, clearSpinQueue,
     adminToken, spinState: liveSpin,
     spinQueue, removeSpinQueueItem,
+    spinCategories: serverCategories,
+    spinItemCategory: serverItemCategory,
+    saveSpinCategories,
   } = useTourney();
 
   const [mapInput, setMapInput] = useState('');
@@ -18,12 +21,8 @@ export function MapsTab() {
   const [busy, setBusy] = useState(false);
 
   // ─── Categories ───────────────────────────────────────────────────────────────
-  const [categories, setCategories] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('spinCategories') ?? '[]'); } catch { return []; }
-  });
-  const [itemCategory, setItemCategoryState] = useState<Record<number, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('spinItemCategory') ?? '{}'); } catch { return {}; }
-  });
+  const [categories, setCategories] = useState<string[]>(serverCategories);
+  const [itemCategory, setItemCategoryState] = useState<Record<number, string>>(serverItemCategory);
   const [newCatInput, setNewCatInput] = useState('');
   // activeCategory = which category is "checked" — next spin result auto-assigns here
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -34,6 +33,14 @@ export function MapsTab() {
   // itemCategory ref — same reason: spin tick reads it after await
   const itemCategoryRef = useRef(itemCategory);
   useEffect(() => { itemCategoryRef.current = itemCategory; }, [itemCategory]);
+
+  // categories ref — needed so saveItemCategory can read latest cats without stale closure
+  const categoriesRef = useRef(categories);
+  useEffect(() => { categoriesRef.current = categories; }, [categories]);
+
+  // Keep local state in sync when server pushes updates (viewer side)
+  useEffect(() => { setCategories(serverCategories); }, [serverCategories]);
+  useEffect(() => { setItemCategoryState(serverItemCategory); itemCategoryRef.current = serverItemCategory; }, [serverItemCategory]);
 
   // spinQueue length ref — used to know the index of the newly appended item
   const spinQueueLenRef = useRef(spinQueue.length);
@@ -73,12 +80,12 @@ export function MapsTab() {
 
   const saveCategories = (cats: string[]) => {
     setCategories(cats);
-    localStorage.setItem('spinCategories', JSON.stringify(cats));
+    saveSpinCategories(cats, itemCategoryRef.current);
   };
   const saveItemCategory = (map: Record<number, string>) => {
     setItemCategoryState(map);
     itemCategoryRef.current = map;
-    localStorage.setItem('spinItemCategory', JSON.stringify(map));
+    saveSpinCategories(categoriesRef.current, map);
   };
 
   const addCategory = () => {
@@ -288,7 +295,9 @@ export function MapsTab() {
       const toRestore = defaultMaps.filter(m => !maps.includes(m));
       if (toRestore.length > 0) await Promise.all(toRestore.map(m => addMap(m)));
       await clearSpinQueue();
-      saveItemCategory({});
+      saveSpinCategories(categoriesRef.current, {});
+      setItemCategoryState({});
+      itemCategoryRef.current = {};
       setUncatOrder([]);
       setCatOrders({});
     } finally { setBusy(false); }

@@ -494,12 +494,15 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setJoinKeyState('');
     setChatMessages([]);
     setSpinQueue([]);
+    setSpinCategories([]);
+    setSpinItemCategory({});
     setSpinState(null);
   };
 
   return (
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, spinQueue,
+      spinCategories, spinItemCategory,
       joinKey, chatMessages,
       isAdmin, adminToken, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
@@ -508,7 +511,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       sendChat, clearChat,
       formTeams, resetTeams, setTeamMode,
       generateBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
-      addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, assignStage, clearStage,
+      addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveSpinCategories, assignStage, clearStage,
       assignLeader,
       resetAll,
     }}>

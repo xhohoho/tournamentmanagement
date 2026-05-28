@@ -76,6 +76,8 @@ export interface ServerState {
   defaultMaps: string[];     // maps that are always restored after reset
   spinQueue: string[];
   spinState: SpinState | null;  // live spin broadcast
+  spinCategories: string[];              // ordered category names
+  spinItemCategory: Record<number, string>; // spinQueue index -> category name
 }
 
 /**
