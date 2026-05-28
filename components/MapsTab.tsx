@@ -532,17 +532,28 @@ export function MapsTab() {
 
             <div className="shrink-0 max-h-[96px] overflow-y-auto">
               <div className="flex flex-wrap gap-2">
-                {maps.map(m => (
-                  <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
-                    {m}
-                    {isAdmin && (
-                      <span
-                        className={`t-dim transition-colors shrink-0 ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
-                        onClick={() => !busy && handleRemoveMap(m)}
-                      >✕</span>
-                    )}
-                  </span>
-                ))}
+                {maps.map(m => {
+                  const isDefault = defaultMaps.includes(m);
+                  return (
+                    <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
+                      {m}
+                      {isAdmin && (
+                        <>
+                          <button
+                            className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
+                            style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
+                            title={isDefault ? 'Unstar — removed on reset' : 'Star — keep after reset'}
+                            onClick={() => toggleDefault(m)}
+                          >★</button>
+                          <span
+                            className={`t-dim transition-colors shrink-0 ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                            onClick={() => !busy && handleRemoveMap(m)}
+                          >✕</span>
+                        </>
+                      )}
+                    </span>
+                  );
+                })}
                 {maps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'No maps yet.' : 'No maps added.'}</p>}
               </div>
             </div>
@@ -743,31 +754,17 @@ export function MapsTab() {
               <hr className="t-border my-2" />
               <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-2">MAP POOL DEFAULTS</p>
               <div className="flex flex-wrap gap-2 mb-2">
-                {knownMaps.map(m => {
-                  const isDefault = defaultMaps.includes(m);
-                  const isInPool = maps.includes(m);
-                  return (
-                    <div
-                      key={m}
-                      className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm transition-all flex items-center gap-1.5 shrink-0"
-                      style={{ opacity: isInPool ? 1 : 0.45 }}
-                    >
-                      <span className="truncate max-w-[150px]">{m}</span>
-                      {isAdmin && (
-                        <button
-                          title={isDefault ? 'Unstar — will be removed on next reset' : 'Star — keep in pool after reset'}
-                          className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
-                          style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
-                          onClick={() => toggleDefault(m)}
-                        >★</button>
-                      )}
+                {defaultMaps.length === 0
+                  ? <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Star maps in the wheel panel to pin them here.' : 'No default maps set.'}</p>
+                  : defaultMaps.map(m => (
+                    <div key={m} className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text shrink-0">
+                      <span className="truncate max-w-[150px]">★ {m}</span>
                     </div>
-                  );
-                })}
-                {knownMaps.length === 0 && <p className="font-['DM_Mono'] text-xs t-dim">{isAdmin ? 'Add maps using the wheel panel.' : 'No maps yet.'}</p>}
+                  ))
+                }
               </div>
-              {isAdmin && (
-                <p className="font-['DM_Mono'] text-[10px] t-dim">★ = survives reset · unstarred maps are removed on clear · faded = not in wheel</p>
+              {isAdmin && defaultMaps.length > 0 && (
+                <p className="font-['DM_Mono'] text-[10px] t-dim">starred maps are restored to the wheel on clear all</p>
               )}
             </div>
           </div>
