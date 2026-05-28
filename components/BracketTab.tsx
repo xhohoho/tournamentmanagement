@@ -256,12 +256,18 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
       shuffleStartTimeRef.current = null;
       setRevealedSlots(new Set('__all__'));
       if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current);
+      shuffleRafRef.current = null;
       return;
     }
-    // Guard: if this is the same shuffle (same startTime), don't reset — the
-    // SSE may re-push the same shuffleState object with a new reference.
+    // If this is the same shuffle run, don't restart — SSE re-pushes the same
+    // shuffleState with a new object reference every 1500ms, which would
+    // cancel+restart the RAF and wipe revealedSlots each time.
     if (shuffleStartTimeRef.current === shuffleState.startTime) return;
     shuffleStartTimeRef.current = shuffleState.startTime;
+
+    // Cancel any previous RAF before starting fresh
+    if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current);
+    shuffleRafRef.current = null;
 
     setRevealedSlots(new Set()); // reset for fresh shuffle
     const { startTime, delayMs, reveals } = shuffleState;
@@ -276,10 +282,13 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
       setRevealedSlots(newSet);
       if (revealedCount < reveals.length) {
         shuffleRafRef.current = requestAnimationFrame(tick);
+      } else {
+        shuffleRafRef.current = null;
       }
     };
     shuffleRafRef.current = requestAnimationFrame(tick);
-    return () => { if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current); };
+    // No cleanup cancellation here — the startTime guard above handles re-renders
+    // from SSE re-pushes without cancelling an in-progress animation.
   }, [shuffleState]);
 
   // Helper for child components: is this slot revealed?

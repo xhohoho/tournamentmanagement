@@ -129,7 +129,17 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setMaps(data.maps ?? []);
       setStageMaps(data.stageMaps ?? {});
       setSpinState(data.spinState ?? null);
-      setShuffleState(data.shuffleState ?? null);
+      setShuffleState(prev => {
+        const next = data.shuffleState ?? null;
+        if (!next) {
+          if (!prev) return null;
+          const totalMs = prev.reveals.length * prev.delayMs + 1200;
+          if (Date.now() - prev.startTime >= totalMs) return null;
+          return prev;
+        }
+        if (!prev) return next;
+        return prev.startTime === next.startTime ? prev : next;
+      });
       setSpinQueue(data.spinQueue ?? []);
       setSpinCategories(data.spinCategories ?? []);
       setSpinItemCategory(data.spinItemCategory ?? {});
@@ -167,12 +177,22 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           setMaps(data.maps ?? []);
           setStageMaps(data.stageMaps ?? {});
           setSpinState(data.spinState ?? null);
-          // Only update shuffleState from SSE if it's a genuinely new shuffle
-          // (different startTime) or clearing to null. Avoids re-triggering the
-          // reveal animation when SSE re-pushes the same shuffleState object.
+          // Only update shuffleState from SSE when:
+          // - It's a genuinely new shuffle (different startTime) — accept it
+          // - It's null (server cleared it) — only accept if enough time has
+          //   passed that our local animation must also be done, preventing
+          //   the SSE from killing the animation mid-run.
           setShuffleState(prev => {
             const next = data.shuffleState ?? null;
-            if (!next) return null;
+            if (!next) {
+              // Server cleared shuffleState. Only apply if local animation is
+              // also done (startTime + full duration has elapsed).
+              if (!prev) return null;
+              const totalMs = prev.reveals.length * prev.delayMs + 1200;
+              if (Date.now() - prev.startTime >= totalMs) return null;
+              // Animation still in progress — keep prev so RAF keeps running.
+              return prev;
+            }
             if (!prev) return next;
             return prev.startTime === next.startTime ? prev : next;
           });
