@@ -78,37 +78,48 @@ interface TourneyContext {
 
 const Ctx = createContext<TourneyContext | null>(null);
 
-// ─── Shared shuffleState updater ──────────────────────────────────────────────
-// Used identically in both refresh() and the SSE onmessage handler.
-// localRef: ref holding the startTime of a shuffle *this client* triggered.
-// While it matches the incoming startTime, SSE re-pushes are ignored so the
-// server's setTimeout cannot kill the local animation mid-run.
+// ─── shuffleState merge ───────────────────────────────────────────────────────
+// Keeps the local animation running while the admin's own client owns it.
+// Other clients (viewers) accept SSE immediately.
 function applyShuffleState(
   prev: import('@/lib/types').ShuffleState | null,
   next: import('@/lib/types').ShuffleState | null,
   localRef: React.MutableRefObject<number | null>,
 ): import('@/lib/types').ShuffleState | null {
   if (!next) {
-    // Server cleared shuffleState.
     if (localRef.current !== null) {
-      // This client owns the animation — block the null until the full
-      // duration has elapsed so the local RAF can finish.
       if (!prev) { localRef.current = null; return null; }
       const totalMs = prev.reveals.length * prev.delayMs + 1200;
       if (Date.now() - prev.startTime >= totalMs) {
         localRef.current = null;
         return null;
       }
-      return prev; // keep running
+      return prev; // keep running locally
     }
-    return null; // viewer — accept null immediately
+    return null;
   }
-  // Non-null incoming state.
-  // If this client owns this exact shuffle, ignore SSE re-pushes (same startTime).
   if (localRef.current === next.startTime) return prev ?? next;
-  // New or different shuffle from server — accept if different startTime.
   if (!prev) return next;
   return prev.startTime === next.startTime ? prev : next;
+}
+
+// ─── SSE guard ────────────────────────────────────────────────────────────────
+// After any admin mutation we record a timestamp. SSE events that arrive
+// within GUARD_MS of that timestamp for the same field are skipped — the
+// local state from the API response is already correct and newer.
+// This replaces the fragile boolean-ref flags that could drop events.
+const GUARD_MS = 1500;
+
+function makeGuard() {
+  const stamps: Record<string, number> = {};
+  return {
+    /** Call before applying an admin mutation locally. */
+    touch(field: string) { stamps[field] = Date.now(); },
+    /** Returns true if SSE should be skipped for this field. */
+    guarded(field: string) { return Date.now() - (stamps[field] ?? 0) < GUARD_MS; },
+    /** Reset a specific field guard early (e.g. on confirmed server round-trip). */
+    clear(field: string) { stamps[field] = 0; },
+  };
 }
 
 export function TourneyProvider({ children }: { children: React.ReactNode }) {
@@ -134,10 +145,10 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [tickerText, setTickerTextState] = useState('');
 
-  const pendingSpinAppend = useRef(false);
-  const pendingElimChange = useRef(false);
+  // Single guard instance shared across all mutations.
+  const guard = useRef(makeGuard()).current;
+
   // Holds the startTime of a shuffle triggered by THIS client.
-  // applyShuffleState uses it to block SSE from killing our local animation.
   const localShuffleStartTimeRef = useRef<number | null>(null);
 
   const adminHeaders = useMemo(() => ({
@@ -159,43 +170,57 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const setAdminTokenPublic = (token: string | null) => {
-    setAdminToken(token);
-  };
+  const setAdminTokenPublic = (token: string | null) => setAdminToken(token);
+
+  // ── Hydrate all state from a server snapshot ──────────────────────────────
+  // Used by both initial fetch and SSE onmessage.
+  // Each field is gated by the guard so a recent local mutation is not
+  // immediately overwritten by a lagging SSE event.
+  const applySnapshot = useCallback((data: Record<string, unknown>, fromSSE = false) => {
+    if (!fromSSE || !guard.guarded('players'))   setPlayers(data.players as Player[] ?? []);
+    if (!fromSSE || !guard.guarded('roster'))    setRosterState(data.roster as string[] ?? []);
+    if (!fromSSE || !guard.guarded('teamMode'))  setTeamModeState((data.teamMode as 'leader' | 'random') ?? 'leader');
+    if (!fromSSE || !guard.guarded('teams'))     setTeams(data.teams as Team[] ?? []);
+    if (!fromSSE || !guard.guarded('elimMode'))  setElimModeState((data.elimMode as 'single' | 'double') ?? 'single');
+    if (!fromSSE || !guard.guarded('bracket'))   setBracket((data.bracket as Bracket | null) ?? null);
+    if (!fromSSE || !guard.guarded('maps'))      setMaps(data.maps as string[] ?? []);
+    if (!fromSSE || !guard.guarded('stageMaps')) setStageMaps(data.stageMaps as Record<string, string[]> ?? {});
+    if (!fromSSE || !guard.guarded('spinQueue')) setSpinQueue(data.spinQueue as string[] ?? []);
+    if (!fromSSE || !guard.guarded('spinCategories')) {
+      setSpinCategories(data.spinCategories as string[] ?? []);
+      setSpinItemCategory(data.spinItemCategory as Record<number, string> ?? {});
+    }
+    if (!fromSSE || !guard.guarded('defaultMaps')) setDefaultMaps(data.defaultMaps as string[] ?? []);
+    if (!fromSSE || !guard.guarded('joinKey'))   setJoinKeyState(data.joinKey as string ?? '');
+    if (!fromSSE || !guard.guarded('chat'))      setChatMessages(data.chatMessages as ChatMessage[] ?? []);
+    if (!fromSSE || !guard.guarded('tickerText')) setTickerTextState(data.tickerText as string ?? '');
+
+    // spinState: always accept (driven by server spin animation)
+    setSpinState(data.spinState as import('@/lib/types').SpinState | null ?? null);
+
+    // shuffleState: custom merge to protect local animation
+    setShuffleState(prev =>
+      applyShuffleState(prev, data.shuffleState as import('@/lib/types').ShuffleState | null ?? null, localShuffleStartTimeRef)
+    );
+  }, [guard]);
 
   const refresh = useCallback(async () => {
     try {
       const res = await fetch('/api/state');
       const data = await res.json();
-      setPlayers(data.players ?? []);
-      setRosterState(data.roster ?? []);
-      setTeamModeState(data.teamMode ?? 'leader');
-      setTeams(data.teams ?? []);
-      setElimModeState(data.elimMode ?? 'single');
-      setBracket(data.bracket ?? null);
-      setMaps(data.maps ?? []);
-      setStageMaps(data.stageMaps ?? {});
-      setSpinState(data.spinState ?? null);
-      setShuffleState(prev => applyShuffleState(prev, data.shuffleState ?? null, localShuffleStartTimeRef));
-      setSpinQueue(data.spinQueue ?? []);
-      setSpinCategories(data.spinCategories ?? []);
-      setSpinItemCategory(data.spinItemCategory ?? {});
-      setDefaultMaps(data.defaultMaps ?? []);
-      setJoinKeyState(data.joinKey ?? '');
-      setChatMessages(data.chatMessages ?? []);
-      setTickerTextState(data.tickerText ?? '');
+      applySnapshot(data, false); // full refresh ignores guards
     } catch {
       // keep existing state on network error
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applySnapshot]);
 
   useEffect(() => {
     refresh();
 
     let es: EventSource | null = null;
-    let pollFallback: NodeJS.Timeout | null = null;
+    let pollFallback: ReturnType<typeof setInterval> | null = null;
 
     const connect = () => {
       if (typeof EventSource === 'undefined') {
@@ -206,25 +231,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
-          setPlayers(data.players ?? []);
-          setRosterState(data.roster ?? []);
-          setTeamModeState(data.teamMode ?? 'leader');
-          setTeams(data.teams ?? []);
-          if (!pendingElimChange.current) setElimModeState(data.elimMode ?? 'single');
-          setBracket(data.bracket ?? null);
-          setMaps(data.maps ?? []);
-          setStageMaps(data.stageMaps ?? {});
-          setSpinState(data.spinState ?? null);
-          setShuffleState(prev => applyShuffleState(prev, data.shuffleState ?? null, localShuffleStartTimeRef));
-          if (!pendingSpinAppend.current) {
-            setSpinQueue(data.spinQueue ?? []);
-            setSpinCategories(data.spinCategories ?? []);
-            setSpinItemCategory(data.spinItemCategory ?? {});
-            setDefaultMaps(data.defaultMaps ?? []);
-          }
-          setJoinKeyState(data.joinKey ?? '');
-          setChatMessages(data.chatMessages ?? []);
-          setTickerTextState(data.tickerText ?? '');
+          applySnapshot(data, true); // SSE path — guards active
         } catch { /* ignore malformed frames */ }
         setLoading(false);
       };
@@ -240,9 +247,9 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       es?.close();
       if (pollFallback) clearInterval(pollFallback);
     };
-  }, [refresh]);
+  }, [refresh, applySnapshot]);
 
-  // —— Players ——
+  // ── Players ───────────────────────────────────────────────────────────────
   const submitPlayer = async (name: string, joinKey?: string) => {
     const res = await fetch('/api/players', {
       method: 'POST',
@@ -251,11 +258,13 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
+    // Non-admin action — no guard needed, apply directly
     setPlayers(data.players);
     return {};
   };
 
   const removePlayer = async (name: string) => {
+    guard.touch('players'); guard.touch('roster');
     const res = await fetch('/api/players', {
       method: 'DELETE',
       headers: adminHeaders,
@@ -267,6 +276,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addToRoster = async (name: string) => {
+    guard.touch('roster');
     const res = await fetch('/api/players', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -277,6 +287,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeFromRoster = async (name: string) => {
+    guard.touch('roster');
     const res = await fetch('/api/players', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -287,6 +298,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const setRoster = async (names: string[]) => {
+    guard.touch('roster');
     const res = await fetch('/api/players', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -297,6 +309,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearQueue = async () => {
+    guard.touch('players'); guard.touch('roster');
     const res = await fetch('/api/players', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -308,6 +321,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearRoster = async () => {
+    guard.touch('roster');
     const res = await fetch('/api/players', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -317,8 +331,9 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setRosterState(data.roster);
   };
 
-  // —— Join Key ——
+  // ── Join Key ──────────────────────────────────────────────────────────────
   const setJoinKey = async (key: string) => {
+    guard.touch('joinKey');
     const res = await fetch('/api/players/joinkey', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -330,8 +345,9 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     return {};
   };
 
-  // —— Chat ——
+  // ── Chat ──────────────────────────────────────────────────────────────────
   const sendChat = async (name: string, text: string) => {
+    // No guard — non-admin, apply immediately so sender sees their message
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -344,13 +360,15 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearChat = async () => {
+    guard.touch('chat');
     const res = await fetch('/api/chat', { method: 'DELETE', headers: adminHeaders });
     const data = await res.json();
     setChatMessages(data.messages);
   };
 
-  // —— Teams ——
+  // ── Teams ─────────────────────────────────────────────────────────────────
   const formTeams = async (leaders?: string[]) => {
+    guard.touch('teams'); guard.touch('bracket');
     const res = await fetch('/api/teams', {
       method: 'POST',
       headers: adminHeaders,
@@ -364,6 +382,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const assignLeader = async (teamId: string, playerName: string) => {
+    guard.touch('teams');
     try {
       const res = await fetch('/api/teams', {
         method: 'POST',
@@ -375,6 +394,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setTeams(data.teams);
       return {};
     } catch {
+      // Optimistic fallback on network failure
       setTeams(prevTeams =>
         prevTeams.map(t => t.name === teamId ? { ...t, leader: playerName } : t)
       );
@@ -383,21 +403,24 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetTeams = async () => {
+    guard.touch('teams'); guard.touch('bracket');
     await fetch('/api/teams', { method: 'DELETE', headers: adminHeaders });
     setTeams([]);
     setBracket(null);
   };
 
   const setTeamMode = async (mode: 'leader' | 'random') => {
+    guard.touch('teamMode');
+    setTeamModeState(mode); // optimistic — instant UI feedback
     await fetch('/api/teams', {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ teamMode: mode }),
     });
-    setTeamModeState(mode);
   };
 
   const renameTeam = async (teamId: string, customName: string) => {
+    guard.touch('teams');
     const res = await fetch('/api/teams', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -410,6 +433,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const setTeamNameFromLeader = async (teamId: string) => {
+    guard.touch('teams');
     const res = await fetch('/api/teams', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -422,6 +446,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addReplacement = async (teamId: string, originalName: string, replacementName: string) => {
+    guard.touch('teams');
     const res = await fetch('/api/teams', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -434,6 +459,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeReplacement = async (teamId: string, originalName: string) => {
+    guard.touch('teams');
     const res = await fetch('/api/teams', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -445,8 +471,9 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     return {};
   };
 
-  // —— Bracket ——
+  // ── Bracket ───────────────────────────────────────────────────────────────
   const generateBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
+    guard.touch('bracket');
     const res = await fetch('/api/bracket', {
       method: 'POST',
       headers: adminHeaders,
@@ -459,6 +486,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const seedBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
+    guard.touch('bracket');
     const res = await fetch('/api/bracket', {
       method: 'POST',
       headers: adminHeaders,
@@ -467,10 +495,15 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setBracket(data.bracket);
+    // Register this client as owner of the shuffle animation
+    if (data.shuffleState?.startTime) {
+      localShuffleStartTimeRef.current = data.shuffleState.startTime;
+    }
     return { shuffleState: data.shuffleState ?? null };
   };
 
   const updateScore = async (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => {
+    guard.touch('bracket');
     const res = await fetch('/api/bracket', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -481,6 +514,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const undoMatch = async (section: string, ri: number, mi: number) => {
+    guard.touch('bracket');
     const res = await fetch('/api/bracket', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -491,6 +525,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateThirdPlace = async (p1wins: number, p2wins: number) => {
+    guard.touch('bracket');
     const res = await fetch('/api/bracket', {
       method: 'PUT',
       headers: adminHeaders,
@@ -501,27 +536,25 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetBracket = async () => {
+    guard.touch('bracket'); guard.touch('stageMaps');
     await fetch('/api/bracket', { method: 'DELETE', headers: adminHeaders });
     setBracket(null);
     setStageMaps({});
   };
 
   const setElimMode = async (mode: 'single' | 'double') => {
-    setElimModeState(mode);
-    pendingElimChange.current = true;
-    try {
-      await fetch('/api/bracket', {
-        method: 'PATCH',
-        headers: adminHeaders,
-        body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
-      });
-    } finally {
-      pendingElimChange.current = false;
-    }
+    guard.touch('elimMode');
+    setElimModeState(mode); // optimistic — instant UI feedback
+    await fetch('/api/bracket', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
+    });
   };
 
-  // —— Maps ——
+  // ── Maps ──────────────────────────────────────────────────────────────────
   const addMap = async (name: string) => {
+    guard.touch('maps');
     const res = await fetch('/api/maps', {
       method: 'POST',
       headers: adminHeaders,
@@ -534,6 +567,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeMap = async (name: string) => {
+    guard.touch('maps'); guard.touch('stageMaps');
     const res = await fetch('/api/maps', {
       method: 'DELETE',
       headers: adminHeaders,
@@ -545,8 +579,9 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const appendSpinQueue = async (map: string) => {
+    // Optimistic — add immediately so the spinner feels instant
+    guard.touch('spinQueue');
     setSpinQueue(prev => [...prev, map]);
-    pendingSpinAppend.current = true;
     try {
       const res = await fetch('/api/maps', {
         method: 'PATCH',
@@ -555,18 +590,20 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       });
       if (res.ok) {
         const data = await res.json();
+        // Reconcile with server's authoritative list
+        guard.touch('spinQueue');
         setSpinQueue(data.spinQueue);
       } else {
+        // Revert optimistic update
         setSpinQueue(prev => prev.slice(0, -1));
       }
     } catch {
       setSpinQueue(prev => prev.slice(0, -1));
-    } finally {
-      pendingSpinAppend.current = false;
     }
   };
 
   const removeSpinQueueItem = async (idx: number) => {
+    guard.touch('spinQueue');
     setSpinQueue(prev => {
       const newQ = prev.filter((_, i) => i !== idx);
       fetch('/api/maps', {
@@ -579,20 +616,17 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearSpinQueue = async () => {
+    guard.touch('spinQueue');
     setSpinQueue([]);
-    pendingSpinAppend.current = true;
-    try {
-      await fetch('/api/maps', {
-        method: 'PATCH',
-        headers: adminHeaders,
-        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
-      });
-    } finally {
-      pendingSpinAppend.current = false;
-    }
+    await fetch('/api/maps', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
+    });
   };
 
   const saveDefaultMaps = async (starred: string[]) => {
+    guard.touch('defaultMaps');
     setDefaultMaps(starred);
     await fetch('/api/maps', {
       method: 'PATCH',
@@ -602,6 +636,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const saveSpinCategories = async (cats: string[], itemCat: Record<number, string>) => {
+    guard.touch('spinCategories');
     setSpinCategories(cats);
     setSpinItemCategory(itemCat);
     await fetch('/api/maps', {
@@ -612,6 +647,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
+    guard.touch('stageMaps');
     const res = await fetch('/api/maps', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -622,6 +658,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearStage = async (stageKey: string, slot?: number) => {
+    guard.touch('stageMaps');
     const res = await fetch('/api/maps', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -632,7 +669,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const setTickerText = async (text: string) => {
-    setTickerTextState(text);
+    guard.touch('tickerText');
+    setTickerTextState(text); // optimistic
     await fetch('/api/ticker', {
       method: 'PATCH',
       headers: adminHeaders,
@@ -641,6 +679,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetAll = async () => {
+    // Touch everything so SSE from the reset doesn't race with local clear
+    ['players','roster','teams','bracket','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps'].forEach(f => guard.touch(f));
     await fetch('/api/reset', { method: 'DELETE', headers: adminHeaders });
     setPlayers([]);
     setRosterState([]);
