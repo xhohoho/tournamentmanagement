@@ -188,12 +188,12 @@ export default function Home() {
           className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50"
           onClick={(e) => { if (e.target === e.currentTarget) setTickerEditOpen(false); }}
         >
-          <div className="bg-[#0f0f1a] border border-[#32324a] rounded-2xl p-7 w-[460px] max-w-[95vw] animate-scale-in">
-            <h2 className="font-['Bebas_Neue'] text-3xl tracking-widest mb-1">📢 TICKER TEXT</h2>
-            <p className="text-[#7878a0] text-sm mb-5">Edit the scrolling message shown at the bottom of the page.</p>
+          <div className="t-surface border t-border rounded-2xl p-7 w-[460px] max-w-[95vw] animate-scale-in shadow-xl">
+            <h2 className="font-['Bebas_Neue'] text-3xl tracking-widest mb-1 t-text">📢 TICKER TEXT</h2>
+            <p className="t-muted text-sm mb-5">Edit the scrolling message shown at the bottom of the page.</p>
 
             <textarea
-              className="w-full bg-[#161625] border border-[#32324a] rounded-xl px-4 py-3 text-[#dde0f0] font-['DM_Mono'] text-sm outline-none focus:border-[#4d7cff] transition-colors resize-none"
+              className="w-full t-elevated border t-border-mid rounded-xl px-4 py-3 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors resize-none"
               rows={3}
               placeholder="Enter ticker text…"
               value={tickerDraft}
@@ -203,13 +203,14 @@ export default function Home() {
 
             <div className="flex gap-3 mt-4">
               <button
-                className="flex-1 py-2.5 rounded-xl bg-[#161625] border border-[#32324a] text-[#dde0f0] font-bold text-sm hover:border-[#4d7cff] hover:text-[#4d7cff] transition-colors cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-bold text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
                 onClick={() => setTickerEditOpen(false)}
               >
                 Cancel
               </button>
               <button
-                className="flex-1 py-2.5 rounded-xl bg-[#4d7cff] text-white font-bold text-sm hover:bg-[#3a6bff] transition-colors disabled:opacity-40 cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer"
+                style={{ background: 'var(--accent)' }}
                 onClick={saveTickerText}
                 disabled={tickerSaving || !tickerDraft.trim()}
               >
