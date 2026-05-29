@@ -60,6 +60,12 @@ export function TeamsTab() {
     const next = [...leaders]; next[i] = val; setLeaders(next);
   };
 
+  const handleReset = async () => {
+    await resetTeams();
+    setLeaders(Array(n).fill(''));
+    setErr('');
+  };
+
   const handleForm = async () => {
     setErr('');
     setRevealing(false);
@@ -168,7 +174,7 @@ export function TeamsTab() {
                   style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}
                   onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
                   onMouseLeave={e => { e.currentTarget.style.color = ''; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-                  onClick={resetTeams}
+                  onClick={handleReset}
                 >
                   Reset
                 </button>
@@ -293,9 +299,8 @@ export function TeamsTab() {
                       </select>
                     </div>
 
-                    {/* 4 random placeholder rows */}
+                    {/* Captain row + 4 random placeholder rows */}
                     <div className="flex-1 flex flex-col justify-around px-2 py-1">
-                      {/* Captain row — shows chosen name or crown placeholder */}
                       <div className="flex items-center gap-1 py-0.5">
                         <span className="w-4 shrink-0" style={{ fontSize: 10 }}>👑</span>
                         {picked
@@ -303,7 +308,6 @@ export function TeamsTab() {
                           : <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
                         }
                       </div>
-                      {/* 4 random slots */}
                       {Array.from({ length: 4 }, (__, j) => (
                         <div key={j} className="flex items-center gap-1 py-0.5">
                           <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>·</span>
