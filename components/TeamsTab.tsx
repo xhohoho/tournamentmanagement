@@ -1,45 +1,204 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { TEAM_COLORS } from '@/lib/utils';
 
-// How many players have been "revealed" so far after form
+// ─── Reveal animation hook ────────────────────────────────────────────────────
 function useReveal(active: boolean, total: number, intervalMs = 120) {
   const [count, setCount] = useState(0);
-
   useEffect(() => {
     if (!active) { setCount(0); return; }
     setCount(0);
     const iv = setInterval(() => {
-      setCount(c => {
-        if (c >= total) { clearInterval(iv); return c; }
-        return c + 1;
-      });
+      setCount(c => { if (c >= total) { clearInterval(iv); return c; } return c + 1; });
     }, intervalMs);
     return () => clearInterval(iv);
   }, [active, total, intervalMs]);
-
   return count;
 }
 
+// ─── Popover state ────────────────────────────────────────────────────────────
+interface PopoverTarget {
+  teamId: string;
+  teamColor: string;
+  member: string;
+  isLeader: boolean;
+  hasReplacement: boolean;
+  anchorRect: DOMRect;
+}
+
+// ─── Sub-in popover component ─────────────────────────────────────────────────
+function SubPopover({
+  target,
+  onClose,
+  onAssignLeader,
+  onAddReplacement,
+  onRemoveReplacement,
+}: {
+  target: PopoverTarget;
+  onClose: () => void;
+  onAssignLeader: () => Promise<void>;
+  onAddReplacement: (name: string) => Promise<void>;
+  onRemoveReplacement: () => Promise<void>;
+}) {
+  const [subName, setSubName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  // Position: below the row, left-aligned, but keep inside viewport
+  const style = (() => {
+    const PAD = 8;
+    const W = 220;
+    const { left, bottom, top } = target.anchorRect;
+    const vh = window.innerHeight;
+    const spaceBelow = vh - bottom;
+    const placeAbove = spaceBelow < 160 && top > 160;
+    return {
+      position: 'fixed' as const,
+      width: W,
+      left: Math.min(left, window.innerWidth - W - PAD),
+      ...(placeAbove ? { bottom: vh - top + 4 } : { top: bottom + 4 }),
+      zIndex: 9999,
+    };
+  })();
+
+  // Close on outside click or Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onDown = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); };
+  }, [onClose]);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleSub = async () => {
+    if (!subName.trim()) return;
+    setBusy(true);
+    await onAddReplacement(subName.trim());
+    setBusy(false);
+    onClose();
+  };
+
+  const handleLeader = async () => {
+    setBusy(true);
+    await onAssignLeader();
+    setBusy(false);
+    onClose();
+  };
+
+  const handleRemove = async () => {
+    setBusy(true);
+    await onRemoveReplacement();
+    setBusy(false);
+    onClose();
+  };
+
+  return (
+    <div
+      ref={popRef}
+      style={style}
+      className="rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
+      onClick={e => e.stopPropagation()}
+      // Prevent the popover from closing when interacting inside
+    >
+      {/* Header */}
+      <div
+        className="px-3 py-2 flex items-center justify-between shrink-0"
+        style={{ background: target.teamColor + '18', borderBottom: `1px solid ${target.teamColor}30` }}
+      >
+        <span
+          className="font-['DM_Mono'] text-xs font-bold truncate"
+          style={{ color: target.teamColor }}
+        >{target.member}</span>
+        <button
+          onClick={onClose}
+          className="shrink-0 ml-2 opacity-40 hover:opacity-80 cursor-pointer transition-opacity"
+          style={{ fontSize: 13, color: 'var(--text-muted)', background: 'none', border: 'none', lineHeight: 1 }}
+        >✕</button>
+      </div>
+
+      {/* Body */}
+      <div
+        className="flex flex-col gap-2 p-3"
+        style={{ background: 'var(--bg-surface, var(--bg-elevated))' }}
+      >
+        {/* Make leader — only for non-leaders */}
+        {!target.isLeader && (
+          <button
+            disabled={busy}
+            onClick={handleLeader}
+            className="w-full py-1.5 rounded-xl font-['DM_Mono'] text-xs font-bold cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-40"
+            style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
+          >👑 Make Captain</button>
+        )}
+
+        {/* Replacement section */}
+        {target.hasReplacement ? (
+          <button
+            disabled={busy}
+            onClick={handleRemove}
+            className="w-full py-1.5 rounded-xl font-['DM_Mono'] text-xs font-bold cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-40 border"
+            style={{ background: 'transparent', color: 'var(--accent-red)', borderColor: 'var(--accent-red)' }}
+          >✕ Undo Replacement</button>
+        ) : (
+          <>
+            <p className="font-['DM_Mono'] text-[10px] t-muted -mb-1">Sub-in player name</p>
+            <div className="flex gap-1.5">
+              <input
+                ref={inputRef}
+                value={subName}
+                onChange={e => setSubName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSub(); }}
+                placeholder="Replacement name…"
+                className="flex-1 min-w-0 rounded-lg px-2 py-1.5 font-['DM_Mono'] text-xs outline-none border"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  borderColor: 'var(--border-mid)',
+                  color: 'var(--text)',
+                }}
+              />
+              <button
+                disabled={!subName.trim() || busy}
+                onClick={handleSub}
+                className="shrink-0 px-3 py-1.5 rounded-lg font-['DM_Mono'] text-xs font-bold cursor-pointer disabled:opacity-30 transition-opacity"
+                style={{ background: 'var(--accent-green)', color: '#fff' }}
+              >{busy ? '…' : '↵'}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export function TeamsTab() {
-  const { roster, teams, teamMode, isAdmin, loading, formTeams, resetTeams, setTeamMode, assignLeader, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement } = useTourney();
+  const {
+    roster, teams, teamMode, isAdmin, loading,
+    formTeams, resetTeams, setTeamMode,
+    assignLeader, renameTeam, setTeamNameFromLeader,
+    addReplacement, removeReplacement,
+  } = useTourney();
+
   const [leaders, setLeaders] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [revealing, setRevealing] = useState(false);
   const [forming, setForming] = useState(false);
 
-  // Per-team inline edit state: teamId -> draft name
-  const [editingName, setEditingName] = useState<Record<string, string | null>>({});
-  // Per-team replacement input: teamId -> { member -> draft replacement }
-  const [repInput, setRepInput] = useState<Record<string, Record<string, string>>>({}); 
-  // Per-player loading state for replacement submit
-  const [repLoading, setRepLoading] = useState<Record<string, boolean>>({});
+  // Team name inline editing: teamId -> draft string | undefined (not editing)
+  const [editingName, setEditingName] = useState<Record<string, string | undefined>>({});
+
+  // Popover
+  const [popover, setPopover] = useState<PopoverTarget | null>(null);
 
   const totalSlots = teams.length * 5;
   const revealCount = useReveal(revealing, totalSlots);
-
   const revealOrderMap = useRef<Map<string, number>>(new Map());
 
   const seedRevealOrder = (newTeams: typeof teams) => {
@@ -71,12 +230,14 @@ export function TeamsTab() {
     await resetTeams();
     setLeaders(Array(n).fill(''));
     setErr('');
+    setPopover(null);
   };
 
   const handleForm = async () => {
     setErr('');
     setRevealing(false);
     setForming(true);
+    setPopover(null);
     const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
     setForming(false);
     if (result.error) { setErr(result.error); return; }
@@ -92,34 +253,50 @@ export function TeamsTab() {
     return assignedIndex < revealCount;
   };
 
+  const openPopover = useCallback((
+    e: React.MouseEvent,
+    teamId: string,
+    teamColor: string,
+    member: string,
+    isLeader: boolean,
+    hasReplacement: boolean,
+  ) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPopover({ teamId, teamColor, member, isLeader, hasReplacement, anchorRect: rect });
+  }, []);
+
   if (loading) return (
     <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
       <div className="h-10 w-32 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
       <div className="h-4 w-64 rounded-lg" style={{ background: 'var(--bg-elevated)' }} />
-      {[...Array(3)].map((_, i) => <div key={i} className="h-32 rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 1 - i * 0.2 }} />)}
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="h-32 rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 1 - i * 0.2 }} />
+      ))}
     </div>
   );
 
-  // Teams grid column count
   const teamCols = teams.length > 0
     ? Math.min(teams.length, Math.ceil(Math.sqrt(teams.length * 1.5)))
     : Math.min(previewSlots, Math.ceil(Math.sqrt(previewSlots * 1.5)));
 
-  // In leader mode with no teams formed yet, show skeleton with captain dropdowns
   const showCaptainSkeleton = isAdmin && teamMode === 'leader' && n >= 2 && teams.length === 0;
 
   return (
     <div className="flex-1 flex flex-col w-full py-4 gap-3 min-h-0">
+
       {/* Header */}
       <div>
         <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Team Formation</h1>
-        <p className="font-['DM_Mono'] text-xs t-muted">5 players per team · {isAdmin ? 'Admin controls below' : 'View only — admin required to edit'}</p>
+        <p className="font-['DM_Mono'] text-xs t-muted">
+          5 players per team · {isAdmin ? 'Admin controls below' : 'View only — admin required to edit'}
+        </p>
       </div>
 
-      {/* Main layout: left column (controls) + right column (teams) */}
+      {/* Main layout */}
       <div className="flex-1 flex gap-4 min-h-0">
 
-        {/* LEFT: Admin controls — fixed width, doesn't squish */}
+        {/* LEFT: Admin sidebar */}
         {isAdmin && (
           <div className="flex flex-col gap-3 shrink-0 w-72">
 
@@ -128,8 +305,8 @@ export function TeamsTab() {
               <h2 className="font-['Bebas_Neue'] text-base tracking-widest t-text mb-3">Formation Mode</h2>
               <div className="flex flex-col gap-2">
                 {[
-                  { id: 'leader', icon: '\u{1F451}', label: 'Leader + Random', desc: 'Pick captains, fill rest randomly.' },
-                  { id: 'random', icon: '\u{1F3B2}', label: 'Fully Random',    desc: 'All members assigned randomly.' },
+                  { id: 'leader', icon: '👑', label: 'Leader + Random', desc: 'Pick captains, fill rest randomly.' },
+                  { id: 'random', icon: '🎲', label: 'Fully Random',    desc: 'All members assigned randomly.' },
                 ].map(opt => (
                   <div
                     key={opt.id}
@@ -188,7 +365,6 @@ export function TeamsTab() {
               </div>
             </div>
 
-            {/* Hint when not enough players for leader mode */}
             {teamMode === 'leader' && n < 2 && (
               <p className="font-['DM_Mono'] text-[10px] t-dim px-1">
                 Add at least 10 players (2 teams of 5) to pick captains.
@@ -201,10 +377,12 @@ export function TeamsTab() {
         {/* RIGHT: Teams grid */}
         <div className="flex-1 t-surface border t-border rounded-2xl p-4 min-h-0 overflow-hidden flex flex-col">
           <h2 className="font-['Bebas_Neue'] text-lg tracking-widest t-text mb-3 shrink-0">
-            {teams.length > 0 ? 'Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}${teamMode === 'random' ? ' · Fully Random' : ''}`}
+            {teams.length > 0
+              ? 'Teams'
+              : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}${teamMode === 'random' ? ' · Fully Random' : ''}`}
           </h2>
 
-          {/* Formed teams */}
+          {/* ── Formed teams ── */}
           {teams.length > 0 ? (
             <div
               className="flex-1 min-h-0 overflow-y-auto"
@@ -217,62 +395,64 @@ export function TeamsTab() {
             >
               {teams.map((t) => {
                 const displayName = t.customName || t.name;
-                const isEditingThisTeam = editingName[t.name] !== null && editingName[t.name] !== undefined;
+                const isEditingThisTeam = editingName[t.name] !== undefined;
+
                 return (
                   <div
                     key={t.name}
-                    className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
+                    className="rounded-xl border flex flex-col overflow-hidden"
                     style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}
                   >
-                    {/* Team header: name + admin edit controls */}
-                    <div className="px-3 pt-2 pb-1.5 border-b shrink-0 flex items-center gap-1" style={{ borderColor: 'var(--border)' }}>
+                    {/* ── Team header ── */}
+                    <div
+                      className="px-3 pt-2 pb-1.5 border-b shrink-0 flex items-center gap-1"
+                      style={{ borderColor: 'var(--border)' }}
+                    >
                       {isAdmin && isEditingThisTeam ? (
-                        <>
-                          <input
-                            autoFocus
-                            className="flex-1 min-w-0 bg-transparent outline-none font-['Bebas_Neue'] tracking-wide"
-                            style={{ color: t.color, fontSize: 'clamp(12px, 1.1vw, 18px)' }}
-                            value={editingName[t.name] ?? displayName}
-                            onChange={e => setEditingName(prev => ({ ...prev, [t.name]: e.target.value }))}
-                            onKeyDown={async e => {
-                              if (e.key === 'Enter') {
-                                const val = (editingName[t.name] ?? '').trim();
-                                const r = await renameTeam(t.name, val);
-                                if (r?.error) setErr(r.error);
-                                setEditingName(prev => { const n = { ...prev }; delete n[t.name]; return n; });
-                              } else if (e.key === 'Escape') {
-                                setEditingName(prev => { const n = { ...prev }; delete n[t.name]; return n; });
-                              }
-                            }}
-                            onBlur={async () => {
+                        <input
+                          autoFocus
+                          className="flex-1 min-w-0 bg-transparent outline-none font-['Bebas_Neue'] tracking-wide"
+                          style={{ color: t.color, fontSize: 'clamp(12px, 1.1vw, 18px)' }}
+                          value={editingName[t.name] ?? displayName}
+                          onChange={e => setEditingName(prev => ({ ...prev, [t.name]: e.target.value }))}
+                          onKeyDown={async e => {
+                            if (e.key === 'Enter') {
                               const val = (editingName[t.name] ?? '').trim();
                               const r = await renameTeam(t.name, val);
                               if (r?.error) setErr(r.error);
                               setEditingName(prev => { const n = { ...prev }; delete n[t.name]; return n; });
-                            }}
-                          />
-                        </>
+                            } else if (e.key === 'Escape') {
+                              setEditingName(prev => { const n = { ...prev }; delete n[t.name]; return n; });
+                            }
+                          }}
+                          onBlur={async () => {
+                            const val = (editingName[t.name] ?? '').trim();
+                            const r = await renameTeam(t.name, val);
+                            if (r?.error) setErr(r.error);
+                            setEditingName(prev => { const n = { ...prev }; delete n[t.name]; return n; });
+                          }}
+                        />
                       ) : (
                         <h3
                           className="font-['Bebas_Neue'] tracking-wide flex-1 truncate"
                           style={{ color: t.color, fontSize: 'clamp(12px, 1.1vw, 18px)' }}
                         >{displayName}</h3>
                       )}
+
+                      {/* Name edit buttons — shown when not in edit mode */}
                       {isAdmin && !isEditingThisTeam && (
                         <div className="flex gap-0.5 shrink-0">
-                          {/* Edit name button */}
                           <button
                             onClick={() => setEditingName(prev => ({ ...prev, [t.name]: displayName }))}
-                            className="px-1 py-0.5 rounded hover:opacity-80 transition-opacity cursor-pointer"
-                            style={{ background: 'transparent', color: t.color, fontSize: 9, opacity: 0.6 }}
+                            className="px-1 py-0.5 rounded hover:opacity-100 transition-opacity cursor-pointer"
+                            style={{ background: 'transparent', color: t.color, fontSize: 10, opacity: 0.5 }}
                             title="Edit team name"
                           >✏️</button>
-                          {/* Set name from leader button — only if leader exists */}
                           {t.leader && (
                             <button
                               onClick={async () => { const r = await setTeamNameFromLeader(t.name); if (r?.error) setErr(r.error); }}
-                              className="px-1 py-0.5 rounded hover:opacity-80 transition-opacity cursor-pointer"
-                              style={{ background: 'transparent', fontSize: 9, opacity: 0.6, color: 'var(--accent-gold)' }}
+                              className="px-1 py-0.5 rounded hover:opacity-100 transition-opacity cursor-pointer"
+                              style={{ background: 'transparent', fontSize: 10, opacity: 0.5, color: 'var(--accent-gold)' }}
                               title={`Set name to captain: ${t.leader}`}
                             >👑</button>
                           )}
@@ -280,100 +460,53 @@ export function TeamsTab() {
                       )}
                     </div>
 
-                    {/* Members list */}
-                    <div className="flex flex-col px-2 py-1 gap-0.5">
+                    {/* ── Members list ── */}
+                    <div className="flex flex-col px-2 py-1.5 gap-0.5">
                       {t.members.map((m) => {
                         const visible = isVisible(m);
                         const replacement = t.replacements?.[m];
-                        const repKey = `${t.name}::${m}`;
-                        const repDraft = repInput[t.name]?.[m] ?? '';
-                        const isRepLoading = repLoading[repKey];
+                        const isLeader = m === t.leader;
+
                         return (
                           <div
                             key={m}
                             className="transition-all duration-200"
-                            style={{
-                              opacity: visible ? 1 : 0,
-                              transform: visible ? 'translateX(0)' : 'translateX(-8px)',
-                            }}
+                            style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateX(0)' : 'translateX(-8px)' }}
                           >
-                            {/* Main player row */}
+                            {/* Player row — clickable by admin */}
                             <div
-                              className="flex items-center gap-1"
+                              className={`flex items-center gap-1 rounded-lg px-1 ${isAdmin ? 'cursor-pointer hover:bg-white/5 active:bg-white/10' : ''} transition-colors`}
                               style={{
-                                color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)',
+                                color: isLeader ? 'var(--accent-gold)' : 'var(--text-muted)',
                                 fontSize: 'clamp(9px, 0.75vw, 13px)',
+                                paddingTop: 2,
+                                paddingBottom: 2,
                               }}
+                              onClick={isAdmin
+                                ? e => openPopover(e, t.name, t.color, m, isLeader, !!replacement)
+                                : undefined
+                              }
+                              title={isAdmin ? 'Click to manage player' : undefined}
                             >
-                              <span className="shrink-0 w-4">{m === t.leader ? '👑' : '·'}</span>
+                              <span className="shrink-0 w-4">{isLeader ? '👑' : '·'}</span>
                               <span
                                 className="flex-1 truncate font-['DM_Mono']"
-                                style={replacement ? { textDecoration: 'line-through', opacity: 0.45 } : {}}
+                                style={replacement ? { textDecoration: 'line-through', opacity: 0.4 } : {}}
                               >{m}</span>
-                              {isAdmin && (
-                                m === t.leader ? (
-                                  <span className="shrink-0 opacity-40" style={{ color: 'var(--accent-gold)', fontSize: 9 }}>👑</span>
-                                ) : (
-                                  <button
-                                    onClick={async () => { setErr(''); const r = await assignLeader(t.name, m); if (r?.error) setErr(r.error); }}
-                                    className="shrink-0 px-1 py-0.5 font-['DM_Mono'] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
-                                    style={{ fontSize: 9, background: 'var(--accent-green)' }}
-                                    title="Make team leader"
-                                  >✓</button>
-                                )
+                              {/* Subtle indicator that there's a replacement or it's manageable */}
+                              {replacement && (
+                                <span style={{ fontSize: 8, color: 'var(--accent-green)', opacity: 0.7 }}>↳</span>
                               )}
                             </div>
 
-                            {/* Replacement row */}
-                            {replacement ? (
-                              <div className="flex items-center gap-1 pl-4" style={{ fontSize: 'clamp(9px, 0.75vw, 12px)' }}>
-                                <span style={{ color: 'var(--accent-green)', fontSize: 9 }}>↳</span>
-                                <span className="flex-1 truncate font-['DM_Mono']" style={{ color: 'var(--accent-green)' }}>{replacement}</span>
-                                {isAdmin && (
-                                  <button
-                                    onClick={async () => { const r = await removeReplacement(t.name, m); if (r?.error) setErr(r.error); }}
-                                    className="shrink-0 px-1 py-0.5 rounded hover:opacity-80 cursor-pointer"
-                                    style={{ fontSize: 9, color: 'var(--accent-red)', background: 'transparent' }}
-                                    title="Undo replacement"
-                                  >✕</button>
-                                )}
-                              </div>
-                            ) : isAdmin && (
-                              /* Replacement input row — admin only, no existing replacement */
-                              <div className="flex items-center gap-1 pl-4 mt-0.5">
-                                <input
-                                  className="flex-1 min-w-0 bg-transparent outline-none font-['DM_Mono'] border-b"
-                                  style={{ fontSize: 9, color: 'var(--text-dim)', borderColor: 'var(--border-mid)' }}
-                                  placeholder="sub-in name…"
-                                  value={repDraft}
-                                  onChange={e => setRepInput(prev => ({
-                                    ...prev,
-                                    [t.name]: { ...(prev[t.name] ?? {}), [m]: e.target.value },
-                                  }))}
-                                  onKeyDown={async e => {
-                                    if (e.key === 'Enter' && repDraft.trim()) {
-                                      setRepLoading(prev => ({ ...prev, [repKey]: true }));
-                                      const r = await addReplacement(t.name, m, repDraft.trim());
-                                      if (r?.error) setErr(r.error);
-                                      setRepInput(prev => { const n = { ...prev }; if (n[t.name]) delete n[t.name][m]; return n; });
-                                      setRepLoading(prev => ({ ...prev, [repKey]: false }));
-                                    }
-                                  }}
-                                />
-                                <button
-                                  disabled={!repDraft.trim() || isRepLoading}
-                                  onClick={async () => {
-                                    if (!repDraft.trim()) return;
-                                    setRepLoading(prev => ({ ...prev, [repKey]: true }));
-                                    const r = await addReplacement(t.name, m, repDraft.trim());
-                                    if (r?.error) setErr(r.error);
-                                    setRepInput(prev => { const n = { ...prev }; if (n[t.name]) delete n[t.name][m]; return n; });
-                                    setRepLoading(prev => ({ ...prev, [repKey]: false }));
-                                  }}
-                                  className="shrink-0 px-1 py-0.5 rounded transition-opacity cursor-pointer disabled:opacity-30"
-                                  style={{ fontSize: 9, background: 'var(--bg-hover)', color: 'var(--text-dim)' }}
-                                  title="Confirm replacement"
-                                >{isRepLoading ? '…' : '↵'}</button>
+                            {/* Replacement name shown inline below, indented */}
+                            {replacement && (
+                              <div
+                                className="flex items-center gap-1 pl-5"
+                                style={{ fontSize: 'clamp(8px, 0.7vw, 11px)', color: 'var(--accent-green)' }}
+                              >
+                                <span style={{ opacity: 0.6 }}>↳</span>
+                                <span className="font-['DM_Mono'] truncate">{replacement}</span>
                               </div>
                             )}
                           </div>
@@ -386,7 +519,7 @@ export function TeamsTab() {
             </div>
 
           ) : showCaptainSkeleton ? (
-            /* Leader mode skeleton — Team 1/2/3 header, first player row is 👑 + dropdown */
+            /* Leader mode skeleton */
             <div
               className="flex-1 min-h-0"
               style={{
@@ -406,35 +539,26 @@ export function TeamsTab() {
                     className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
                     style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: color, borderTopWidth: 3 }}
                   >
-                    {/* Static team name header */}
                     <h3
                       className="font-['Bebas_Neue'] tracking-wide px-3 pt-2 pb-1.5 border-b shrink-0"
                       style={{ color, borderColor: 'var(--border)', fontSize: 'clamp(12px, 1.1vw, 18px)' }}
                     >Team {i + 1}</h3>
-
                     <div className="flex-1 flex flex-col justify-around px-2 py-1">
-                      {/* Row 1: crown icon + captain dropdown */}
                       <div className="flex items-center gap-1 py-0.5">
-                        <span className="shrink-0 w-4" style={{ fontSize: 10 }}>{'\u{1F451}'}</span>
+                        <span className="shrink-0 w-4" style={{ fontSize: 10 }}>👑</span>
                         <select
                           className="flex-1 min-w-0 bg-transparent outline-none border-0 cursor-pointer font-['DM_Mono'] truncate"
-                          style={{
-                            color: picked ? color : 'var(--text-dim)',
-                            fontSize: 'clamp(9px, 0.75vw, 13px)',
-                          }}
+                          style={{ color: picked ? color : 'var(--text-dim)', fontSize: 'clamp(9px, 0.75vw, 13px)' }}
                           value={picked}
                           onChange={e => updateLeader(i, e.target.value)}
                         >
                           <option value="">— pick captain —</option>
-                          {available.map(p => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
+                          {available.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                       </div>
-                      {/* Rows 2–5: random placeholders */}
                       {Array.from({ length: 4 }, (__, j) => (
                         <div key={j} className="flex items-center gap-1 py-0.5">
-                          <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>{'\u00B7'}</span>
+                          <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>·</span>
                           <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
                         </div>
                       ))}
@@ -445,7 +569,7 @@ export function TeamsTab() {
             </div>
 
           ) : (
-            /* Plain skeleton — fully random or not enough players */
+            /* Plain skeleton */
             <div
               className="flex-1 min-h-0"
               style={{
@@ -468,7 +592,7 @@ export function TeamsTab() {
                   <div className="flex-1 flex flex-col justify-around px-2 py-1">
                     {Array.from({ length: 5 }, (__, j) => (
                       <div key={j} className="flex items-center gap-1 py-0.5">
-                        <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>{'\u00B7'}</span>
+                        <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>·</span>
                         <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
                       </div>
                     ))}
@@ -478,8 +602,27 @@ export function TeamsTab() {
             </div>
           )}
         </div>
-
       </div>
+
+      {/* ── Floating popover ── */}
+      {popover && isAdmin && (
+        <SubPopover
+          target={popover}
+          onClose={() => setPopover(null)}
+          onAssignLeader={async () => {
+            const r = await assignLeader(popover.teamId, popover.member);
+            if (r?.error) setErr(r.error);
+          }}
+          onAddReplacement={async (name) => {
+            const r = await addReplacement(popover.teamId, popover.member, name);
+            if (r?.error) setErr(r.error);
+          }}
+          onRemoveReplacement={async () => {
+            const r = await removeReplacement(popover.teamId, popover.member);
+            if (r?.error) setErr(r.error);
+          }}
+        />
+      )}
     </div>
   );
 }
