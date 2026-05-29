@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
     const B = state2.bracket;
     if (!B) return NextResponse.json({ error: 'Generate bracket structure first' }, { status: 400 });
 
-    const names = shuffle(state2.teams.map(t => t.name));
+    const names = shuffle(state2.teams.map(t => t.customName || t.name));
     let seeded: Bracket;
 
     if (B.type === 'single') {
