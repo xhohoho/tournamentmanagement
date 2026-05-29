@@ -241,7 +241,11 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
   const [seeding, setSeeding] = useState(false);
-  const [matchFormat, setMatchFormat] = useState<'bo1' | 'bo3'>('bo1');
+  // Derive matchFormat from the existing bracket so it survives refresh.
+  // Falls back to 'bo1' only when no bracket exists yet.
+  const bracketFormat = bracket?.upper[0]?.[0]?.format ?? null;
+  const [matchFormat, setMatchFormat] = useState<'bo1' | 'bo3'>(bracketFormat ?? 'bo1');
+  useEffect(() => { if (bracketFormat) setMatchFormat(bracketFormat); }, [bracketFormat]);
   const [pendingElim, setPendingElim] = useState<'single' | 'double' | null>(null);
   const displayElim = pendingElim ?? elimMode;
 
