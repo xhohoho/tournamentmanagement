@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useTourney } from '@/lib/context';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { TourneyProvider, useTourney } from '@/lib/context';
 import { AdminModal } from '@/components/AdminModal';
 import { PlayersTab } from '@/components/PlayersTab';
 import { TeamsTab } from '@/components/TeamsTab';

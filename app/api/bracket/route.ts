@@ -160,17 +160,19 @@ function seedLBDropIn(lower: BracketMatch[][], ubRi: number, loser: string, slot
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
 
-export async function GET() {
-  const state = await getState();
+export async function GET(req: NextRequest) {
+  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
+  const state = await getState(tid);
   return NextResponse.json({ bracket: state.bracket, elimMode: state.elimMode });
 }
 
 export async function POST(req: NextRequest) {
+  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   const body = await req.json();
   const { elimMode, matchFormat = 'bo1', action = 'generate' } = body;
   const fmt: 'bo1' | 'bo3' = matchFormat === 'bo3' ? 'bo3' : 'bo1';
-  const state = await getState();
+  const state = await getState(tid);
 
   if (state.teams.length < 2) return NextResponse.json({ error: 'Need at least 2 teams' }, { status: 400 });
 
@@ -200,13 +202,13 @@ export async function POST(req: NextRequest) {
       bracket = { type: 'double', upper: upperRaw, lower: lowerRaw, grandFinal: emptyMatch(fmt), champion: null };
     }
 
-    const next = await updateState(s => ({ ...s, bracket, elimMode, shuffleState: null }));
+    const next = await updateState(s => ({ ...s, bracket, elimMode, shuffleState: null }), tid);
     return NextResponse.json({ bracket: next.bracket });
   }
 
   // ── action: 'seed' — shuffle teams into bracket + broadcast animation ───────
   if (action === 'seed') {
-    const state2 = await getState();
+    const state2 = await getState(tid);
     const B = state2.bracket;
     if (!B) return NextResponse.json({ error: 'Generate bracket structure first' }, { status: 400 });
 
@@ -247,11 +249,11 @@ export async function POST(req: NextRequest) {
     const shuffleState = { startTime, delayMs: DELAY_MS, reveals: shuffledReveals };
 
     // Write seeded bracket + shuffleState together
-    const next = await updateState(s => ({ ...s, bracket: seeded, shuffleState }));
+    const next = await updateState(s => ({ ...s, bracket: seeded, shuffleState }), tid);
 
     // Schedule clearing shuffleState after animation completes
     setTimeout(async () => {
-      await updateState(s => ({ ...s, shuffleState: null }));
+      await updateState(s => ({ ...s, shuffleState: null }), tid);
     }, totalDuration);
 
     return NextResponse.json({ bracket: next.bracket, shuffleState });
@@ -261,12 +263,13 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   const body = await req.json();
   const { section, ri, mi, p1wins, p2wins, action, elimMode: newElimMode } = body;
 
   if (action === 'undoMatch') {
-    const state = await getState();
+    const state = await getState(tid);
     const B = state.bracket;
     if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });
     const bracket: Bracket = JSON.parse(JSON.stringify(B));
@@ -281,7 +284,7 @@ export async function PATCH(req: NextRequest) {
       } else {
         gf.winner = null; gf.score1 = 0; gf.score2 = 0; bracket.champion = null;
       }
-      const next = await updateState(s => ({ ...s, bracket }));
+      const next = await updateState(s => ({ ...s, bracket }), tid);
       return NextResponse.json({ bracket: next.bracket });
     }
 
@@ -347,16 +350,16 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    const next = await updateState(s => ({ ...s, bracket }));
+    const next = await updateState(s => ({ ...s, bracket }), tid);
     return NextResponse.json({ bracket: next.bracket });
   }
 
   if (action === 'setElimMode') {
-    const next = await updateState(s => ({ ...s, elimMode: newElimMode }));
+    const next = await updateState(s => ({ ...s, elimMode: newElimMode }), tid);
     return NextResponse.json({ elimMode: next.elimMode });
   }
 
-  const state = await getState();
+  const state = await getState(tid);
   const B = state.bracket;
   if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });
 
@@ -381,7 +384,7 @@ export async function PATCH(req: NextRequest) {
         else { gf.isReset = true; gf.resetScore1 = 0; gf.resetScore2 = 0; }
       }
     }
-    const next = await updateState(s => ({ ...s, bracket }));
+    const next = await updateState(s => ({ ...s, bracket }), tid);
     return NextResponse.json({ bracket: next.bracket });
   }
 
@@ -444,14 +447,15 @@ export async function PATCH(req: NextRequest) {
   sweepBracket(bracket);
   if (bracket.grandFinal?.winner) bracket.champion = bracket.grandFinal.winner;
 
-  const next = await updateState(s => ({ ...s, bracket }));
+  const next = await updateState(s => ({ ...s, bracket }), tid);
   return NextResponse.json({ bracket: next.bracket });
 }
 
 export async function PUT(req: NextRequest) {
+  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   const { p1wins, p2wins } = await req.json();
-  const state = await getState();
+  const state = await getState(tid);
   const B = state.bracket;
   if (!B || !B.thirdPlace) return NextResponse.json({ error: 'No 3rd place match' }, { status: 400 });
   const bracket: Bracket = JSON.parse(JSON.stringify(B));
@@ -460,12 +464,13 @@ export async function PUT(req: NextRequest) {
   tp.score2 = p2wins ?? tp.score2;
   const winner = resolveWinner(tp);
   if (winner) { tp.winner = winner; bracket.third = winner; }
-  const next = await updateState(s => ({ ...s, bracket }));
+  const next = await updateState(s => ({ ...s, bracket }), tid);
   return NextResponse.json({ bracket: next.bracket });
 }
 
 export async function DELETE(req: NextRequest) {
+  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  const next = await updateState(s => ({ ...s, bracket: null, stageMaps: {} }));
+  const next = await updateState(s => ({ ...s, bracket: null, stageMaps: {} }), tid);
   return NextResponse.json({ bracket: next.bracket });
 }

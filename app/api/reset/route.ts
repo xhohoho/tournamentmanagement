@@ -4,6 +4,7 @@ import { verifyAdminToken } from '@/app/api/admin/auth/route';
 
 // DELETE /api/reset — wipe everything except admin password and maps
 export async function DELETE(req: NextRequest) {
+  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   if (!await verifyAdminToken(req)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   }
@@ -18,7 +19,7 @@ export async function DELETE(req: NextRequest) {
     chatMessages: [],
     spinQueue: [],
     spinState: null,
-  }));
+  }), tid);
   const { adminPwHash: _, ...safe } = next;
   return NextResponse.json(safe);
 }

@@ -66,11 +66,12 @@ async function revokeToken(token: string): Promise<void> {
 
 // POST /api/admin/auth — verify password, return session token
 export async function POST(req: NextRequest) {
+  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   const { password } = await req.json();
   if (!password) {
     return NextResponse.json({ ok: false, error: 'Password required' }, { status: 400 });
   }
-  const state = await getState();
+  const state = await getState(tid);
   const valid = await verifyPassword(password, state.adminPwHash);
   if (!valid) {
     return NextResponse.json({ ok: false, error: 'Wrong password' }, { status: 401 });
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
   // If the stored password is still plaintext, upgrade it to a hash now
   if (!state.adminPwHash.includes(':')) {
     const hashed = await hashPassword(password);
-    await updateState(s => ({ ...s, adminPwHash: hashed }));
+    await updateState(s => ({ ...s, adminPwHash: hashed }), tid);
   }
 
   const token = await createToken();
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/admin/auth — change password (requires valid session token)
 export async function PATCH(req: NextRequest) {
+  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   if (!await verifyAdminToken(req)) {
     return NextResponse.json({ ok: false, error: 'Admin access required' }, { status: 403 });
   }
@@ -96,7 +98,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'New password required' }, { status: 400 });
   }
   const hashed = await hashPassword(newPassword.trim());
-  await updateState(s => ({ ...s, adminPwHash: hashed }));
+  await updateState(s => ({ ...s, adminPwHash: hashed }), tid);
   return NextResponse.json({ ok: true });
 }
 
