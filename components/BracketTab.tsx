@@ -235,7 +235,7 @@ function MatchCard({
 
 // ─── BracketTab ────────────────────────────────────────────────────────────────
 export function BracketTab({ spinResults }: { spinResults: string[] }) {
-  const { bracket, elimMode, teams, isAdmin, loading, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, shuffleState } = useTourney();
+  const { bracket, elimMode, teams, isAdmin, loading, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -243,56 +243,25 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [pendingElim, setPendingElim] = useState<'single' | 'double' | null>(null);
   const displayElim = pendingElim ?? elimMode;
 
-  // ── Shuffle animation ─────────────────────────────────────────────────────────────────────
-  // Track which slotKeys are currently visible based on elapsed time
-  const [revealedSlots, setRevealedSlots] = useState<Set<string>>(new Set());
+  // ── Shuffle animation — purely cosmetic flash effect, never hides team names ──
+  const [shuffleFlash, setShuffleFlash] = useState(false);
   const shuffleRafRef = useRef<number | null>(null);
 
-  const shuffleStartTimeRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    console.log('[shuffle effect] shuffleState changed:', shuffleState ? `startTime=${shuffleState.startTime}` : 'null', '| shuffleStartTimeRef:', shuffleStartTimeRef.current);
-    if (!shuffleState) {
-      console.log('[shuffle effect] → null path, setting __all__');
-      shuffleStartTimeRef.current = null;
-      setRevealedSlots(new Set('__all__'));
-      if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current);
+  // When seedBracket resolves, trigger a brief flash on each card sequentially.
+  // We do NOT hide teams — the bracket data already has team names from the server.
+  // The animation is just a visual flourish using CSS opacity pulse.
+  const triggerShuffleAnimation = () => {
+    setShuffleFlash(true);
+    if (shuffleRafRef.current) clearTimeout(shuffleRafRef.current);
+    shuffleRafRef.current = setTimeout(() => {
+      setShuffleFlash(false);
       shuffleRafRef.current = null;
-      return;
-    }
-    if (shuffleStartTimeRef.current === shuffleState.startTime) {
-      console.log('[shuffle effect] → same startTime, skipping');
-      return;
-    }
-    console.log('[shuffle effect] → new shuffle, starting RAF');
-    shuffleStartTimeRef.current = shuffleState.startTime;
-    if (shuffleRafRef.current) cancelAnimationFrame(shuffleRafRef.current);
-    shuffleRafRef.current = null;
-    setRevealedSlots(new Set());
-    const { startTime, delayMs, reveals } = shuffleState;
-    const tick = () => {
-      const elapsed = Date.now() - startTime;
-      const revealedCount = Math.floor(elapsed / delayMs);
-      const newSet = new Set<string>();
-      for (let i = 0; i < Math.min(revealedCount, reveals.length); i++) {
-        newSet.add(reveals[i].slotKey);
-      }
-      setRevealedSlots(newSet);
-      if (revealedCount < reveals.length) {
-        shuffleRafRef.current = requestAnimationFrame(tick);
-      } else {
-        shuffleRafRef.current = null;
-      }
-    };
-    shuffleRafRef.current = requestAnimationFrame(tick);
-  }, [shuffleState]);
+    }, 1200) as unknown as number;
+  };
 
-  // Helper for child components: is this slot revealed?
-  const isSlotRevealed = (slotKey: string) =>
-    revealedSlots.has('__all__') || revealedSlots.has(slotKey);
-
-  const isShuffling = !!shuffleState;
-  console.log('[BracketTab render] shuffleState:', shuffleState ? `startTime=${shuffleState.startTime}` : 'null', '| revealedSlots size:', revealedSlots.size, '| hasAll:', revealedSlots.has('__all__'));
+  // isSlotRevealed always returns true — teams are always visible.
+  // The flash effect is handled separately via shuffleFlash CSS class.
+  const isSlotRevealed = (_slotKey: string) => true;
 
   const handleElimChange = async (id: 'single' | 'double') => {
     if (hasBracket || id === displayElim) return;
@@ -349,19 +318,16 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
             <div className="flex items-center gap-2 ml-auto shrink-0">
               {!hasBracket ? (
                 <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-red)' }} onClick={async () => { if (!isAdmin || generating) return; setErr(''); setGenerating(true); const r = await generateBracket(matchFormat); setGenerating(false); if (r?.error) setErr(r.error); }} disabled={!hasTeams || generating}>{generating ? '⏳ Generating…' : '⚡ Generate Bracket'}</button>
-              ) : !isSeeded ? (
-                <>
-                  <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-green)' }} onClick={async () => { if (!isAdmin || seeding || isShuffling) return; setErr(''); setSeeding(true); const r = await seedBracket(matchFormat); setSeeding(false); if (r?.error) setErr(r.error); }} disabled={seeding || isShuffling}>{seeding || isShuffling ? '🎲 Shuffling…' : '🎲 Shuffle Teams'}</button>
-                  <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset</button>
-                </>
               ) : (
-                <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset Bracket</button>
+                <>
+                  <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-green)' }} onClick={async () => { if (!isAdmin || seeding) return; setErr(''); setSeeding(true); const r = await seedBracket(matchFormat); setSeeding(false); if (r?.error) setErr(r.error); else triggerShuffleAnimation(); }} disabled={seeding}>{seeding ? '🎲 Shuffling…' : '🎲 Shuffle Teams'}</button>
+                  <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset Bracket</button>
+                </>
               )}
             </div>
           </div>
           {!hasTeams && <p className="font-['DM_Mono'] text-[11px] mt-2" style={{ color: 'var(--accent-red)' }}>⚠ Form teams first.</p>}
-          {hasBracket && !isSeeded && <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">⚠ Format locked — click Shuffle to place teams, or Reset to start over.</p>}
-          {isSeeded && <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">⚠ Format locked — reset to change.</p>}
+          {hasBracket && <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">Shuffle to randomise teams · Reset to clear the bracket.</p>}
           {err && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-red)' }}>{err}</p>}
         </div>
       )}
