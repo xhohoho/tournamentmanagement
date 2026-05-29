@@ -19,19 +19,23 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 export default function Home() {
-  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue, spinItemCategory } = useTourney();
+  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
-  // Filter spin queue to only items whose category is active (checked), or all items if no category is active
   const filteredSpinResults = activeCategory
     ? spinQueue.filter((_, i) => spinItemCategory[i] === activeCategory)
     : spinQueue;
+
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
-
   const [dark, setDark] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+
+  // Ticker edit state
+  const [tickerEditOpen, setTickerEditOpen] = useState(false);
+  const [tickerDraft, setTickerDraft] = useState('');
+  const [tickerSaving, setTickerSaving] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
@@ -50,8 +54,20 @@ export default function Home() {
 
   const handleReset = async () => {
     if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
-    await resetAll(); // already clears spinQueue + spinState in both KV and local state
+    await resetAll();
     setResetConfirm(false);
+  };
+
+  const openTickerEdit = () => {
+    setTickerDraft(tickerText);
+    setTickerEditOpen(true);
+  };
+
+  const saveTickerText = async () => {
+    setTickerSaving(true);
+    await setTickerText(tickerDraft);
+    setTickerSaving(false);
+    setTickerEditOpen(false);
   };
 
   if (loading) {
@@ -92,16 +108,24 @@ export default function Home() {
                 {dark ? '☀️ Light' : '🌙 Dark'}
               </button>
               {isAdmin && (
-                <button
-                  onClick={handleReset}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
-                    resetConfirm
-                      ? 'border-[var(--accent-red)] text-[var(--accent-red)] bg-[rgba(232,41,74,0.1)]'
-                      : 't-border-mid t-muted t-elevated hover:border-[var(--accent-red)] hover:text-[var(--accent-red)]'
-                  }`}
-                >
-                  {resetConfirm ? '⚠ Confirm Reset?' : '🔄 Reset All'}
-                </button>
+                <>
+                  <button
+                    onClick={openTickerEdit}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer"
+                  >
+                    📢 Ticker
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
+                      resetConfirm
+                        ? 'border-[var(--accent-red)] text-[var(--accent-red)] bg-[rgba(232,41,74,0.1)]'
+                        : 't-border-mid t-muted t-elevated hover:border-[var(--accent-red)] hover:text-[var(--accent-red)]'
+                    }`}
+                  >
+                    {resetConfirm ? '⚠ Confirm Reset?' : '🔄 Reset All'}
+                  </button>
+                </>
               )}
               <button
                 onClick={handleAdminBtn}
@@ -152,11 +176,49 @@ export default function Home() {
           </div>
         </main>
 
-        <BottomTicker />
+        <BottomTicker text={tickerText} />
       </div>
 
       <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
       <ChatPanel open={chatOpen} onToggle={() => setChatOpen(o => !o)} />
+
+      {/* Ticker edit modal */}
+      {tickerEditOpen && (
+        <div
+          className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50"
+          onClick={(e) => { if (e.target === e.currentTarget) setTickerEditOpen(false); }}
+        >
+          <div className="bg-[#0f0f1a] border border-[#32324a] rounded-2xl p-7 w-[460px] max-w-[95vw] animate-scale-in">
+            <h2 className="font-['Bebas_Neue'] text-3xl tracking-widest mb-1">📢 TICKER TEXT</h2>
+            <p className="text-[#7878a0] text-sm mb-5">Edit the scrolling message shown at the bottom of the page.</p>
+
+            <textarea
+              className="w-full bg-[#161625] border border-[#32324a] rounded-xl px-4 py-3 text-[#dde0f0] font-['DM_Mono'] text-sm outline-none focus:border-[#4d7cff] transition-colors resize-none"
+              rows={3}
+              placeholder="Enter ticker text…"
+              value={tickerDraft}
+              onChange={e => setTickerDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveTickerText(); }}
+            />
+
+            <div className="flex gap-3 mt-4">
+              <button
+                className="flex-1 py-2.5 rounded-xl bg-[#161625] border border-[#32324a] text-[#dde0f0] font-bold text-sm hover:border-[#4d7cff] hover:text-[#4d7cff] transition-colors cursor-pointer"
+                onClick={() => setTickerEditOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2.5 rounded-xl bg-[#4d7cff] text-white font-bold text-sm hover:bg-[#3a6bff] transition-colors disabled:opacity-40 cursor-pointer"
+                onClick={saveTickerText}
+                disabled={tickerSaving || !tickerDraft.trim()}
+              >
+                {tickerSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

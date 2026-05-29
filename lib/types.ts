@@ -92,6 +92,7 @@ export interface ServerState {
   shuffleState: ShuffleState | null; // live bracket shuffle broadcast
   spinCategories: string[];              // ordered category names
   spinItemCategory: Record<number, string>; // spinQueue index -> category name
+  tickerText: string;
 }
 
 /**

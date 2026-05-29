@@ -1,33 +1,57 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
-const TICKER_TEXT = 'Shop : https://suddenattack.safie.cc';
 const PX_PER_SECOND = 200;
 
-export default function BottomTicker() {
-  const spanRef = useRef<HTMLSpanElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [keyframes, setKeyframes] = useState('');
-  const [duration, setDuration] = useState(0);
+interface Props {
+  text: string;
+}
 
-  useEffect(() => {
-    const span = spanRef.current;
+export default function BottomTicker({ text }: Props) {
+  const spanRef      = useRef<HTMLSpanElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const styleRef     = useRef<HTMLStyleElement | null>(null);
+
+  const rebuild = useCallback(() => {
+    const span      = spanRef.current;
     const container = containerRef.current;
     if (!span || !container) return;
 
-    const textWidth = span.offsetWidth;
+    const textWidth      = span.offsetWidth;
     const containerWidth = container.clientWidth;
-    const totalTravel = containerWidth + textWidth;
+    const totalTravel    = containerWidth + textWidth;
+    const duration       = totalTravel / PX_PER_SECOND;
 
-    setDuration(totalTravel / PX_PER_SECOND);
-    setKeyframes(`
+    // Inject / replace the <style> tag so the animation always matches
+    // the current container dimensions — fixes the resize blank gap.
+    if (!styleRef.current) {
+      styleRef.current = document.createElement('style');
+      document.head.appendChild(styleRef.current);
+    }
+    styleRef.current.textContent = `
       @keyframes ticker-slide {
         from { left: ${containerWidth}px; }
         to   { left: ${-textWidth}px; }
       }
-    `);
+      .ticker-span {
+        animation: ticker-slide ${duration}s linear infinite;
+      }
+    `;
   }, []);
+
+  useEffect(() => {
+    rebuild();
+
+    const ro = new ResizeObserver(rebuild);
+    if (containerRef.current) ro.observe(containerRef.current);
+
+    return () => {
+      ro.disconnect();
+      styleRef.current?.remove();
+      styleRef.current = null;
+    };
+  }, [rebuild, text]); // re-run when text changes too
 
   return (
     <div
@@ -65,10 +89,10 @@ export default function BottomTicker() {
       >
         <span
           ref={spanRef}
+          className="ticker-span"
           style={{
             position: 'absolute',
-            top: 0,
-            bottom: 0,
+            top: 0, bottom: 0,
             display: 'flex',
             alignItems: 'center',
             whiteSpace: 'nowrap',
@@ -77,10 +101,9 @@ export default function BottomTicker() {
             fontSize: 13,
             color: '#d4c59a',
             textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
-            animation: duration ? `ticker-slide ${duration}s linear infinite` : 'none',
           }}
         >
-          {TICKER_TEXT}
+          {text}
         </span>
       </div>
 
@@ -93,8 +116,6 @@ export default function BottomTicker() {
           boxShadow: '1px 1px 0 #000', borderRadius: 2,
         }}
       />
-
-      {keyframes && <style>{keyframes}</style>}
     </div>
   );
 }

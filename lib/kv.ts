@@ -21,6 +21,7 @@ export function defaultState(): TournamentState {
     shuffleState: null,
     spinCategories: [],
     spinItemCategory: {},
+    tickerText: 'Shop : https://suddenattack.safie.cc',
   };
 }
 export async function getState(): Promise<TournamentState> {

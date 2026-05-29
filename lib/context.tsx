@@ -21,6 +21,7 @@ interface TourneyContext {
   isAdmin: boolean;
   adminToken: string | null;
   loading: boolean;
+  tickerText: string;
 
   joinKey: string;
   chatMessages: ChatMessage[];
@@ -28,6 +29,7 @@ interface TourneyContext {
   setIsAdmin: (v: boolean) => void;
   setAdminToken: (token: string | null) => void;
   refresh: () => Promise<void>;
+  setTickerText: (text: string) => Promise<void>;
 
   submitPlayer: (name: string, joinKey?: string) => Promise<{ error?: string }>;
   removePlayer: (name: string) => Promise<void>;
@@ -123,6 +125,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdminState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tickerText, setTickerTextState] = useState('');
 
   const pendingSpinAppend = useRef(false);
   const pendingElimChange = useRef(false);
@@ -172,6 +175,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setDefaultMaps(data.defaultMaps ?? []);
       setJoinKeyState(data.joinKey ?? '');
       setChatMessages(data.chatMessages ?? []);
+      setTickerTextState(data.tickerText ?? '');
     } catch {
       // keep existing state on network error
     } finally {
@@ -212,6 +216,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
           }
           setJoinKeyState(data.joinKey ?? '');
           setChatMessages(data.chatMessages ?? []);
+          setTickerTextState(data.tickerText ?? '');
         } catch { /* ignore malformed frames */ }
         setLoading(false);
       };
@@ -570,6 +575,15 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setStageMaps(data.stageMaps);
   };
 
+  const setTickerText = async (text: string) => {
+    setTickerTextState(text);
+    await fetch('/api/ticker', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ tickerText: text }),
+    });
+  };
+
   const resetAll = async () => {
     await fetch('/api/reset', { method: 'DELETE', headers: adminHeaders });
     setPlayers([]);
@@ -590,7 +604,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, shuffleState, spinQueue,
       spinCategories, spinItemCategory, defaultMaps,
       joinKey, chatMessages,
-      isAdmin, adminToken, loading, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh,
+      isAdmin, adminToken, loading, tickerText, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh, setTickerText,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       setJoinKey,
