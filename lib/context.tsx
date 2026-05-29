@@ -122,7 +122,8 @@ function makeGuard() {
   };
 }
 
-export function TourneyProvider({ children }: { children: React.ReactNode }) {
+export function TourneyProvider({ children, tournamentId = 'default' }: { children: React.ReactNode; tournamentId?: string }) {
+  const t = encodeURIComponent(tournamentId);
   const [players, setPlayers] = useState<Player[]>([]);
   const [roster, setRosterState] = useState<string[]>([]);
   const [teamMode, setTeamModeState] = useState<'leader' | 'random'>('leader');
@@ -206,7 +207,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/state');
+      const res = await fetch(`/api/state?t=${t}`);
       const data = await res.json();
       applySnapshot(data, false); // full refresh ignores guards
     } catch {
@@ -227,7 +228,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
         pollFallback = setInterval(refresh, 4000);
         return;
       }
-      es = new EventSource('/api/state/stream');
+      es = new EventSource(`/api/state/stream?t=${t}`);
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
@@ -251,7 +252,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   // ── Players ───────────────────────────────────────────────────────────────
   const submitPlayer = async (name: string, joinKey?: string) => {
-    const res = await fetch('/api/players', {
+    const res = await fetch(`/api/players?t=${t}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, joinKey }),
@@ -265,7 +266,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const removePlayer = async (name: string) => {
     guard.touch('players'); guard.touch('roster');
-    const res = await fetch('/api/players', {
+    const res = await fetch(`/api/players?t=${t}`, {
       method: 'DELETE',
       headers: adminHeaders,
       body: JSON.stringify({ name }),
@@ -277,7 +278,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const addToRoster = async (name: string) => {
     guard.touch('roster');
-    const res = await fetch('/api/players', {
+    const res = await fetch(`/api/players?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'addToRoster', name }),
@@ -288,7 +289,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const removeFromRoster = async (name: string) => {
     guard.touch('roster');
-    const res = await fetch('/api/players', {
+    const res = await fetch(`/api/players?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'removeFromRoster', name }),
@@ -299,7 +300,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const setRoster = async (names: string[]) => {
     guard.touch('roster');
-    const res = await fetch('/api/players', {
+    const res = await fetch(`/api/players?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'setRoster', roster: names }),
@@ -310,7 +311,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const clearQueue = async () => {
     guard.touch('players'); guard.touch('roster');
-    const res = await fetch('/api/players', {
+    const res = await fetch(`/api/players?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'clearQueue' }),
@@ -322,7 +323,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const clearRoster = async () => {
     guard.touch('roster');
-    const res = await fetch('/api/players', {
+    const res = await fetch(`/api/players?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'clearRoster' }),
@@ -334,7 +335,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   // ── Join Key ──────────────────────────────────────────────────────────────
   const setJoinKey = async (key: string) => {
     guard.touch('joinKey');
-    const res = await fetch('/api/players/joinkey', {
+    const res = await fetch(`/api/players/joinkey?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ joinKey: key }),
@@ -348,7 +349,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   // ── Chat ──────────────────────────────────────────────────────────────────
   const sendChat = async (name: string, text: string) => {
     // No guard — non-admin, apply immediately so sender sees their message
-    const res = await fetch('/api/chat', {
+    const res = await fetch(`/api/chat?t=${t}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, text }),
@@ -361,7 +362,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const clearChat = async () => {
     guard.touch('chat');
-    const res = await fetch('/api/chat', { method: 'DELETE', headers: adminHeaders });
+    const res = await fetch(`/api/chat?t=${t}`, { method: 'DELETE', headers: adminHeaders });
     const data = await res.json();
     setChatMessages(data.messages);
   };
@@ -369,7 +370,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   // ── Teams ─────────────────────────────────────────────────────────────────
   const formTeams = async (leaders?: string[]) => {
     guard.touch('teams'); guard.touch('bracket');
-    const res = await fetch('/api/teams', {
+    const res = await fetch(`/api/teams?t=${t}`, {
       method: 'POST',
       headers: adminHeaders,
       body: JSON.stringify({ teamMode, leaders }),
@@ -384,7 +385,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const assignLeader = async (teamId: string, playerName: string) => {
     guard.touch('teams');
     try {
-      const res = await fetch('/api/teams', {
+      const res = await fetch(`/api/teams?t=${t}`, {
         method: 'POST',
         headers: adminHeaders,
         body: JSON.stringify({ assignments: { [teamId]: playerName } }),
@@ -404,7 +405,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const resetTeams = async () => {
     guard.touch('teams'); guard.touch('bracket');
-    await fetch('/api/teams', { method: 'DELETE', headers: adminHeaders });
+    await fetch(`/api/teams?t=${t}`, { method: 'DELETE', headers: adminHeaders });
     setTeams([]);
     setBracket(null);
   };
@@ -412,7 +413,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const setTeamMode = async (mode: 'leader' | 'random') => {
     guard.touch('teamMode');
     setTeamModeState(mode); // optimistic — instant UI feedback
-    await fetch('/api/teams', {
+    await fetch(`/api/teams?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ teamMode: mode }),
@@ -421,7 +422,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const renameTeam = async (teamId: string, customName: string) => {
     guard.touch('teams');
-    const res = await fetch('/api/teams', {
+    const res = await fetch(`/api/teams?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'renameTeam', teamId, customName }),
@@ -434,7 +435,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const setTeamNameFromLeader = async (teamId: string) => {
     guard.touch('teams');
-    const res = await fetch('/api/teams', {
+    const res = await fetch(`/api/teams?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'setTeamNameFromLeader', teamId }),
@@ -447,7 +448,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const addReplacement = async (teamId: string, originalName: string, replacementName: string) => {
     guard.touch('teams');
-    const res = await fetch('/api/teams', {
+    const res = await fetch(`/api/teams?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'addReplacement', teamId, originalName, replacementName }),
@@ -460,7 +461,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const removeReplacement = async (teamId: string, originalName: string) => {
     guard.touch('teams');
-    const res = await fetch('/api/teams', {
+    const res = await fetch(`/api/teams?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'removeReplacement', teamId, originalName }),
@@ -474,7 +475,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   // ── Bracket ───────────────────────────────────────────────────────────────
   const generateBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
     guard.touch('bracket');
-    const res = await fetch('/api/bracket', {
+    const res = await fetch(`/api/bracket?t=${t}`, {
       method: 'POST',
       headers: adminHeaders,
       body: JSON.stringify({ elimMode, matchFormat, action: 'generate' }),
@@ -487,7 +488,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const seedBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
     guard.touch('bracket');
-    const res = await fetch('/api/bracket', {
+    const res = await fetch(`/api/bracket?t=${t}`, {
       method: 'POST',
       headers: adminHeaders,
       body: JSON.stringify({ elimMode, matchFormat, action: 'seed' }),
@@ -504,7 +505,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const updateScore = async (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => {
     guard.touch('bracket');
-    const res = await fetch('/api/bracket', {
+    const res = await fetch(`/api/bracket?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ section, ri, mi, p1wins, p2wins }),
@@ -515,7 +516,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const undoMatch = async (section: string, ri: number, mi: number) => {
     guard.touch('bracket');
-    const res = await fetch('/api/bracket', {
+    const res = await fetch(`/api/bracket?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'undoMatch', section, ri, mi }),
@@ -526,7 +527,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const updateThirdPlace = async (p1wins: number, p2wins: number) => {
     guard.touch('bracket');
-    const res = await fetch('/api/bracket', {
+    const res = await fetch(`/api/bracket?t=${t}`, {
       method: 'PUT',
       headers: adminHeaders,
       body: JSON.stringify({ p1wins, p2wins }),
@@ -537,7 +538,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const resetBracket = async () => {
     guard.touch('bracket'); guard.touch('stageMaps');
-    await fetch('/api/bracket', { method: 'DELETE', headers: adminHeaders });
+    await fetch(`/api/bracket?t=${t}`, { method: 'DELETE', headers: adminHeaders });
     setBracket(null);
     setStageMaps({});
   };
@@ -545,7 +546,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const setElimMode = async (mode: 'single' | 'double') => {
     guard.touch('elimMode');
     setElimModeState(mode); // optimistic — instant UI feedback
-    await fetch('/api/bracket', {
+    await fetch(`/api/bracket?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
@@ -555,7 +556,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   // ── Maps ──────────────────────────────────────────────────────────────────
   const addMap = async (name: string) => {
     guard.touch('maps');
-    const res = await fetch('/api/maps', {
+    const res = await fetch(`/api/maps?t=${t}`, {
       method: 'POST',
       headers: adminHeaders,
       body: JSON.stringify({ name }),
@@ -568,7 +569,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const removeMap = async (name: string) => {
     guard.touch('maps'); guard.touch('stageMaps');
-    const res = await fetch('/api/maps', {
+    const res = await fetch(`/api/maps?t=${t}`, {
       method: 'DELETE',
       headers: adminHeaders,
       body: JSON.stringify({ name }),
@@ -583,7 +584,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     guard.touch('spinQueue');
     setSpinQueue(prev => [...prev, map]);
     try {
-      const res = await fetch('/api/maps', {
+      const res = await fetch(`/api/maps?t=${t}`, {
         method: 'PATCH',
         headers: adminHeaders,
         body: JSON.stringify({ action: 'appendSpinQueue', map }),
@@ -606,7 +607,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     guard.touch('spinQueue');
     setSpinQueue(prev => {
       const newQ = prev.filter((_, i) => i !== idx);
-      fetch('/api/maps', {
+      fetch(`/api/maps?t=${t}`, {
         method: 'PATCH',
         headers: adminHeaders,
         body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQ }),
@@ -618,7 +619,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const clearSpinQueue = async () => {
     guard.touch('spinQueue');
     setSpinQueue([]);
-    await fetch('/api/maps', {
+    await fetch(`/api/maps?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
@@ -628,7 +629,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const saveDefaultMaps = async (starred: string[]) => {
     guard.touch('defaultMaps');
     setDefaultMaps(starred);
-    await fetch('/api/maps', {
+    await fetch(`/api/maps?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'updateDefaultMaps', defaultMaps: starred }),
@@ -639,7 +640,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     guard.touch('spinCategories');
     setSpinCategories(cats);
     setSpinItemCategory(itemCat);
-    await fetch('/api/maps', {
+    await fetch(`/api/maps?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'updateSpinCategories', spinCategories: cats, spinItemCategory: itemCat }),
@@ -648,7 +649,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
     guard.touch('stageMaps');
-    const res = await fetch('/api/maps', {
+    const res = await fetch(`/api/maps?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'assignStage', stageKey, mapName, slot }),
@@ -659,7 +660,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
 
   const clearStage = async (stageKey: string, slot?: number) => {
     guard.touch('stageMaps');
-    const res = await fetch('/api/maps', {
+    const res = await fetch(`/api/maps?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'clearStage', stageKey, slot }),
@@ -671,7 +672,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const setTickerText = async (text: string) => {
     guard.touch('tickerText');
     setTickerTextState(text); // optimistic
-    await fetch('/api/ticker', {
+    await fetch(`/api/ticker?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ tickerText: text }),
@@ -681,7 +682,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const resetAll = async () => {
     // Touch everything so SSE from the reset doesn't race with local clear
     ['players','roster','teams','bracket','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps'].forEach(f => guard.touch(f));
-    await fetch('/api/reset', { method: 'DELETE', headers: adminHeaders });
+    await fetch(`/api/reset?t=${t}`, { method: 'DELETE', headers: adminHeaders });
     setPlayers([]);
     setRosterState([]);
     setTeams([]);
