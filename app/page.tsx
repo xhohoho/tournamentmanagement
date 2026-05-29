@@ -48,7 +48,7 @@ export default function Home() {
   });
 
   const handleAdminBtn = () => {
-    if (isAdmin) { setIsAdmin(false); return; }
+    if (isAdmin) return;
     setAdminOpen(true);
   };
 
