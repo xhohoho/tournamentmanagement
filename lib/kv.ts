@@ -9,6 +9,7 @@ export interface TournamentMeta {
   id: string;       // slug, e.g. "kabut"
   name: string;     // display name, e.g. "Kabut Tournament"
   createdAt: number;
+  posterUrl?: string; // optional poster/banner image URL
 }
 
 export async function listTournaments(): Promise<TournamentMeta[]> {
@@ -19,10 +20,22 @@ export async function listTournaments(): Promise<TournamentMeta[]> {
   }
 }
 
-export async function registerTournament(id: string, name: string): Promise<TournamentMeta[]> {
+export async function registerTournament(id: string, name: string, posterUrl?: string): Promise<TournamentMeta[]> {
   const list = await listTournaments();
   if (list.find(t => t.id === id)) return list; // already exists
-  const next = [...list, { id, name, createdAt: Date.now() }];
+  const entry: TournamentMeta = { id, name, createdAt: Date.now() };
+  if (posterUrl) entry.posterUrl = posterUrl;
+  const next = [...list, entry];
+  await kv.set(REGISTRY_KEY, next);
+  return next;
+}
+
+export async function updateTournamentMeta(
+  id: string,
+  patch: Partial<Pick<TournamentMeta, 'name' | 'posterUrl'>>,
+): Promise<TournamentMeta[]> {
+  const list = await listTournaments();
+  const next = list.map(t => t.id === id ? { ...t, ...patch } : t);
   await kv.set(REGISTRY_KEY, next);
   return next;
 }
