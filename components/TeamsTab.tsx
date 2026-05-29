@@ -87,12 +87,13 @@ export function TeamsTab() {
     </div>
   );
 
-  const showLeaderPicker = isAdmin && teamMode === 'leader' && n >= 2;
-
   // Teams grid column count
   const teamCols = teams.length > 0
     ? Math.min(teams.length, Math.ceil(Math.sqrt(teams.length * 1.5)))
     : Math.min(previewSlots, Math.ceil(Math.sqrt(previewSlots * 1.5)));
+
+  // In leader mode with no teams formed yet, show skeleton with captain dropdowns
+  const showCaptainSkeleton = isAdmin && teamMode === 'leader' && n >= 2 && teams.length === 0;
 
   return (
     <div className="flex-1 flex flex-col w-full py-4 gap-3 min-h-0">
@@ -174,75 +175,10 @@ export function TeamsTab() {
               </div>
             </div>
 
-            {/* Leader Picker — player-centric: each slot picks a captain, label shows their name */}
-            {showLeaderPicker ? (
-              <div className="t-surface border t-border rounded-2xl p-4 flex-1 overflow-y-auto min-h-0">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="font-['Bebas_Neue'] text-base tracking-widest t-text">Captains</h2>
-                  <span className="font-['DM_Mono'] text-[10px] t-dim">
-                    {leaders.filter(Boolean).length}/{n} picked
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  {Array.from({ length: n }, (_, i) => {
-                    const color = TEAM_COLORS[i % TEAM_COLORS.length];
-                    const picked = leaders[i] ?? '';
-                    // options available for this slot = not picked by any OTHER slot
-                    const available = roster.filter(p => !leaders.some((l, j) => j !== i && l === p));
-
-                    return (
-                      <div
-                        key={i}
-                        className="rounded-xl border-2 overflow-hidden transition-all"
-                        style={{
-                          borderColor: picked ? color : 'var(--border)',
-                          background: picked ? `${color}0d` : 'var(--bg-elevated)',
-                        }}
-                      >
-                        {/* Captain name header — shows picked player or placeholder */}
-                        <div
-                          className="flex items-center gap-2 px-3 py-2 border-b"
-                          style={{ borderColor: picked ? `${color}40` : 'var(--border)' }}
-                        >
-                          <span style={{ fontSize: 13 }}>👑</span>
-                          <span
-                            className="font-['DM_Mono'] text-xs font-bold flex-1 truncate"
-                            style={{ color: picked ? color : 'var(--text-dim)' }}
-                          >
-                            {picked || `Captain ${i + 1}`}
-                          </span>
-                          {picked && (
-                            <span className="font-['DM_Mono'] text-[9px] t-dim shrink-0">+ 4 random</span>
-                          )}
-                        </div>
-
-                        {/* Dropdown */}
-                        <div className="px-2 py-1.5">
-                          <select
-                            className="w-full rounded-lg px-2 py-1 text-xs outline-none border transition-colors cursor-pointer"
-                            style={{
-                              background: 'var(--bg-hover)',
-                              borderColor: 'var(--border-mid)',
-                              color: 'var(--text)',
-                            }}
-                            value={picked}
-                            onChange={e => updateLeader(i, e.target.value)}
-                          >
-                            <option value="">— Choose captain —</option>
-                            {available.map(p => (
-                              <option key={p} value={p}>{p}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : teamMode !== 'random' && (
+            {/* Hint when not enough players for leader mode */}
+            {teamMode === 'leader' && n < 2 && (
               <p className="font-['DM_Mono'] text-[10px] t-dim px-1">
-                ℹ Add ≥10 players (2 teams of 5) to enable captain picking.
+                ℹ Add ≥10 players (2 teams of 5) to pick captains.
               </p>
             )}
 
@@ -255,6 +191,7 @@ export function TeamsTab() {
             {teams.length > 0 ? '🛡 Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}`}
           </h2>
 
+          {/* Formed teams */}
           {teams.length > 0 ? (
             <div
               className="flex-1 min-h-0"
@@ -310,7 +247,77 @@ export function TeamsTab() {
                 </div>
               ))}
             </div>
+
+          ) : showCaptainSkeleton ? (
+            /* Leader mode skeleton — card header is a captain dropdown, body has 4 random placeholders */
+            <div
+              className="flex-1 min-h-0"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${teamCols}, minmax(0, 1fr))`,
+                gap: '10px',
+                alignContent: 'stretch',
+              }}
+            >
+              {Array.from({ length: previewSlots }, (_, i) => {
+                const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                const picked = leaders[i] ?? '';
+                const available = roster.filter(p => !leaders.some((l, j) => j !== i && l === p));
+                return (
+                  <div
+                    key={i}
+                    className="rounded-xl border flex flex-col min-h-0 overflow-hidden transition-colors"
+                    style={{
+                      background: 'var(--bg-elevated)',
+                      borderColor: 'var(--border)',
+                      borderTopColor: color,
+                      borderTopWidth: 3,
+                    }}
+                  >
+                    {/* Captain dropdown as the card header */}
+                    <div className="px-2 pt-2 pb-1.5 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
+                      <select
+                        className="w-full rounded-lg px-2 py-1 outline-none border-0 cursor-pointer font-['Bebas_Neue'] tracking-wide transition-colors"
+                        style={{
+                          background: 'transparent',
+                          color: picked ? color : 'var(--text-dim)',
+                          fontSize: 'clamp(12px, 1.1vw, 16px)',
+                        }}
+                        value={picked}
+                        onChange={e => updateLeader(i, e.target.value)}
+                      >
+                        <option value="">— Captain {i + 1} —</option>
+                        {available.map(p => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 4 random placeholder rows */}
+                    <div className="flex-1 flex flex-col justify-around px-2 py-1">
+                      {/* Captain row — shows chosen name or crown placeholder */}
+                      <div className="flex items-center gap-1 py-0.5">
+                        <span className="w-4 shrink-0" style={{ fontSize: 10 }}>👑</span>
+                        {picked
+                          ? <span className="font-['DM_Mono'] truncate" style={{ color, fontSize: 'clamp(9px, 0.75vw, 13px)' }}>{picked}</span>
+                          : <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
+                        }
+                      </div>
+                      {/* 4 random slots */}
+                      {Array.from({ length: 4 }, (__, j) => (
+                        <div key={j} className="flex items-center gap-1 py-0.5">
+                          <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>·</span>
+                          <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
           ) : (
+            /* Plain skeleton for fully random / not enough players */
             <div
               className="flex-1 min-h-0"
               style={{
