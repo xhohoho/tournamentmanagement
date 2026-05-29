@@ -18,46 +18,6 @@ function useReveal(active: boolean, total: number, intervalMs = 120) {
   return count;
 }
 
-// ─── Expandable sub-in row ────────────────────────────────────────────────────
-function SubInRow({ teamId, member, onAdd }: {
-  teamId: string;
-  member: string;
-  onAdd: (teamId: string, member: string, name: string) => Promise<{ error?: string }>;
-}) {
-  const [val, setVal] = useState('');
-  const [busy, setBusy] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  const submit = async () => {
-    if (!val.trim() || busy) return;
-    setBusy(true);
-    await onAdd(teamId, member, val.trim());
-    setBusy(false);
-    setVal('');
-  };
-
-  return (
-    <div className="flex items-center gap-1 pl-5 pb-1">
-      <input
-        ref={inputRef}
-        value={val}
-        onChange={e => setVal(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') submit(); }}
-        placeholder="Sub-in name…"
-        className="flex-1 min-w-0 rounded-md px-1.5 py-0.5 font-['DM_Mono'] outline-none border"
-        style={{ fontSize: 10, background: 'var(--bg-hover)', borderColor: 'var(--border-mid)', color: 'var(--text)' }}
-      />
-      <button
-        disabled={!val.trim() || busy}
-        onClick={submit}
-        className="shrink-0 px-1.5 py-0.5 rounded-md font-['DM_Mono'] font-bold cursor-pointer disabled:opacity-30 transition-opacity"
-        style={{ fontSize: 10, background: 'var(--accent-green)', color: '#fff' }}
-      >{busy ? '…' : '↵'}</button>
-    </div>
-  );
-}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export function TeamsTab() {
@@ -78,6 +38,9 @@ export function TeamsTab() {
 
   // Which player row has the sub-in input expanded: "teamId::member" | null
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
+  // Draft value for the currently expanded sub input
+  const [subDraft, setSubDraft] = useState('');
+  const subInputRef = useRef<HTMLInputElement>(null);
 
   const totalSlots = teams.length * 5;
   const revealCount = useReveal(revealing, totalSlots);
@@ -98,6 +61,14 @@ export function TeamsTab() {
   useEffect(() => {
     if (revealing && revealCount >= totalSlots && totalSlots > 0) setRevealing(false);
   }, [revealing, revealCount, totalSlots]);
+
+  // Auto-focus the sub input whenever it opens
+  useEffect(() => {
+    if (expandedSub) {
+      setSubDraft('');
+      setTimeout(() => subInputRef.current?.focus(), 0);
+    }
+  }, [expandedSub]);
 
   const n = Math.floor(roster.length / 5);
   const previewSlots = n > 0 ? n : Math.max(2, Math.ceil(10 / 5));
