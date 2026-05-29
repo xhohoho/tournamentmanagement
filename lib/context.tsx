@@ -47,7 +47,7 @@ interface TourneyContext {
   setTeamMode: (mode: 'leader' | 'random') => Promise<void>;
 
   generateBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string }>;
-  seedBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string }>;
+  seedBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string; shuffleState?: import('@/lib/types').ShuffleState | null }>;
   updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   undoMatch: (section: string, ri: number, mi: number) => Promise<void>;
   updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
@@ -406,13 +406,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setBracket(data.bracket);
-    // Lock shuffleState against SSE interference for this client (MapsTab pattern).
-    // applyShuffleState will block any SSE push with the same startTime.
-    if (data.shuffleState) {
-      localShuffleStartTimeRef.current = data.shuffleState.startTime;
-      setShuffleState(data.shuffleState);
-    }
-    return {};
+    return { shuffleState: data.shuffleState ?? null };
   };
 
   const updateScore = async (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => {

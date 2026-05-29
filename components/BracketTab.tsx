@@ -55,8 +55,10 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
   s.textContent = `
     @keyframes trophy-spin { from { transform: rotate(-12deg); } to { transform: rotate(12deg); } }
     @keyframes sparkle { 0%,100% { opacity:0; transform:scale(0.4); } 50% { opacity:1; transform:scale(1); } }
+    @keyframes slot-pop { 0% { opacity:0; transform:scale(0.7) translateY(4px); } 60% { transform:scale(1.08) translateY(-1px); } 100% { opacity:1; transform:scale(1) translateY(0); } }
     .trophy-spin { display:inline-block; animation: trophy-spin 0.7s ease-in-out infinite alternate; }
     .sparkle { position:absolute; font-size:10px; animation: sparkle 1.2s ease-in-out infinite; }
+    .slot-pop { animation: slot-pop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards; }
   `;
   document.head.appendChild(s);
 }
@@ -85,7 +87,7 @@ function PlayerRow({
       style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}
     >
       <span
-        className="text-xs font-['DM_Mono'] flex-1 truncate"
+        className={`text-xs font-['DM_Mono'] flex-1 truncate${player ? ' slot-pop' : ''}`}
         style={{
           color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
           fontStyle: !player ? 'italic' : undefined,
@@ -243,25 +245,39 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [pendingElim, setPendingElim] = useState<'single' | 'double' | null>(null);
   const displayElim = pendingElim ?? elimMode;
 
-  // ── Shuffle animation — purely cosmetic flash effect, never hides team names ──
-  const [shuffleFlash, setShuffleFlash] = useState(false);
-  const shuffleRafRef = useRef<number | null>(null);
+  // ── Shuffle reveal animation ──────────────────────────────────────────────
+  // revealedSlots: set of slotKeys currently visible. '__all__' = show everything.
+  // Driven purely from the seedBracket() API response — never touched by SSE.
+  const [revealedSlots, setRevealedSlots] = useState<Set<string>>(() => new Set(['__all__']));
+  const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // When seedBracket resolves, trigger a brief flash on each card sequentially.
-  // We do NOT hide teams — the bracket data already has team names from the server.
-  // The animation is just a visual flourish using CSS opacity pulse.
-  const triggerShuffleAnimation = () => {
-    setShuffleFlash(true);
-    if (shuffleRafRef.current) clearTimeout(shuffleRafRef.current);
-    shuffleRafRef.current = setTimeout(() => {
-      setShuffleFlash(false);
-      shuffleRafRef.current = null;
-    }, 1200) as unknown as number;
+  const runRevealAnimation = (reveals: { slotKey: string; team: string }[], delayMs: number) => {
+    // Cancel any in-progress animation
+    timerRefs.current.forEach(clearTimeout);
+    timerRefs.current = [];
+    // Hide all slots to start
+    setRevealedSlots(new Set());
+    // Schedule each reveal
+    reveals.forEach((r, i) => {
+      const t = setTimeout(() => {
+        setRevealedSlots(prev => {
+          const next = new Set(prev);
+          next.add(r.slotKey);
+          return next;
+        });
+      }, i * delayMs);
+      timerRefs.current.push(t);
+    });
+    // After all done, switch to __all__ so any future re-renders always show teams
+    const totalMs = reveals.length * delayMs + 200;
+    const finalTimer = setTimeout(() => {
+      setRevealedSlots(new Set(['__all__']));
+    }, totalMs);
+    timerRefs.current.push(finalTimer);
   };
 
-  // isSlotRevealed always returns true — teams are always visible.
-  // The flash effect is handled separately via shuffleFlash CSS class.
-  const isSlotRevealed = (_slotKey: string) => true;
+  const isSlotRevealed = (slotKey: string) =>
+    revealedSlots.has('__all__') || revealedSlots.has(slotKey);
 
   const handleElimChange = async (id: 'single' | 'double') => {
     if (hasBracket || id === displayElim) return;
@@ -320,7 +336,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
                 <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-red)' }} onClick={async () => { if (!isAdmin || generating) return; setErr(''); setGenerating(true); const r = await generateBracket(matchFormat); setGenerating(false); if (r?.error) setErr(r.error); }} disabled={!hasTeams || generating}>{generating ? '⏳ Generating…' : '⚡ Generate Bracket'}</button>
               ) : (
                 <>
-                  <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-green)' }} onClick={async () => { if (!isAdmin || seeding) return; setErr(''); setSeeding(true); const r = await seedBracket(matchFormat); setSeeding(false); if (r?.error) setErr(r.error); else triggerShuffleAnimation(); }} disabled={seeding}>{seeding ? '🎲 Shuffling…' : '🎲 Shuffle Teams'}</button>
+                  <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-green)' }} onClick={async () => { if (!isAdmin || seeding) return; setErr(''); setSeeding(true); const r = await seedBracket(matchFormat); setSeeding(false); if (r?.error) setErr(r.error); else if (r?.shuffleState) runRevealAnimation(r.shuffleState.reveals, r.shuffleState.delayMs); }} disabled={seeding}>{seeding ? '🎲 Shuffling…' : '🎲 Shuffle Teams'}</button>
                   <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset Bracket</button>
                 </>
               )}
