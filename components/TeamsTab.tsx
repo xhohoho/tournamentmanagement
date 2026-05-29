@@ -383,11 +383,19 @@ export function TeamsTab() {
                             >
                               <span className="shrink-0 w-4">{isLeader ? '👑' : '·'}</span>
 
-                              {/* Name — strikethrough if replaced */}
-                              <span
-                                className="flex-1 truncate font-['DM_Mono']"
-                                style={replacement ? { textDecoration: 'line-through', opacity: 0.4 } : {}}
-                              >{m}</span>
+                              {/* Name — strikethrough if replaced, with inline sub name */}
+                              <span className="flex items-center gap-1 flex-1 min-w-0">
+                                <span
+                                  className="font-['DM_Mono'] truncate"
+                                  style={replacement ? { textDecoration: 'line-through', opacity: 0.4 } : {}}
+                                >{m}</span>
+                                {replacement && (
+                                  <span
+                                    className="font-['DM_Mono'] truncate shrink-0"
+                                    style={{ color: 'var(--accent-green)', fontSize: 'clamp(8px, 0.7vw, 11px)' }}
+                                  >→ {replacement}</span>
+                                )}
+                              </span>
 
                               {/* Admin action buttons */}
                               {isAdmin && (
@@ -441,16 +449,7 @@ export function TeamsTab() {
                               />
                             )}
 
-                            {/* Replacement name — shown below struck-through original */}
-                            {replacement && (
-                              <div
-                                className="flex items-center gap-1 pl-5"
-                                style={{ fontSize: 'clamp(8px, 0.7vw, 11px)', color: 'var(--accent-green)' }}
-                              >
-                                <span style={{ opacity: 0.7 }}>↳</span>
-                                <span className="font-['DM_Mono'] truncate">{replacement}</span>
-                              </div>
-                            )}
+
                           </div>
                         );
                       })}
