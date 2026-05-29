@@ -275,16 +275,21 @@ export function TournamentPicker({ onSelect }: Props) {
                   placeholder="e.g. Kabut Open 2025"
                   value={newName}
                   onChange={e => {
-                    setNewName(e.target.value);
-                    if (!newId || newId === newName.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/\s+/g, '-')) {
-                      setNewId(e.target.value.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').slice(0, 64));
+                    const val = e.target.value;
+                    setNewName(val);
+                    // Auto-derive slug: keep letters/numbers/spaces/hyphens, collapse spaces to hyphens
+                    const derived = val.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 64);
+                    // Only auto-update ID if it still matches the previous auto-derived value
+                    const prevDerived = newName.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 64);
+                    if (!newId || newId === prevDerived) {
+                      setNewId(derived);
                     }
                   }}
                   autoFocus
                 />
               </div>
               <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">ID / Slug</label>
+                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">ID / Slug <span className="normal-case tracking-normal" style={{color:'var(--accent)'}}>· editable</span></label>
                 <input
                   type="text"
                   className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
@@ -292,7 +297,7 @@ export function TournamentPicker({ onSelect }: Props) {
                   value={newId}
                   onChange={e => setNewId(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64))}
                 />
-                <p className="font-['DM_Mono'] text-[10px] t-muted mt-1">Letters, numbers and hyphens only.</p>
+                <p className="font-['DM_Mono'] text-[10px] t-muted mt-1">Auto-generated from name. You can edit it — letters, numbers, hyphens only.</p>
               </div>
               {createErr && <p className="font-['DM_Mono'] text-xs text-[var(--accent-red)]">{createErr}</p>}
               <div className="flex gap-3 pt-1">
