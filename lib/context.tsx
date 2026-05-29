@@ -19,6 +19,7 @@ interface TourneyContext {
   spinItemCategory: Record<number, string>;
   defaultMaps: string[];
   isAdmin: boolean;
+  previewAsUser: boolean;
   adminToken: string | null;
   loading: boolean;
   tickerText: string;
@@ -27,6 +28,7 @@ interface TourneyContext {
   chatMessages: ChatMessage[];
 
   setIsAdmin: (v: boolean) => void;
+  setPreviewAsUser: (v: boolean) => void;
   setAdminToken: (token: string | null) => void;
   refresh: () => Promise<void>;
   setTickerText: (text: string) => Promise<void>;
@@ -123,6 +125,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const [joinKey, setJoinKeyState] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAdmin, setIsAdminState] = useState(false);
+  const [previewAsUser, setPreviewAsUserState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tickerText, setTickerTextState] = useState('');
@@ -141,6 +144,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
   const setIsAdmin = (v: boolean) => {
     setIsAdminState(v);
     if (!v) {
+      setPreviewAsUserState(false);
       if (adminToken) {
         fetch('/api/admin/auth', {
           method: 'DELETE',
@@ -604,7 +608,8 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, shuffleState, spinQueue,
       spinCategories, spinItemCategory, defaultMaps,
       joinKey, chatMessages,
-      isAdmin, adminToken, loading, tickerText, setIsAdmin, setAdminToken: setAdminTokenPublic, refresh, setTickerText,
+      isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, loading, tickerText,
+      setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, refresh, setTickerText,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       setJoinKey,

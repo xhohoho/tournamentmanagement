@@ -19,7 +19,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 export default function Home() {
-  const { isAdmin, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
+  const { isAdmin, previewAsUser, setPreviewAsUser, adminToken, setIsAdmin, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
@@ -48,7 +48,7 @@ export default function Home() {
   });
 
   const handleAdminBtn = () => {
-    if (isAdmin) return;
+    if (isAdmin || previewAsUser) { setPreviewAsUser(!previewAsUser); return; }
     setAdminOpen(true);
   };
 
@@ -107,7 +107,7 @@ export default function Home() {
               >
                 {dark ? '☀️ Light' : '🌙 Dark'}
               </button>
-              {isAdmin && (
+              {isAdmin && !previewAsUser && (
                 <>
                   <button
                     onClick={openTickerEdit}
@@ -130,13 +130,15 @@ export default function Home() {
               <button
                 onClick={handleAdminBtn}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
-                  isAdmin
+                  isAdmin && !previewAsUser
                     ? 'border-[var(--accent-gold)] text-[var(--accent-gold)] bg-[rgba(255,176,32,0.1)]'
+                    : isAdmin && previewAsUser
+                    ? 'border-[var(--accent)] text-[var(--accent)] bg-[rgba(77,124,255,0.06)]'
                     : 't-border-mid t-muted t-elevated hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)]'
                 }`}
               >
-                <span>{isAdmin ? '🔓' : '🔒'}</span>
-                <span>{isAdmin ? 'Admin ✓' : 'Admin'}</span>
+                <span>{isAdmin ? (previewAsUser ? '👁' : '🔓') : '🔒'}</span>
+                <span>{isAdmin ? (previewAsUser ? 'Preview' : 'Admin ✓') : 'Admin'}</span>
               </button>
             </div>
           </div>
