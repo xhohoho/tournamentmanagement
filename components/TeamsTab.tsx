@@ -24,11 +24,18 @@ function useReveal(active: boolean, total: number, intervalMs = 120) {
 }
 
 export function TeamsTab() {
-  const { roster, teams, teamMode, isAdmin, loading, formTeams, resetTeams, setTeamMode, assignLeader } = useTourney();
+  const { roster, teams, teamMode, isAdmin, loading, formTeams, resetTeams, setTeamMode, assignLeader, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement } = useTourney();
   const [leaders, setLeaders] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [revealing, setRevealing] = useState(false);
   const [forming, setForming] = useState(false);
+
+  // Per-team inline edit state: teamId -> draft name
+  const [editingName, setEditingName] = useState<Record<string, string | null>>({});
+  // Per-team replacement input: teamId -> { member -> draft replacement }
+  const [repInput, setRepInput] = useState<Record<string, Record<string, string>>>({}); 
+  // Per-player loading state for replacement submit
+  const [repLoading, setRepLoading] = useState<Record<string, boolean>>({});
 
   const totalSlots = teams.length * 5;
   const revealCount = useReveal(revealing, totalSlots);
@@ -200,58 +207,182 @@ export function TeamsTab() {
           {/* Formed teams */}
           {teams.length > 0 ? (
             <div
-              className="flex-1 min-h-0"
+              className="flex-1 min-h-0 overflow-y-auto"
               style={{
                 display: 'grid',
                 gridTemplateColumns: `repeat(${teamCols}, minmax(0, 1fr))`,
                 gap: '10px',
-                alignContent: 'stretch',
+                alignContent: 'start',
               }}
             >
-              {teams.map((t) => (
-                <div
-                  key={t.name}
-                  className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
-                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}
-                >
-                  <h3
-                    className="font-['Bebas_Neue'] tracking-wide px-3 pt-2 pb-1.5 border-b shrink-0"
-                    style={{ color: t.color, borderColor: 'var(--border)', fontSize: 'clamp(12px, 1.1vw, 18px)' }}
-                  >{t.name}</h3>
-                  <div className="flex-1 flex flex-col justify-around px-2 py-1">
-                    {t.members.map((m) => {
-                      const visible = isVisible(m);
-                      return (
-                        <div
-                          key={m}
-                          className="flex items-center gap-1 transition-all duration-200"
-                          style={{
-                            color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)',
-                            opacity: visible ? 1 : 0,
-                            transform: visible ? 'translateX(0)' : 'translateX(-8px)',
-                            fontSize: 'clamp(9px, 0.75vw, 13px)',
-                          }}
-                        >
-                          <span className="shrink-0 w-4">{m === t.leader ? '\u{1F451}' : '\u00B7'}</span>
-                          <span className="flex-1 truncate font-['DM_Mono']">{m}</span>
-                          {isAdmin && (
-                            m === t.leader ? (
-                              <span className="shrink-0 opacity-60" style={{ color: 'var(--accent-gold)', fontSize: 10 }}>{'\u{1F451}'}</span>
-                            ) : (
-                              <button
-                                onClick={async () => { setErr(''); const r = await assignLeader(t.name, m); if (r?.error) setErr(r.error); }}
-                                className="shrink-0 px-1 py-0.5 font-['DM_Mono'] bg-[var(--accent-green)] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
-                                style={{ fontSize: 9 }}
-                                title="Make team leader"
-                              >✓</button>
-                            )
+              {teams.map((t) => {
+                const displayName = t.customName || t.name;
+                const isEditingThisTeam = editingName[t.name] !== null && editingName[t.name] !== undefined;
+                return (
+                  <div
+                    key={t.name}
+                    className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
+                    style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: t.color, borderTopWidth: 3 }}
+                  >
+                    {/* Team header: name + admin edit controls */}
+                    <div className="px-3 pt-2 pb-1.5 border-b shrink-0 flex items-center gap-1" style={{ borderColor: 'var(--border)' }}>
+                      {isAdmin && isEditingThisTeam ? (
+                        <>
+                          <input
+                            autoFocus
+                            className="flex-1 min-w-0 bg-transparent outline-none font-['Bebas_Neue'] tracking-wide"
+                            style={{ color: t.color, fontSize: 'clamp(12px, 1.1vw, 18px)' }}
+                            value={editingName[t.name] ?? displayName}
+                            onChange={e => setEditingName(prev => ({ ...prev, [t.name]: e.target.value }))}
+                            onKeyDown={async e => {
+                              if (e.key === 'Enter') {
+                                const val = (editingName[t.name] ?? '').trim();
+                                const r = await renameTeam(t.name, val);
+                                if (r?.error) setErr(r.error);
+                                setEditingName(prev => { const n = { ...prev }; delete n[t.name]; return n; });
+                              } else if (e.key === 'Escape') {
+                                setEditingName(prev => { const n = { ...prev }; delete n[t.name]; return n; });
+                              }
+                            }}
+                            onBlur={async () => {
+                              const val = (editingName[t.name] ?? '').trim();
+                              const r = await renameTeam(t.name, val);
+                              if (r?.error) setErr(r.error);
+                              setEditingName(prev => { const n = { ...prev }; delete n[t.name]; return n; });
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <h3
+                          className="font-['Bebas_Neue'] tracking-wide flex-1 truncate"
+                          style={{ color: t.color, fontSize: 'clamp(12px, 1.1vw, 18px)' }}
+                        >{displayName}</h3>
+                      )}
+                      {isAdmin && !isEditingThisTeam && (
+                        <div className="flex gap-0.5 shrink-0">
+                          {/* Edit name button */}
+                          <button
+                            onClick={() => setEditingName(prev => ({ ...prev, [t.name]: displayName }))}
+                            className="px-1 py-0.5 rounded hover:opacity-80 transition-opacity cursor-pointer"
+                            style={{ background: 'transparent', color: t.color, fontSize: 9, opacity: 0.6 }}
+                            title="Edit team name"
+                          >✏️</button>
+                          {/* Set name from leader button — only if leader exists */}
+                          {t.leader && (
+                            <button
+                              onClick={async () => { const r = await setTeamNameFromLeader(t.name); if (r?.error) setErr(r.error); }}
+                              className="px-1 py-0.5 rounded hover:opacity-80 transition-opacity cursor-pointer"
+                              style={{ background: 'transparent', fontSize: 9, opacity: 0.6, color: 'var(--accent-gold)' }}
+                              title={`Set name to captain: ${t.leader}`}
+                            >👑</button>
                           )}
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
+
+                    {/* Members list */}
+                    <div className="flex flex-col px-2 py-1 gap-0.5">
+                      {t.members.map((m) => {
+                        const visible = isVisible(m);
+                        const replacement = t.replacements?.[m];
+                        const repKey = `${t.name}::${m}`;
+                        const repDraft = repInput[t.name]?.[m] ?? '';
+                        const isRepLoading = repLoading[repKey];
+                        return (
+                          <div
+                            key={m}
+                            className="transition-all duration-200"
+                            style={{
+                              opacity: visible ? 1 : 0,
+                              transform: visible ? 'translateX(0)' : 'translateX(-8px)',
+                            }}
+                          >
+                            {/* Main player row */}
+                            <div
+                              className="flex items-center gap-1"
+                              style={{
+                                color: m === t.leader ? 'var(--accent-gold)' : 'var(--text-muted)',
+                                fontSize: 'clamp(9px, 0.75vw, 13px)',
+                              }}
+                            >
+                              <span className="shrink-0 w-4">{m === t.leader ? '👑' : '·'}</span>
+                              <span
+                                className="flex-1 truncate font-['DM_Mono']"
+                                style={replacement ? { textDecoration: 'line-through', opacity: 0.45 } : {}}
+                              >{m}</span>
+                              {isAdmin && (
+                                m === t.leader ? (
+                                  <span className="shrink-0 opacity-40" style={{ color: 'var(--accent-gold)', fontSize: 9 }}>👑</span>
+                                ) : (
+                                  <button
+                                    onClick={async () => { setErr(''); const r = await assignLeader(t.name, m); if (r?.error) setErr(r.error); }}
+                                    className="shrink-0 px-1 py-0.5 font-['DM_Mono'] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
+                                    style={{ fontSize: 9, background: 'var(--accent-green)' }}
+                                    title="Make team leader"
+                                  >✓</button>
+                                )
+                              )}
+                            </div>
+
+                            {/* Replacement row */}
+                            {replacement ? (
+                              <div className="flex items-center gap-1 pl-4" style={{ fontSize: 'clamp(9px, 0.75vw, 12px)' }}>
+                                <span style={{ color: 'var(--accent-green)', fontSize: 9 }}>↳</span>
+                                <span className="flex-1 truncate font-['DM_Mono']" style={{ color: 'var(--accent-green)' }}>{replacement}</span>
+                                {isAdmin && (
+                                  <button
+                                    onClick={async () => { const r = await removeReplacement(t.name, m); if (r?.error) setErr(r.error); }}
+                                    className="shrink-0 px-1 py-0.5 rounded hover:opacity-80 cursor-pointer"
+                                    style={{ fontSize: 9, color: 'var(--accent-red)', background: 'transparent' }}
+                                    title="Undo replacement"
+                                  >✕</button>
+                                )}
+                              </div>
+                            ) : isAdmin && (
+                              /* Replacement input row — admin only, no existing replacement */
+                              <div className="flex items-center gap-1 pl-4 mt-0.5">
+                                <input
+                                  className="flex-1 min-w-0 bg-transparent outline-none font-['DM_Mono'] border-b"
+                                  style={{ fontSize: 9, color: 'var(--text-dim)', borderColor: 'var(--border-mid)' }}
+                                  placeholder="sub-in name…"
+                                  value={repDraft}
+                                  onChange={e => setRepInput(prev => ({
+                                    ...prev,
+                                    [t.name]: { ...(prev[t.name] ?? {}), [m]: e.target.value },
+                                  }))}
+                                  onKeyDown={async e => {
+                                    if (e.key === 'Enter' && repDraft.trim()) {
+                                      setRepLoading(prev => ({ ...prev, [repKey]: true }));
+                                      const r = await addReplacement(t.name, m, repDraft.trim());
+                                      if (r?.error) setErr(r.error);
+                                      setRepInput(prev => { const n = { ...prev }; if (n[t.name]) delete n[t.name][m]; return n; });
+                                      setRepLoading(prev => ({ ...prev, [repKey]: false }));
+                                    }
+                                  }}
+                                />
+                                <button
+                                  disabled={!repDraft.trim() || isRepLoading}
+                                  onClick={async () => {
+                                    if (!repDraft.trim()) return;
+                                    setRepLoading(prev => ({ ...prev, [repKey]: true }));
+                                    const r = await addReplacement(t.name, m, repDraft.trim());
+                                    if (r?.error) setErr(r.error);
+                                    setRepInput(prev => { const n = { ...prev }; if (n[t.name]) delete n[t.name][m]; return n; });
+                                    setRepLoading(prev => ({ ...prev, [repKey]: false }));
+                                  }}
+                                  className="shrink-0 px-1 py-0.5 rounded transition-opacity cursor-pointer disabled:opacity-30"
+                                  style={{ fontSize: 9, background: 'var(--bg-hover)', color: 'var(--text-dim)' }}
+                                  title="Confirm replacement"
+                                >{isRepLoading ? '…' : '↵'}</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
           ) : showCaptainSkeleton ? (

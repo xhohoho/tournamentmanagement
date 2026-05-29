@@ -8,6 +8,10 @@ export interface Team {
   color: string;
   leader: string | null;
   members: string[];
+  /** customName overrides the display name (e.g. set manually or from leader) */
+  customName?: string;
+  /** replacements maps original member name -> replacement name */
+  replacements?: Record<string, string>;
 }
 
 export interface BracketMatch {

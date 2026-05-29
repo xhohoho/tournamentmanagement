@@ -49,6 +49,10 @@ interface TourneyContext {
   formTeams: (leaders?: string[]) => Promise<{ error?: string; teams?: Team[] }>;
   resetTeams: () => Promise<void>;
   setTeamMode: (mode: 'leader' | 'random') => Promise<void>;
+  renameTeam: (teamId: string, customName: string) => Promise<{ error?: string }>;
+  setTeamNameFromLeader: (teamId: string) => Promise<{ error?: string }>;
+  addReplacement: (teamId: string, originalName: string, replacementName: string) => Promise<{ error?: string }>;
+  removeReplacement: (teamId: string, originalName: string) => Promise<{ error?: string }>;
 
   generateBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string }>;
   seedBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string; shuffleState?: import('@/lib/types').ShuffleState | null }>;
@@ -393,6 +397,54 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
     setTeamModeState(mode);
   };
 
+  const renameTeam = async (teamId: string, customName: string) => {
+    const res = await fetch('/api/teams', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'renameTeam', teamId, customName }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setTeams(data.teams);
+    return {};
+  };
+
+  const setTeamNameFromLeader = async (teamId: string) => {
+    const res = await fetch('/api/teams', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'setTeamNameFromLeader', teamId }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setTeams(data.teams);
+    return {};
+  };
+
+  const addReplacement = async (teamId: string, originalName: string, replacementName: string) => {
+    const res = await fetch('/api/teams', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'addReplacement', teamId, originalName, replacementName }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setTeams(data.teams);
+    return {};
+  };
+
+  const removeReplacement = async (teamId: string, originalName: string) => {
+    const res = await fetch('/api/teams', {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'removeReplacement', teamId, originalName }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setTeams(data.teams);
+    return {};
+  };
+
   // —— Bracket ——
   const generateBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
     const res = await fetch('/api/bracket', {
@@ -614,7 +666,7 @@ export function TourneyProvider({ children }: { children: React.ReactNode }) {
       setRoster, clearQueue, clearRoster,
       setJoinKey,
       sendChat, clearChat,
-      formTeams, resetTeams, setTeamMode,
+      formTeams, resetTeams, setTeamMode, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement,
       generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       assignLeader,
