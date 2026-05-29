@@ -226,6 +226,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
 // ─── Root page — manages picker → provider → app ──────────────────────────────
 export default function Home() {
   const [tournamentId, setTournamentId] = useState<string | null>(null);
+  const [pickerAdminToken, setPickerAdminToken] = useState<string | undefined>(undefined);
 
   // Persist last-used tournament in localStorage so returning users skip the picker
   useEffect(() => {
@@ -233,13 +234,15 @@ export default function Home() {
     if (saved) setTournamentId(saved);
   }, []);
 
-  const handleSelect = (id: string) => {
+  const handleSelect = (id: string, adminToken?: string) => {
     localStorage.setItem('lastTournamentId', id);
+    setPickerAdminToken(adminToken);
     setTournamentId(id);
   };
 
   const handleChangeTournament = () => {
     localStorage.removeItem('lastTournamentId');
+    setPickerAdminToken(undefined);
     setTournamentId(null);
   };
 
@@ -248,7 +251,7 @@ export default function Home() {
   }
 
   return (
-    <TourneyProvider tournamentId={tournamentId}>
+    <TourneyProvider tournamentId={tournamentId} initialAdminToken={pickerAdminToken}>
       <MainApp tournamentId={tournamentId} onChangeTournament={handleChangeTournament} />
     </TourneyProvider>
   );

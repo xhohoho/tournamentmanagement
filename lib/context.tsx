@@ -122,7 +122,7 @@ function makeGuard() {
   };
 }
 
-export function TourneyProvider({ children, tournamentId = 'default' }: { children: React.ReactNode; tournamentId?: string }) {
+export function TourneyProvider({ children, tournamentId = 'default', initialAdminToken }: { children: React.ReactNode; tournamentId?: string; initialAdminToken?: string }) {
   const t = encodeURIComponent(tournamentId);
   const [players, setPlayers] = useState<Player[]>([]);
   const [roster, setRosterState] = useState<string[]>([]);
@@ -140,9 +140,9 @@ export function TourneyProvider({ children, tournamentId = 'default' }: { childr
   const [defaultMaps, setDefaultMaps] = useState<string[]>([]);
   const [joinKey, setJoinKeyState] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [isAdmin, setIsAdminState] = useState(false);
+  const [isAdmin, setIsAdminState] = useState(!!initialAdminToken);
   const [previewAsUser, setPreviewAsUserState] = useState(false);
-  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [adminToken, setAdminToken] = useState<string | null>(initialAdminToken ?? null);
   const [loading, setLoading] = useState(true);
   const [tickerText, setTickerTextState] = useState('');
 
