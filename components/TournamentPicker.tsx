@@ -73,6 +73,12 @@ export function TournamentPicker({ onSelect }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Poll every 10 seconds so new tournaments created on other devices appear automatically
+  useEffect(() => {
+    const interval = setInterval(load, 10_000);
+    return () => clearInterval(interval);
+  }, [load]);
+
   // ── Admin unlock ──────────────────────────────────────────────────────────
   const handleUnlock = async () => {
     setPwErr('');
