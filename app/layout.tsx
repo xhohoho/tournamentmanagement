@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Bebas_Neue, DM_Mono, Syne } from 'next/font/google';
 import './globals.css';
+import { Providers } from './providers';
 
 const bebasNeue = Bebas_Neue({
   weight: '400',
@@ -33,7 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${bebasNeue.variable} ${dmMono.variable} ${syne.variable}`}>
       <body className="min-h-screen overflow-x-hidden">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
