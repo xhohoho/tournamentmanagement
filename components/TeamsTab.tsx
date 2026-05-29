@@ -194,7 +194,7 @@ export function TeamsTab() {
         {/* RIGHT: Teams grid */}
         <div className="flex-1 t-surface border t-border rounded-2xl p-4 min-h-0 overflow-hidden flex flex-col">
           <h2 className="font-['Bebas_Neue'] text-lg tracking-widest t-text mb-3 shrink-0">
-            {teams.length > 0 ? 'Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}`}
+            {teams.length > 0 ? 'Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}${teamMode === 'random' ? ' · Fully Random' : ''}`}
           </h2>
 
           {/* Formed teams */}
@@ -243,7 +243,7 @@ export function TeamsTab() {
                                 className="shrink-0 px-1 py-0.5 font-['DM_Mono'] bg-[var(--accent-green)] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
                                 style={{ fontSize: 9 }}
                                 title="Make team leader"
-                              >checkmark</button>
+                              >✓</button>
                             )
                           )}
                         </div>
