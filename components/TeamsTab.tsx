@@ -121,8 +121,8 @@ export function TeamsTab() {
               <h2 className="font-['Bebas_Neue'] text-base tracking-widest t-text mb-3">Formation Mode</h2>
               <div className="flex flex-col gap-2">
                 {[
-                  { id: 'leader', icon: '👑', label: 'Leader + Random', desc: 'Pick captains, fill rest randomly.' },
-                  { id: 'random', icon: '🎲', label: 'Fully Random',    desc: 'All members assigned randomly.' },
+                  { id: 'leader', icon: '\u{1F451}', label: 'Leader + Random', desc: 'Pick captains, fill rest randomly.' },
+                  { id: 'random', icon: '\u{1F3B2}', label: 'Fully Random',    desc: 'All members assigned randomly.' },
                 ].map(opt => (
                   <div
                     key={opt.id}
@@ -155,7 +155,7 @@ export function TeamsTab() {
                 </div>
                 {!rosterOk && (
                   <p className="font-['DM_Mono'] text-[10px] mt-1.5" style={{ color: 'var(--accent-red)' }}>
-                    ⚠ Need ≥10 players, multiples of 5
+                    Need at least 10 players, multiples of 5
                   </p>
                 )}
               </div>
@@ -167,7 +167,7 @@ export function TeamsTab() {
                   onClick={handleForm}
                   disabled={!rosterOk || forming}
                 >
-                  {forming ? '⏳ Forming…' : '✨ Form Teams'}
+                  {forming ? 'Forming...' : 'Form Teams'}
                 </button>
                 <button
                   className="px-3 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs border transition-all t-muted cursor-pointer"
@@ -184,17 +184,17 @@ export function TeamsTab() {
             {/* Hint when not enough players for leader mode */}
             {teamMode === 'leader' && n < 2 && (
               <p className="font-['DM_Mono'] text-[10px] t-dim px-1">
-                ℹ Add ≥10 players (2 teams of 5) to pick captains.
+                Add at least 10 players (2 teams of 5) to pick captains.
               </p>
             )}
 
           </div>
         )}
 
-        {/* RIGHT: Teams grid — takes all remaining space */}
+        {/* RIGHT: Teams grid */}
         <div className="flex-1 t-surface border t-border rounded-2xl p-4 min-h-0 overflow-hidden flex flex-col">
           <h2 className="font-['Bebas_Neue'] text-lg tracking-widest t-text mb-3 shrink-0">
-            {teams.length > 0 ? '🛡 Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}`}
+            {teams.length > 0 ? 'Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}`}
           </h2>
 
           {/* Formed teams */}
@@ -232,18 +232,18 @@ export function TeamsTab() {
                             fontSize: 'clamp(9px, 0.75vw, 13px)',
                           }}
                         >
-                          <span className="shrink-0 w-4">{m === t.leader ? '👑' : '·'}</span>
+                          <span className="shrink-0 w-4">{m === t.leader ? '\u{1F451}' : '\u00B7'}</span>
                           <span className="flex-1 truncate font-['DM_Mono']">{m}</span>
                           {isAdmin && (
                             m === t.leader ? (
-                              <span className="shrink-0 opacity-60" style={{ color: 'var(--accent-gold)', fontSize: 10 }}>👑</span>
+                              <span className="shrink-0 opacity-60" style={{ color: 'var(--accent-gold)', fontSize: 10 }}>{'\u{1F451}'}</span>
                             ) : (
                               <button
                                 onClick={async () => { setErr(''); const r = await assignLeader(t.name, m); if (r?.error) setErr(r.error); }}
                                 className="shrink-0 px-1 py-0.5 font-['DM_Mono'] bg-[var(--accent-green)] text-white rounded hover:opacity-80 transition-opacity cursor-pointer"
                                 style={{ fontSize: 9 }}
                                 title="Make team leader"
-                              >✓</button>
+                              >checkmark</button>
                             )
                           )}
                         </div>
@@ -255,7 +255,7 @@ export function TeamsTab() {
             </div>
 
           ) : showCaptainSkeleton ? (
-            /* Leader mode skeleton — card header is a captain dropdown, body has 4 random placeholders */
+            /* Leader mode skeleton — Team 1/2/3 header, first player row is 👑 + dropdown */
             <div
               className="flex-1 min-h-0"
               style={{
@@ -272,45 +272,38 @@ export function TeamsTab() {
                 return (
                   <div
                     key={i}
-                    className="rounded-xl border flex flex-col min-h-0 overflow-hidden transition-colors"
-                    style={{
-                      background: 'var(--bg-elevated)',
-                      borderColor: 'var(--border)',
-                      borderTopColor: color,
-                      borderTopWidth: 3,
-                    }}
+                    className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
+                    style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: color, borderTopWidth: 3 }}
                   >
-                    {/* Captain dropdown as the card header */}
-                    <div className="px-2 pt-2 pb-1.5 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
-                      <select
-                        className="w-full rounded-lg px-2 py-1 outline-none border-0 cursor-pointer font-['Bebas_Neue'] tracking-wide transition-colors"
-                        style={{
-                          background: 'transparent',
-                          color: picked ? color : 'var(--text-dim)',
-                          fontSize: 'clamp(12px, 1.1vw, 16px)',
-                        }}
-                        value={picked}
-                        onChange={e => updateLeader(i, e.target.value)}
-                      >
-                        <option value="">— Captain {i + 1} —</option>
-                        {available.map(p => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
-                      </select>
-                    </div>
+                    {/* Static team name header */}
+                    <h3
+                      className="font-['Bebas_Neue'] tracking-wide px-3 pt-2 pb-1.5 border-b shrink-0"
+                      style={{ color, borderColor: 'var(--border)', fontSize: 'clamp(12px, 1.1vw, 18px)' }}
+                    >Team {i + 1}</h3>
 
-                    {/* Captain row + 4 random placeholder rows */}
                     <div className="flex-1 flex flex-col justify-around px-2 py-1">
+                      {/* Row 1: crown icon + captain dropdown */}
                       <div className="flex items-center gap-1 py-0.5">
-                        <span className="w-4 shrink-0" style={{ fontSize: 10 }}>👑</span>
-                        {picked
-                          ? <span className="font-['DM_Mono'] truncate" style={{ color, fontSize: 'clamp(9px, 0.75vw, 13px)' }}>{picked}</span>
-                          : <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
-                        }
+                        <span className="shrink-0 w-4" style={{ fontSize: 10 }}>{'\u{1F451}'}</span>
+                        <select
+                          className="flex-1 min-w-0 bg-transparent outline-none border-0 cursor-pointer font-['DM_Mono'] truncate"
+                          style={{
+                            color: picked ? color : 'var(--text-dim)',
+                            fontSize: 'clamp(9px, 0.75vw, 13px)',
+                          }}
+                          value={picked}
+                          onChange={e => updateLeader(i, e.target.value)}
+                        >
+                          <option value="">— pick captain —</option>
+                          {available.map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
                       </div>
+                      {/* Rows 2–5: random placeholders */}
                       {Array.from({ length: 4 }, (__, j) => (
                         <div key={j} className="flex items-center gap-1 py-0.5">
-                          <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>·</span>
+                          <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>{'\u00B7'}</span>
                           <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
                         </div>
                       ))}
@@ -321,7 +314,7 @@ export function TeamsTab() {
             </div>
 
           ) : (
-            /* Plain skeleton for fully random / not enough players */
+            /* Plain skeleton — fully random or not enough players */
             <div
               className="flex-1 min-h-0"
               style={{
@@ -344,7 +337,7 @@ export function TeamsTab() {
                   <div className="flex-1 flex flex-col justify-around px-2 py-1">
                     {Array.from({ length: 5 }, (__, j) => (
                       <div key={j} className="flex items-center gap-1 py-0.5">
-                        <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>·</span>
+                        <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>{'\u00B7'}</span>
                         <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)' }} />
                       </div>
                     ))}
