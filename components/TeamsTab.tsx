@@ -30,35 +30,25 @@ export function TeamsTab() {
   const [revealing, setRevealing] = useState(false);
   const [forming, setForming] = useState(false);
 
-  // Total slots across all teams (5 per team)
   const totalSlots = teams.length * 5;
   const revealCount = useReveal(revealing, totalSlots);
 
-  // Seeded once on formTeams success — stored in a ref so polling never reshuffles it
   const revealOrderMap = useRef<Map<string, number>>(new Map());
 
   const seedRevealOrder = (newTeams: typeof teams) => {
     const allMembers = newTeams.flatMap(t => t.members);
     const orderIndices = Array.from({ length: allMembers.length }, (_, i) => i);
-
-    // Pure Fisher-Yates shuffle
     for (let i = orderIndices.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [orderIndices[i], orderIndices[j]] = [orderIndices[j], orderIndices[i]];
     }
-
     const map = new Map<string, number>();
-    allMembers.forEach((member, index) => {
-      map.set(member, orderIndices[index]);
-    });
+    allMembers.forEach((member, index) => { map.set(member, orderIndices[index]); });
     revealOrderMap.current = map;
   };
 
-  // Disable interval tracking state once everything is revealed
   useEffect(() => {
-    if (revealing && revealCount >= totalSlots && totalSlots > 0) {
-      setRevealing(false);
-    }
+    if (revealing && revealCount >= totalSlots && totalSlots > 0) setRevealing(false);
   }, [revealing, revealCount, totalSlots]);
 
   const n = Math.floor(roster.length / 5);
@@ -85,12 +75,8 @@ export function TeamsTab() {
 
   const rosterOk = roster.length >= 10 && roster.length % 5 === 0;
 
-  // Checks visibility against our randomized timeline position map
   const isVisible = (member: string) => {
-    // If we aren't in an active animation pass, default everything to visible 
-    // (Crucial for page loads, spectators, or viewing saved setups)
     if (!revealing && revealCount === 0) return true;
-    
     const assignedIndex = revealOrderMap.current.get(member) ?? 0;
     return assignedIndex < revealCount;
   };
@@ -103,6 +89,8 @@ export function TeamsTab() {
     </div>
   );
 
+  const showLeaderPicker = isAdmin && teamMode === 'leader' && n >= 2;
+
   return (
     <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0">
       <div>
@@ -112,78 +100,91 @@ export function TeamsTab() {
 
       <div className="flex-1 flex flex-col gap-4 min-h-0">
         {isAdmin && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 shrink-0">
-            {/* Mode selector */}
-            <div className="t-surface border t-border rounded-2xl p-5">
-              <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">Formation Mode</h2>
-              <div className="flex flex-col gap-3">
-                {[
-                  { id: 'leader', icon: '👑', label: 'Leader + Random', desc: 'Pick captains, fill rest randomly.' },
-                  { id: 'random', icon: '🎲', label: 'Fully Random',    desc: 'All members assigned randomly.' },
-                ].map(opt => (
-                  <div
-                    key={opt.id}
-                    className="p-4 rounded-xl border-2 cursor-pointer transition-all"
-                    style={{
-                      borderColor: teamMode === opt.id ? 'var(--accent-red)' : 'var(--border)',
-                      background:  teamMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
-                    }}
-                    onClick={() => setTeamMode(opt.id as 'leader' | 'random')}
-                  >
-                    <div className="text-2xl mb-1">{opt.icon}</div>
-                    <div className="font-['DM_Mono'] text-sm font-bold t-text mb-0.5">{opt.label}</div>
-                    <div className="font-['DM_Mono'] text-[11px] t-muted">{opt.desc}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="flex flex-col gap-3 shrink-0">
 
-            {/* Roster summary + actions */}
-            <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4">
-              <div>
-                <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-3">Roster</h2>
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl font-['Bebas_Neue'] font-bold" style={{ color: rosterOk ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                    {roster.length}
-                  </div>
-                  <div className="font-['DM_Mono'] text-xs t-muted">players · {n} team{n !== 1 ? 's' : ''} of 5</div>
-                </div>
-                {!rosterOk && (
-                  <p className="font-['DM_Mono'] text-[11px] mt-2" style={{ color: 'var(--accent-red)' }}>
-                    ⚠ Need at least 10 players in multiples of 5
-                  </p>
-                )}
-              </div>
-              {err && <p className="font-['DM_Mono'] text-xs" style={{ color: 'var(--accent-red)' }}>{err}</p>}
-              <div className="flex gap-3 mt-auto">
-                <button
-                  className="flex-1 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                  style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
-                  onClick={handleForm}
-                  disabled={!rosterOk || forming}
-                >
-                  {forming ? '⏳ Forming…' : '✨ Form Teams'}
-                </button>
-                <button
-                  className="px-4 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm border transition-all t-muted cursor-pointer"
-                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = ''; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-                  onClick={resetTeams}
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
+            {/* Row 1: Mode selector + Roster + Actions — equal columns, no squishing */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 
-            {/* Leader picker */}
-            {teamMode === 'leader' && n >= 2 ? (
+              {/* Formation Mode */}
               <div className="t-surface border t-border rounded-2xl p-5">
-                <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-1">Select Leaders</h2>
-                <p className="font-['DM_Mono'] text-[11px] t-muted mb-4">
-                  Pool: <span style={{ color: 'var(--accent-gold)' }}>{getPool().join(', ') || '—'}</span>
-                </p>
-                <div className="grid grid-cols-2 gap-3 overflow-y-auto" style={{ maxHeight: '160px' }}>
+                <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-4">Formation Mode</h2>
+                <div className="flex gap-3">
+                  {[
+                    { id: 'leader', icon: '👑', label: 'Leader + Random', desc: 'Pick captains, fill rest randomly.' },
+                    { id: 'random', icon: '🎲', label: 'Fully Random',    desc: 'All members assigned randomly.' },
+                  ].map(opt => (
+                    <div
+                      key={opt.id}
+                      className="flex-1 p-4 rounded-xl border-2 cursor-pointer transition-all"
+                      style={{
+                        borderColor: teamMode === opt.id ? 'var(--accent-red)' : 'var(--border)',
+                        background:  teamMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
+                      }}
+                      onClick={() => setTeamMode(opt.id as 'leader' | 'random')}
+                    >
+                      <div className="text-2xl mb-2">{opt.icon}</div>
+                      <div className="font-['DM_Mono'] text-sm font-bold t-text mb-1">{opt.label}</div>
+                      <div className="font-['DM_Mono'] text-[11px] t-muted leading-relaxed">{opt.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Roster summary + actions */}
+              <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-4">
+                <div>
+                  <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-3">Roster</h2>
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl font-['Bebas_Neue'] font-bold" style={{ color: rosterOk ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                      {roster.length}
+                    </div>
+                    <div className="font-['DM_Mono'] text-xs t-muted">players · {n} team{n !== 1 ? 's' : ''} of 5</div>
+                  </div>
+                  {!rosterOk && (
+                    <p className="font-['DM_Mono'] text-[11px] mt-2" style={{ color: 'var(--accent-red)' }}>
+                      ⚠ Need at least 10 players in multiples of 5
+                    </p>
+                  )}
+                </div>
+                {err && <p className="font-['DM_Mono'] text-xs" style={{ color: 'var(--accent-red)' }}>{err}</p>}
+                <div className="flex gap-3 mt-auto">
+                  <button
+                    className="flex-1 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
+                    onClick={handleForm}
+                    disabled={!rosterOk || forming}
+                  >
+                    {forming ? '⏳ Forming…' : '✨ Form Teams'}
+                  </button>
+                  <button
+                    className="px-4 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm border transition-all t-muted cursor-pointer"
+                    style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = ''; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+                    onClick={resetTeams}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Leader picker — only shown when relevant, full width for breathing room */}
+            {showLeaderPicker ? (
+              <div className="t-surface border t-border rounded-2xl p-5">
+                <div className="flex items-start justify-between mb-4 gap-4">
+                  <div>
+                    <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text mb-1">Select Leaders</h2>
+                    <p className="font-['DM_Mono'] text-[11px] t-muted">
+                      Available pool: <span style={{ color: 'var(--accent-gold)' }}>{getPool().join(', ') || '—'}</span>
+                    </p>
+                  </div>
+                  <span className="font-['DM_Mono'] text-[11px] t-dim shrink-0 mt-1">{leaders.filter(Boolean).length} / {n} selected</span>
+                </div>
+                <div
+                  className="grid gap-3"
+                  style={{ gridTemplateColumns: `repeat(${Math.min(n, Math.max(3, Math.ceil(n / 2)))}, minmax(0, 1fr))` }}
+                >
                   {Array.from({ length: n }, (_, i) => (
                     <div key={i} className="t-elevated border t-border rounded-xl p-3">
                       <h4 className="font-['Bebas_Neue'] text-sm tracking-widest mb-2" style={{ color: TEAM_COLORS[i % TEAM_COLORS.length] }}>
@@ -204,17 +205,17 @@ export function TeamsTab() {
                   ))}
                 </div>
               </div>
-            ) : (
-              <div className="t-surface border t-border rounded-2xl p-5 flex items-center justify-center">
-                <p className="font-['DM_Mono'] text-xs t-dim text-center">
-                  {teamMode === 'random' ? 'Fully random — no leaders needed.' : 'Need 2+ teams to pick leaders.'}
-                </p>
-              </div>
+            ) : teamMode === 'random' ? null : (
+              /* "Need 2+ teams" hint — subtle, doesn't take up a full panel */
+              <p className="font-['DM_Mono'] text-[11px] t-dim px-1">
+                ℹ Add at least 10 players (2 teams of 5) to enable leader picking.
+              </p>
             )}
+
           </div>
         )}
 
-        {/* Teams grid — always fills the available height, no scroll */}
+        {/* Teams grid */}
         <div className="flex-1 t-surface border t-border rounded-2xl p-4 min-h-0 overflow-hidden flex flex-col">
           <h2 className="font-['Bebas_Neue'] text-lg tracking-widest t-text mb-3 shrink-0">
             {teams.length > 0 ? '🛡 Teams' : `Preview — ${previewSlots} team${previewSlots !== 1 ? 's' : ''}`}
