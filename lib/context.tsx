@@ -694,6 +694,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     setSpinCategories([]);
     setSpinItemCategory({});
     setSpinState(null);
+    setShuffleState(null);
   };
 
   return (
