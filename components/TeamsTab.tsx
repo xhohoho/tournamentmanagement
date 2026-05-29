@@ -19,6 +19,65 @@ function useReveal(active: boolean, total: number, intervalMs = 120) {
 }
 
 
+// ─── SubInRow: inline substitute-player input ────────────────────────────────
+interface SubInRowProps {
+  teamId: string;
+  member: string;
+  onAdd: (teamId: string, member: string, name: string) => Promise<{ error?: string }>;
+  onCancel: () => void;
+}
+
+function SubInRow({ teamId, member, onAdd, onCancel }: SubInRowProps) {
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 0); }, []);
+
+  const handleSubmit = async () => {
+    const name = draft.trim();
+    if (!name) return;
+    setBusy(true);
+    setErr('');
+    const r = await onAdd(teamId, member, name);
+    if (r?.error) { setErr(r.error); setBusy(false); }
+  };
+
+  return (
+    <div
+      className="flex items-center gap-1 pl-5 pr-1 py-0.5"
+      style={{ fontSize: 'clamp(9px, 0.75vw, 12px)' }}
+    >
+      <span style={{ opacity: 0.5, color: 'var(--accent-green)' }}>↳</span>
+      <input
+        ref={inputRef}
+        className="flex-1 min-w-0 bg-transparent border-b outline-none font-['DM_Mono'] t-text"
+        style={{
+          borderColor: err ? 'var(--accent-red)' : 'var(--border-mid)',
+          fontSize: 'inherit',
+          paddingBottom: 1,
+        }}
+        placeholder="sub-in name…"
+        value={draft}
+        onChange={e => { setDraft(e.target.value); setErr(''); }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') handleSubmit();
+          if (e.key === 'Escape') onCancel();
+        }}
+        disabled={busy}
+      />
+      <button
+        onClick={handleSubmit}
+        disabled={busy || !draft.trim()}
+        className="shrink-0 px-1.5 py-0.5 rounded font-['DM_Mono'] font-bold transition-opacity disabled:opacity-30 cursor-pointer"
+        style={{ fontSize: 9, background: 'var(--accent-green)', color: '#fff' }}
+      >{busy ? '…' : '✓'}</button>
+      {err && <span style={{ color: 'var(--accent-red)', fontSize: 8 }}>{err}</span>}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export function TeamsTab() {
   const {
@@ -378,6 +437,7 @@ export function TeamsTab() {
                                   else setExpandedSub(null);
                                   return r ?? {};
                                 }}
+                                onCancel={() => setExpandedSub(null)}
                               />
                             )}
 
