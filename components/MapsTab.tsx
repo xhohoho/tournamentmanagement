@@ -299,7 +299,9 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const W = canvas.width, cx = W / 2, r = W / 2 - 8;
+    const W = canvas.width;
+    if (W < 32) return; // canvas too small to draw safely — skip
+    const cx = W / 2, r = W / 2 - 8;
     ctx.clearRect(0, 0, W, W);
     if (!maps.length) {
       ctx.fillStyle = 'var(--bg-elevated)';
@@ -426,7 +428,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
     const ro = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
       const size = Math.floor(Math.min(width, Math.max(0, height - 104)));
-      if (size > 0) setWheelSize(size);
+      if (size >= 32) setWheelSize(size);
     });
     ro.observe(el);
     return () => ro.disconnect();
