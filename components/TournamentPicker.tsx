@@ -53,8 +53,13 @@ export function TournamentPicker({ onSelect }: Props) {
       headers: adminToken ? { 'X-Admin-Token': adminToken } : {},
       body: fd,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('[uploadPoster] failed', res.status, err);
+      return null;
+    }
     const data = await res.json();
+    console.log('[uploadPoster] success', data.url);
     return data.url ?? null;
   };
 
@@ -134,6 +139,9 @@ export function TournamentPicker({ onSelect }: Props) {
         if (uploadedUrl) {
           posterUrl = uploadedUrl;
           setNewPosterPreview(uploadedUrl);
+        } else {
+          // Upload failed — fall back to base64 data URL so poster still shows
+          posterUrl = newPosterPreview || undefined;
         }
       }
       const res = await fetch('/api/tournaments', {

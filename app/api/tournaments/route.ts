@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const { id, name, posterUrl } = await req.json();
   const safeId = id?.trim().toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64);
   const safeName = name?.trim().slice(0, 80);
-  const safePoster = typeof posterUrl === 'string' ? posterUrl.trim().slice(0, 500) : undefined;
+  const safePoster = typeof posterUrl === 'string' ? posterUrl.trim().slice(0, 2000) : undefined;
   if (!safeId || !safeName) {
     return NextResponse.json({ error: 'id and name required' }, { status: 400 });
   }
@@ -33,7 +33,7 @@ export async function PATCH(req: NextRequest) {
   }
   const body = await req.json();
   const patch: Record<string, string> = {};
-  if (typeof body.posterUrl === 'string') patch.posterUrl = body.posterUrl.trim().slice(0, 500);
+  if (typeof body.posterUrl === 'string') patch.posterUrl = body.posterUrl.trim().slice(0, 2000);
   if (typeof body.name === 'string') patch.name = body.name.trim().slice(0, 80);
   const list = await updateTournamentMeta(tid, patch);
   return NextResponse.json({ tournaments: list });
