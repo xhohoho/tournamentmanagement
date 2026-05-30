@@ -242,10 +242,44 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
   const [seeding, setSeeding] = useState(false);
-  // Local copy of stageFormats so the picker feels instant
+
+  // localSF drives the picker UI immediately (no round-trip flicker).
+  // We seed it from context once on mount, then own it locally.
+  // We only accept context updates when they originate from a DIFFERENT source
+  // (e.g. another admin tab) — detected by a ref tracking the last value we
+  // pushed to the server ourselves.
   const [localSF, setLocalSF] = useState(stageFormats);
-  // Keep localSF in sync with server (e.g. on initial load / other admin)
-  useEffect(() => { setLocalSF(stageFormats); }, [stageFormats]);
+  const lastPushedSF = useRef<import('@/lib/types').StageFormats | null>(null);
+  const initializedSF = useRef(false);
+
+  useEffect(() => {
+    // Seed localSF from context on first real load (when loading finishes).
+    if (!initializedSF.current && !loading) {
+      setLocalSF(stageFormats);
+      initializedSF.current = true;
+      return;
+    }
+    // After init: only accept context update if it differs from what WE last pushed.
+    // This prevents the SSE echo of our own click from bouncing the UI.
+    if (initializedSF.current && lastPushedSF.current) {
+      const same =
+        lastPushedSF.current.groupStage === stageFormats.groupStage &&
+        lastPushedSF.current.semiFinal  === stageFormats.semiFinal  &&
+        lastPushedSF.current.grandFinal === stageFormats.grandFinal;
+      if (!same) {
+        // Came from another admin — accept it
+        setLocalSF(stageFormats);
+        lastPushedSF.current = stageFormats;
+      }
+    }
+  }, [stageFormats, loading]);
+
+  const handleSFChange = (key: keyof typeof localSF, fmt: 'bo1' | 'bo3' | 'bo5') => {
+    const next = { ...localSF, [key]: fmt };
+    setLocalSF(next);           // instant UI
+    lastPushedSF.current = next; // mark as ours so SSE echo is ignored
+    setStageFormats(next);       // persist to server
+  };
   const [pendingElim, setPendingElim] = useState<'single' | 'double' | null>(null);
   const displayElim = pendingElim ?? elimMode;
 
@@ -340,11 +374,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
                       <button
                         key={fmt}
                         disabled={hasBracket}
-                        onClick={() => {
-                          const next = { ...localSF, [key]: fmt };
-                          setLocalSF(next);
-                          setStageFormats(next);
-                        }}
+                        onClick={() => handleSFChange(key, fmt)}
                         className="px-2 py-0.5 font-['DM_Mono'] text-[10px] font-bold rounded border-2 transition-all cursor-pointer disabled:cursor-not-allowed"
                         style={{
                           borderColor: localSF[key] === fmt ? 'var(--accent-gold)' : 'var(--border)',

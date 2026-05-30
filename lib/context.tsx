@@ -480,13 +480,17 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const setStageFormats = async (sf: import('@/lib/types').StageFormats) => {
     guard.touch('stageFormats');
     setStageFormatsState(sf); // optimistic
-    // Persist by sending with a no-op generate call — API merges stageFormats on every POST
-    // We use a dedicated lightweight approach: just update KV directly via the bracket endpoint
-    await fetch(`/api/bracket?t=${t}`, {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({ elimMode, action: 'saveFormats', stageFormats: sf }),
-    });
+    try {
+      await fetch(`/api/bracket?t=${t}`, {
+        method: 'POST',
+        headers: adminHeaders,
+        body: JSON.stringify({ elimMode, action: 'saveFormats', stageFormats: sf }),
+      });
+    } finally {
+      // Keep guard hot for another window after the fetch completes so the
+      // SSE echo that arrives shortly after doesn't stomp the local value.
+      guard.touch('stageFormats');
+    }
   };
 
   const generateBracket = async (sf?: import('@/lib/types').StageFormats) => {
