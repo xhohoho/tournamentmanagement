@@ -104,14 +104,14 @@ function sweepBracket(bracket: Bracket): Bracket {
  *
  * Naming convention (12-team DE example, nextPow2=16, 4 UB rounds, 6 LB rounds):
  *
- *  UB (upper_de):  R0 R1 R2  R3(UF)       → BO1 BO1 BO1 BO3
- *  LB (lower):     R0 R1 R2 R3  R4(SF) R5(F) → BO1 BO1 BO1 BO1 BO3 BO3
- *  GF:             always grandFinal          → BO5
- *  SE (upper):     R0…Rn-2(SF) Rn-1(F)       → BO1…BO3 BO5
+ *  UB (upper_de):  R0 R1 R2  R3(UF)              → BO1 BO1 BO1 BO3
+ *  LB (lower):     R0 R1 R2 R3  R4(SF) R5(LBF)    → BO1 BO1 BO1 BO1 BO3 BO5
+ *  GF:             always grandFinal               → BO5
+ *  SE (upper):     R0…Rn-2(SF) Rn-1(F)            → BO1…BO3 BO5
  *
  * Rules:
- *  upper_de  last only       → semiFinal   (Upper Final seeds GF p1, ≠ real GF)
- *  lower     last two        → semiFinal   (LB Semi + LB Final)
+ *  upper_de  last only       → semiFinal   (Upper Final seeds GF p1)
+ *  lower     last two        → semiFinal   (LB Semi + LB Final; LB Final loser = 3rd place)
  *  upper/SE  last → grandFinal, second-to-last → semiFinal, rest → groupStage
  *  gf        always          → grandFinal
  */
@@ -131,8 +131,9 @@ function stageFormat(
   }
 
   if (section === 'lower') {
-    // Last two LB rounds are semiFinal-level (LB Semi + LB Final).
-    // Everything earlier is group-stage.
+    // LB Semi + LB Final are both semiFinal level.
+    // The LB Final loser finishes 3rd — it determines 3rd/4th, not the championship.
+    // Only the Grand Final node is grandFinal format.
     if (roundIdx >= totalRounds - 2) return sf.semiFinal;  // LB Semi + LB Final → BO3
     return sf.groupStage;                                  // Early LB rounds → BO1
   }

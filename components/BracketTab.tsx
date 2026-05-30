@@ -731,8 +731,9 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
         const isBo3lb = round[0]?.format === 'bo3';
         const isBo5lb = round[0]?.format === 'bo5';
         const slotCountLb = isBo5lb ? 5 : isBo3lb ? 3 : 1;
-        const isFinal = colIdx === lbRounds.length - 1 && round.length === 1;
-        const label = isFinal ? 'Lower Final' : `Lower R${colIdx + 1}`;
+        const isFinal = colIdx === lbRounds.length - 1;
+        const isSemi = colIdx === lbRounds.length - 2;
+        const label = isFinal ? 'Lower Final' : isSemi ? 'Lower Semi' : `Lower R${colIdx + 1}`;
         return round.map((match, mi) => (
           <div key={`lb-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: lbOriginY + lbCardTop(colIdx, mi), left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
