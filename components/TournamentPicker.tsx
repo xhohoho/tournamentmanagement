@@ -225,6 +225,9 @@ export function TournamentPicker({ onSelect }: Props) {
 
   const isAdmin = !!adminToken;
 
+  // Lightbox state
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
   return (
     <div className="min-h-screen w-screen t-bg overflow-auto relative">
       {/* Ambient gradients */}
@@ -415,7 +418,11 @@ export function TournamentPicker({ onSelect }: Props) {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 {tournaments.map(t => (
-                  <div key={t.id} className="group relative flex flex-col rounded-2xl border t-border-mid t-surface overflow-hidden shadow-lg transition-all hover:border-[var(--accent)] hover:shadow-[0_0_24px_rgba(77,124,255,0.12)]">
+                  <div
+                    key={t.id}
+                    className="group relative flex flex-col rounded-2xl border t-border-mid t-surface overflow-hidden shadow-lg transition-all hover:border-[var(--accent)] hover:shadow-[0_0_24px_rgba(77,124,255,0.12)] cursor-pointer"
+                    onClick={() => onSelect(t.id, adminToken ?? undefined)}
+                  >
 
                     {/* Poster image */}
                     <div
@@ -427,6 +434,8 @@ export function TournamentPicker({ onSelect }: Props) {
                           src={t.posterUrl}
                           alt={`${t.name} poster`}
                           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          onClick={e => { e.stopPropagation(); setLightboxUrl(t.posterUrl!); }}
+                          title="Click to view poster"
                         />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center t-elevated">
@@ -434,8 +443,8 @@ export function TournamentPicker({ onSelect }: Props) {
                           <span className="font-['DM_Mono'] text-[10px] t-dim uppercase tracking-widest">No poster</span>
                         </div>
                       )}
-                      {/* Gradient overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                      {/* Gradient overlay — pointer-events-none so clicks pass to img */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none" />
 
                       {/* Admin: edit poster button */}
                       {isAdmin && (
@@ -486,17 +495,16 @@ export function TournamentPicker({ onSelect }: Props) {
                       )}
                       {t.organizer && (
                         <div className="font-['DM_Mono'] text-[10px] t-muted mb-3">
-                          🏢 {t.organizer}
+                          <span className="t-dim">Organizer: </span>{t.organizer}
                         </div>
                       )}
                       {!t.tournamentDate && !t.organizer && <div className="mb-3" />}
-                      <button
-                        onClick={() => onSelect(t.id, adminToken ?? undefined)}
-                        className="mt-auto w-full py-2.5 rounded-xl font-['DM_Mono'] text-xs font-bold uppercase tracking-widest text-white transition-all cursor-pointer hover:opacity-90"
+                      <div
+                        className="mt-auto w-full py-2.5 rounded-xl font-['DM_Mono'] text-xs font-bold uppercase tracking-widest text-white text-center transition-all group-hover:opacity-90"
                         style={{ background: 'linear-gradient(135deg, var(--accent-red), var(--accent))' }}
                       >
                         Enter Tournament →
-                      </button>
+                      </div>
                     </div>
 
                     {/* Uploading overlay */}
@@ -512,6 +520,27 @@ export function TournamentPicker({ onSelect }: Props) {
           </>
         )}
       </div>
+
+      {/* ── Poster lightbox ─────────────────────────────────────────────────── */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center">
+            <img
+              src={lightboxUrl}
+              alt="Poster"
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 border border-white/20 text-white/80 hover:bg-black/90 hover:text-white font-bold text-sm transition-all cursor-pointer"
+            >✕</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Delete confirmation modal ────────────────────────────────────────── */}
       {confirmDeleteId && (
