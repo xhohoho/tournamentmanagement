@@ -127,15 +127,19 @@ export function TournamentPicker({ onSelect }: Props) {
     if (!safeName) { setCreateErr('Name is required.'); return; }
     setSaving(true);
     try {
-      // Upload the poster first if one was chosen
+      // Upload the poster first if one was chosen, capture URL in a local var
+      let posterUrl: string | undefined = undefined;
       if (newPosterFile) {
         const uploadedUrl = await uploadPoster(newPosterFile);
-        if (uploadedUrl) setNewPosterPreview(uploadedUrl);
+        if (uploadedUrl) {
+          posterUrl = uploadedUrl;
+          setNewPosterPreview(uploadedUrl);
+        }
       }
       const res = await fetch('/api/tournaments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-        body: JSON.stringify({ id: safeId, name: safeName, posterUrl: newPosterPreview || undefined }),
+        body: JSON.stringify({ id: safeId, name: safeName, posterUrl: posterUrl || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
