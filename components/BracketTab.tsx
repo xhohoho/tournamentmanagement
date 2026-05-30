@@ -393,9 +393,9 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
           {isAdmin && <div className="p-2 border-b t-border font-['DM_Mono'] text-[9px] t-muted bg-black/10">Drag maps into bracket slots</div>}
           <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
             {spinResults.map((m, i) => (
-              <div key={i} draggable={isAdmin} onDragStart={isAdmin ? (e) => e.dataTransfer.setData('text/plain', m) : undefined} className={`p-2 flex items-center gap-2 text-sm font-['DM_Mono'] border t-border-mid rounded bg-[var(--bg-surface)] transition-colors truncate ${isAdmin ? 'cursor-grab active:cursor-grabbing hover:border-[var(--accent)]' : 'cursor-default'}`}>
-                <span className="font-['DM_Mono'] text-[10px] t-dim w-4 text-right">#{i + 1}</span>
-                <span>🗺 {m}</span>
+              <div key={i} draggable={isAdmin} onDragStart={isAdmin ? (e) => e.dataTransfer.setData('text/plain', m) : undefined} className={`p-2 flex items-center gap-2 text-sm font-['DM_Mono'] border t-border-mid rounded t-elevated transition-colors truncate ${isAdmin ? 'cursor-grab active:cursor-grabbing hover:border-[var(--accent)]' : 'cursor-default'}`}>
+                <span className="font-['DM_Mono'] text-[10px] t-dim w-4 text-right shrink-0">#{i + 1}</span>
+                <span className="t-text truncate">🗺 {m}</span>
               </div>
             ))}
           </div>

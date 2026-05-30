@@ -739,12 +739,11 @@ export function TeamsTab() {
 
           ) : showCaptainSkeleton ? (
             <div
-              className="flex-1 min-h-0"
               style={{
                 display: 'grid',
                 gridTemplateColumns: `repeat(${teamCols}, minmax(0, 1fr))`,
                 gap: '10px',
-                alignContent: 'stretch',
+                alignContent: 'start',
               }}
             >
               {Array.from({ length: previewSlots }, (_, i) => {
@@ -754,14 +753,14 @@ export function TeamsTab() {
                 return (
                   <div
                     key={i}
-                    className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
+                    className="rounded-xl border flex flex-col overflow-hidden"
                     style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: color, borderTopWidth: 3 }}
                   >
                     <h3
                       className="font-['Bebas_Neue'] tracking-wide px-3 pt-2 pb-1.5 border-b shrink-0"
                       style={{ color, borderColor: 'var(--border)', fontSize: 'clamp(12px, 1.1vw, 18px)' }}
                     >Team {i + 1}</h3>
-                    <div className="flex-1 flex flex-col justify-around px-2 py-1">
+                    <div className="flex flex-col px-2 py-1.5 gap-0.5">
                       <div className="flex items-center gap-1 py-0.5">
                         <span className="shrink-0 w-4" style={{ fontSize: 10 }}>👑</span>
                         <select
@@ -788,25 +787,24 @@ export function TeamsTab() {
 
           ) : (
             <div
-              className="flex-1 min-h-0"
               style={{
                 display: 'grid',
                 gridTemplateColumns: `repeat(${teamCols}, minmax(0, 1fr))`,
                 gap: '10px',
-                alignContent: 'stretch',
+                alignContent: 'start',
               }}
             >
               {Array.from({ length: previewSlots }, (_, i) => (
                 <div
                   key={i}
-                  className="rounded-xl border flex flex-col min-h-0 overflow-hidden"
+                  className="rounded-xl border flex flex-col overflow-hidden"
                   style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', borderTopColor: TEAM_COLORS[i % TEAM_COLORS.length], borderTopWidth: 3 }}
                 >
                   <h3
                     className="font-['Bebas_Neue'] tracking-wide px-3 pt-2 pb-1.5 border-b shrink-0"
                     style={{ color: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: 'var(--border)', fontSize: 'clamp(12px, 1.1vw, 18px)' }}
                   >Team {i + 1}</h3>
-                  <div className="flex-1 flex flex-col justify-around px-2 py-1">
+                  <div className="flex flex-col px-2 py-1.5 gap-0.5">
                     {Array.from({ length: 5 }, (__, j) => (
                       <div key={j} className="flex items-center gap-1 py-0.5">
                         <span className="w-4 shrink-0 t-dim" style={{ fontSize: 10 }}>·</span>
