@@ -433,26 +433,34 @@ function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo, isSlo
       </div>
 
       {/* 3rd place — single elim only */}
-      {bracket.type === 'single' && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (
-        <div className="t-surface border t-border rounded-xl p-5 shrink-0">
-          <div className="flex items-center gap-3 mb-4">
-            <h3 className="font-['Bebas_Neue'] text-xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>🥉 3rd Place Match</h3>
-            {bracket.thirdPlace.winner && (
-              <span className="font-['DM_Mono'] text-[10px] px-2 py-0.5 rounded border" style={{ color: 'var(--accent-gold)', borderColor: 'rgba(224,144,16,0.3)', background: 'rgba(224,144,16,0.08)' }}>🥉 {bracket.thirdPlace.winner}</span>
-            )}
+      {bracket.type === 'single' && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (() => {
+        const tp = bracket.thirdPlace!;
+        const third = tp.winner;
+        const fourth = third ? (third === tp.p1 ? tp.p2 : tp.p1) : null;
+        return (
+          <div className="t-surface border t-border rounded-xl p-5 shrink-0">
+            <div className="flex items-center gap-3 mb-4">
+              <h3 className="font-['Bebas_Neue'] text-xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>🥉 3rd Place Match</h3>
+              {third && (
+                <span className="font-['DM_Mono'] text-[10px] px-2 py-0.5 rounded border" style={{ color: 'var(--accent-gold)', borderColor: 'rgba(224,144,16,0.3)', background: 'rgba(224,144,16,0.08)' }}>🥉 {third}</span>
+              )}
+              {fourth && (
+                <span className="font-['DM_Mono'] text-[10px] px-2 py-0.5 rounded border" style={{ color: 'var(--text-dim)', borderColor: 'rgba(120,120,120,0.3)', background: 'rgba(120,120,120,0.06)' }}>🏅 4th · {fourth}</span>
+              )}
+            </div>
+            <MatchCard
+              match={tp}
+              matchKey="m_thirdPlace_0_0"
+              onScore={(p1w, p2w) => onThirdPlace(p1w, p2w)}
+              onUndo={() => onUndo('thirdPlace', 0, 0)}
+              isAdmin={isAdmin}
+              p1SlotKey="m_thirdPlace_0_0_p1"
+              p2SlotKey="m_thirdPlace_0_0_p2"
+              isSlotRevealed={isSlotRevealed}
+            />
           </div>
-          <MatchCard
-            match={bracket.thirdPlace}
-            matchKey="m_thirdPlace_0_0"
-            onScore={(p1w, p2w) => onThirdPlace(p1w, p2w)}
-            onUndo={() => onUndo('thirdPlace', 0, 0)}
-            isAdmin={isAdmin}
-            p1SlotKey="m_thirdPlace_0_0_p1"
-            p2SlotKey="m_thirdPlace_0_0_p2"
-            isSlotRevealed={isSlotRevealed}
-          />
-        </div>
-      )}
+        );
+      })()}
 
 
     </>
@@ -707,14 +715,21 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
       })}
 
       {/* ── Grand Final Column ─────────────────────────────────────────── */}
-      {gf && (
-        <div style={{ position: 'absolute', top: gfTopGF1 - HEADER_H, left: gfColX }}>
-          <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold mb-1.5" style={{ color: 'var(--accent)' }}>
-            Grand Final
+      {gf && (() => {
+        // LBF loser = 3rd place in double elim
+        const lbFinal = lbRounds.length > 0 ? lbRounds[lbRounds.length - 1][0] : null;
+        const lbFinalLoser = lbFinal?.winner
+          ? (lbFinal.winner === lbFinal.p1 ? lbFinal.p2 : lbFinal.p1)
+          : null;
+        return (
+          <div style={{ position: 'absolute', top: gfTopGF1 - HEADER_H, left: gfColX }}>
+            <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold mb-1.5" style={{ color: 'var(--accent)' }}>
+              Grand Final
+            </div>
+            <GrandFinalCards gf={gf} lbFinalLoser={lbFinalLoser} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
           </div>
-          <GrandFinalCards gf={gf} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── LB Section Label ──────────────────────────────────────────── */}
       {lbRounds.length > 0 && (
@@ -760,8 +775,8 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
 
 // ─── GrandFinalCards ─────────────────────────────────────────────────────────
 // Renders GF1 (and optionally GF2) as stacked cards; called from DoubleElimCanvas.
-function GrandFinalCards({ gf, isAdmin, onScore, onUndo, isSlotRevealed }: {
-  gf: GrandFinal; isAdmin: boolean;
+function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRevealed }: {
+  gf: GrandFinal; lbFinalLoser: string | null; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isSlotRevealed: (slotKey: string) => boolean;
@@ -782,6 +797,8 @@ function GrandFinalCards({ gf, isAdmin, onScore, onUndo, isSlotRevealed }: {
   const canUndo = isAdmin && gf1Done;
   // The winning team — either from GF1 (UB winner) or GF2 (reset winner)
   const champion = gf.winner ?? null;
+  // GF loser = 2nd place (only known once GF is fully done)
+  const gfLoser = champion ? (champion === gf.p1 ? gf.p2 : gf.p1) : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -843,7 +860,29 @@ function GrandFinalCards({ gf, isAdmin, onScore, onUndo, isSlotRevealed }: {
             <span className="sparkle" style={{ top: -6, left: 28, animationDelay: '0.8s' }}>✦</span>
           </div>
           <div className="font-['Bebas_Neue'] text-lg tracking-widest" style={{ color: 'var(--accent-gold)' }}>{champion}</div>
-          <div className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-widest">Champion</div>
+          <div className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-widest">🥇 Champion</div>
+        </div>
+      )}
+
+      {/* 2nd place — GF loser */}
+      {gfLoser && (
+        <div
+          className="rounded-xl px-4 py-2 text-center border"
+          style={{ background: 'rgba(180,180,180,0.04)', borderColor: 'rgba(180,180,180,0.2)', width: CARD_W }}
+        >
+          <div className="font-['Bebas_Neue'] text-base tracking-widest" style={{ color: 'var(--text)' }}>{gfLoser}</div>
+          <div className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-widest">🥈 2nd Place</div>
+        </div>
+      )}
+
+      {/* 3rd place — LBF loser */}
+      {lbFinalLoser && (
+        <div
+          className="rounded-xl px-4 py-2 text-center border"
+          style={{ background: 'rgba(180,130,60,0.04)', borderColor: 'rgba(180,130,60,0.2)', width: CARD_W }}
+        >
+          <div className="font-['Bebas_Neue'] text-base tracking-widest" style={{ color: 'var(--accent-gold)', opacity: 0.75 }}>{lbFinalLoser}</div>
+          <div className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-widest">🥉 3rd Place</div>
         </div>
       )}
     </div>
