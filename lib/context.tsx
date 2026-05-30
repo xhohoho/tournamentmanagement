@@ -184,9 +184,11 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('players'))   setPlayers(data.players as Player[] ?? []);
     if (!fromSSE || !guard.guarded('roster'))    setRosterState(data.roster as string[] ?? []);
     if (!fromSSE || !guard.guarded('teamMode'))  setTeamModeState((data.teamMode as 'leader' | 'random' | 'manual') ?? 'leader');
-    if (!fromSSE || !guard.guarded('stageFormats')) setStageFormatsState((data.stageFormats as import('@/lib/types').StageFormats) ?? { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' });
+    // stageFormats and elimMode are admin-only controls — never overwrite from SSE.
+    // They are seeded once on initial fetch (fromSSE=false) and owned locally after that.
+    if (!fromSSE) setStageFormatsState((data.stageFormats as import('@/lib/types').StageFormats) ?? { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' });
+    if (!fromSSE) setElimModeState((data.elimMode as 'single' | 'double') ?? 'single');
     if (!fromSSE || !guard.guarded('teams'))     setTeams(data.teams as Team[] ?? []);
-    if (!fromSSE || !guard.guarded('elimMode'))  setElimModeState((data.elimMode as 'single' | 'double') ?? 'single');
     if (!fromSSE || !guard.guarded('bracket'))   setBracket((data.bracket as Bracket | null) ?? null);
     if (!fromSSE || !guard.guarded('maps'))      setMaps(data.maps as string[] ?? []);
     if (!fromSSE || !guard.guarded('stageMaps')) setStageMaps(data.stageMaps as Record<string, string[]> ?? {});
@@ -478,19 +480,12 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   // ── Bracket ───────────────────────────────────────────────────────────────
   const setStageFormats = async (sf: import('@/lib/types').StageFormats) => {
-    guard.touch('stageFormats');
-    setStageFormatsState(sf); // optimistic
-    try {
-      await fetch(`/api/bracket?t=${t}`, {
-        method: 'POST',
-        headers: adminHeaders,
-        body: JSON.stringify({ elimMode, action: 'saveFormats', stageFormats: sf }),
-      });
-    } finally {
-      // Keep guard hot for another window after the fetch completes so the
-      // SSE echo that arrives shortly after doesn't stomp the local value.
-      guard.touch('stageFormats');
-    }
+    setStageFormatsState(sf);
+    await fetch(`/api/bracket?t=${t}`, {
+      method: 'POST',
+      headers: adminHeaders,
+      body: JSON.stringify({ elimMode, action: 'saveFormats', stageFormats: sf }),
+    });
   };
 
   const generateBracket = async (sf?: import('@/lib/types').StageFormats) => {
@@ -564,8 +559,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   const setElimMode = async (mode: 'single' | 'double') => {
-    guard.touch('elimMode');
-    setElimModeState(mode); // optimistic — instant UI feedback
+    setElimModeState(mode);
     await fetch(`/api/bracket?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,

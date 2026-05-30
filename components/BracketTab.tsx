@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { parseStageMaps } from '@/lib/utils';
 import type { BracketMatch, GrandFinal, Bracket } from '@/lib/types';
@@ -243,45 +243,34 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [generating, setGenerating] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
-  // localSF drives the picker UI immediately (no round-trip flicker).
-  // We seed it from context once on mount, then own it locally.
-  // We only accept context updates when they originate from a DIFFERENT source
-  // (e.g. another admin tab) — detected by a ref tracking the last value we
-  // pushed to the server ourselves.
+  // localSF and localElim are seeded once from context when loading finishes,
+  // then owned entirely by this component. SSE never pushes stageFormats or
+  // elimMode (context.tsx guards them with `if (!fromSSE)`), so no echo-guard
+  // refs are needed.
   const [localSF, setLocalSF] = useState(stageFormats);
-  const lastPushedSF = useRef<import('@/lib/types').StageFormats | null>(null);
-  const initializedSF = useRef(false);
+  const [localElim, setLocalElim] = useState<'single' | 'double'>(elimMode);
+  const seeded = useRef(false);
 
   useEffect(() => {
-    // Seed localSF from context on first real load (when loading finishes).
-    if (!initializedSF.current && !loading) {
+    if (!loading && !seeded.current) {
       setLocalSF(stageFormats);
-      initializedSF.current = true;
-      return;
+      setLocalElim(elimMode);
+      seeded.current = true;
     }
-    // After init: only accept context update if it differs from what WE last pushed.
-    // This prevents the SSE echo of our own click from bouncing the UI.
-    if (initializedSF.current && lastPushedSF.current) {
-      const same =
-        lastPushedSF.current.groupStage === stageFormats.groupStage &&
-        lastPushedSF.current.semiFinal  === stageFormats.semiFinal  &&
-        lastPushedSF.current.grandFinal === stageFormats.grandFinal;
-      if (!same) {
-        // Came from another admin — accept it
-        setLocalSF(stageFormats);
-        lastPushedSF.current = stageFormats;
-      }
-    }
-  }, [stageFormats, loading]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
-  const handleSFChange = (key: keyof typeof localSF, fmt: 'bo1' | 'bo3' | 'bo5') => {
+  const handleSFChange = useCallback((key: keyof typeof localSF, fmt: 'bo1' | 'bo3' | 'bo5') => {
     const next = { ...localSF, [key]: fmt };
-    setLocalSF(next);           // instant UI
-    lastPushedSF.current = next; // mark as ours so SSE echo is ignored
-    setStageFormats(next);       // persist to server
-  };
-  const [pendingElim, setPendingElim] = useState<'single' | 'double' | null>(null);
-  const displayElim = pendingElim ?? elimMode;
+    setLocalSF(next);
+    setStageFormats(next);
+  }, [localSF, setStageFormats]);
+
+  const handleElimChange = useCallback(async (id: 'single' | 'double') => {
+    if (hasBracket || id === localElim) return;
+    setLocalElim(id);
+    setElimMode(id);
+  }, [hasBracket, localElim, setElimMode]);
 
   // ── Shuffle reveal animation ──────────────────────────────────────────────
   // revealedSlots: set of slotKeys currently visible. '__all__' = show everything.
@@ -290,42 +279,24 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const runRevealAnimation = (reveals: { slotKey: string; team: string }[], delayMs: number) => {
-    // Cancel any in-progress animation
     timerRefs.current.forEach(clearTimeout);
     timerRefs.current = [];
-    // Hide all slots to start
     setRevealedSlots(new Set());
-    // Schedule each reveal
     reveals.forEach((r, i) => {
       const t = setTimeout(() => {
-        setRevealedSlots(prev => {
-          const next = new Set(prev);
-          next.add(r.slotKey);
-          return next;
-        });
+        setRevealedSlots(prev => { const next = new Set(prev); next.add(r.slotKey); return next; });
       }, i * delayMs);
       timerRefs.current.push(t);
     });
-    // After all done, switch to __all__ so any future re-renders always show teams
     const totalMs = reveals.length * delayMs + 200;
-    const finalTimer = setTimeout(() => {
-      setRevealedSlots(new Set(['__all__']));
-    }, totalMs);
+    const finalTimer = setTimeout(() => { setRevealedSlots(new Set(['__all__'])); }, totalMs);
     timerRefs.current.push(finalTimer);
   };
 
   const isSlotRevealed = (slotKey: string) =>
     revealedSlots.has('__all__') || revealedSlots.has(slotKey);
 
-  const handleElimChange = async (id: 'single' | 'double') => {
-    if (hasBracket || id === displayElim) return;
-    setPendingElim(id);
-    await setElimMode(id);
-    setPendingElim(null);
-  };
-
   if (loading) return (
-    <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
       <div className="h-10 w-36 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
       <div className="h-40 rounded-2xl" style={{ background: 'var(--bg-elevated)' }} />
       <div className="h-64 rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 0.6 }} />
@@ -349,10 +320,10 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
             <span className="font-['Bebas_Neue'] text-base tracking-widest t-text shrink-0">Format</span>
             <div className="flex gap-2">
               {[{ id: 'single', icon: '⚔️', label: 'Single Elim', desc: 'One loss = out' }, { id: 'double', icon: '🛡️', label: 'Double Elim', desc: 'Two losses = out' }].map(opt => (
-                <div key={opt.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none" style={{ borderColor: displayElim === opt.id ? 'var(--accent-red)' : 'var(--border)', background: displayElim === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)', cursor: hasBracket ? 'not-allowed' : 'pointer', opacity: hasBracket && displayElim !== opt.id ? 0.45 : 1 }} onClick={() => handleElimChange(opt.id as 'single' | 'double')}>
+                <div key={opt.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none" style={{ borderColor: localElim === opt.id ? 'var(--accent-red)' : 'var(--border)', background: localElim === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)', cursor: hasBracket ? 'not-allowed' : 'pointer', opacity: hasBracket && localElim !== opt.id ? 0.45 : 1 }} onClick={() => handleElimChange(opt.id as 'single' | 'double')}>
                   <span className="text-base shrink-0">{opt.icon}</span>
                   <div>
-                    <div className="font-['DM_Mono'] text-xs font-bold t-text">{opt.label}{hasBracket && displayElim === opt.id && <span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>●</span>}</div>
+                    <div className="font-['DM_Mono'] text-xs font-bold t-text">{opt.label}{hasBracket && localElim === opt.id && <span className="ml-1.5 font-normal" style={{ color: 'var(--accent-red)' }}>●</span>}</div>
                     <div className="font-['DM_Mono'] text-[10px] t-muted">{opt.desc}</div>
                   </div>
                 </div>
