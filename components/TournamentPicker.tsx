@@ -12,6 +12,7 @@ export interface TournamentMeta {
 }
 
 const ADMIN_TOKEN_KEY = 'adminToken';
+const storage = typeof window !== 'undefined' ? sessionStorage : null;
 
 interface Props {
   onSelect: (id: string, adminToken?: string) => void;
@@ -68,7 +69,7 @@ export function TournamentPicker({ onSelect }: Props) {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem(ADMIN_TOKEN_KEY);
+    const stored = storage?.getItem(ADMIN_TOKEN_KEY);
     if (stored) setAdminToken(stored);
   }, []);
 
@@ -107,7 +108,7 @@ export function TournamentPicker({ onSelect }: Props) {
       });
       const data = await res.json();
       if (!res.ok) { setPwErr(data.error ?? 'Wrong password.'); return; }
-      localStorage.setItem(ADMIN_TOKEN_KEY, data.token);
+      storage?.setItem(ADMIN_TOKEN_KEY, data.token);
       setAdminToken(data.token);
       setPw('');
       setShowUnlock(false);
@@ -122,7 +123,7 @@ export function TournamentPicker({ onSelect }: Props) {
     if (adminToken) {
       fetch('/api/admin/auth', { method: 'DELETE', headers: { 'X-Admin-Token': adminToken } }).catch(() => {});
     }
-    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    storage?.removeItem(ADMIN_TOKEN_KEY);
     setAdminToken(null);
     setCreating(false);
   };
@@ -161,7 +162,7 @@ export function TournamentPicker({ onSelect }: Props) {
       });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 403) { localStorage.removeItem(ADMIN_TOKEN_KEY); setAdminToken(null); setCreateErr('Session expired. Please unlock again.'); }
+        if (res.status === 403) { storage?.removeItem(ADMIN_TOKEN_KEY); setAdminToken(null); setCreateErr('Session expired. Please unlock again.'); }
         else setCreateErr(data.error ?? 'Failed to create tournament.');
         return;
       }
@@ -206,7 +207,7 @@ export function TournamentPicker({ onSelect }: Props) {
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 403) {
-          localStorage.removeItem(ADMIN_TOKEN_KEY);
+          storage?.removeItem(ADMIN_TOKEN_KEY);
           setAdminToken(null);
           setDeleteErr('Session expired. Please unlock again.');
         } else {
