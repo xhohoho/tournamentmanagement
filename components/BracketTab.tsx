@@ -267,10 +267,10 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   }, [localSF, setStageFormats]);
 
   const handleElimChange = useCallback(async (id: 'single' | 'double') => {
-    if (hasBracket || id === localElim) return;
+    if (bracket || id === localElim) return;
     setLocalElim(id);
     setElimMode(id);
-  }, [hasBracket, localElim, setElimMode]);
+  }, [bracket, localElim, setElimMode]);
 
   // ── Shuffle reveal animation ──────────────────────────────────────────────
   // revealedSlots: set of slotKeys currently visible. '__all__' = show everything.
