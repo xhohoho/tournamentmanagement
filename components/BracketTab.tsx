@@ -297,6 +297,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
     revealedSlots.has('__all__') || revealedSlots.has(slotKey);
 
   if (loading) return (
+    <div className="flex flex-col gap-4 py-4">
       <div className="h-10 w-36 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
       <div className="h-40 rounded-2xl" style={{ background: 'var(--bg-elevated)' }} />
       <div className="h-64 rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 0.6 }} />
