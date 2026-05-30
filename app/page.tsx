@@ -73,8 +73,9 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
     return (
       <div className={`${dark ? 'dark' : ''} h-screen w-screen flex items-center justify-center t-bg`}>
         <div className="text-center">
-          <div className="font-['Bebas_Neue'] text-5xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent mb-4">
-            ⚔ TOURNEY
+          <div className="flex items-center justify-center gap-3 font-['Bebas_Neue'] text-5xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent mb-4">
+            <img src="/launcher-icon.png" alt="" className="w-12 h-12 object-contain" />
+            TOURNEY
           </div>
           <div className="font-['DM_Mono'] text-xs t-muted animate-pulse">Loading…</div>
         </div>
@@ -95,10 +96,11 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
           <div className="w-full px-8 py-3 flex items-center justify-between">
             <button
               onClick={onChangeTournament}
-              className="font-['Bebas_Neue'] text-2xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent hover:opacity-75 transition-opacity cursor-pointer"
+              className="flex items-center gap-2 font-['Bebas_Neue'] text-2xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent hover:opacity-75 transition-opacity cursor-pointer"
               title="Switch tournament"
             >
-              ⚔ TOURNEY
+              <img src="/launcher-icon.png" alt="" className="w-6 h-6 object-contain" />
+              TOURNEY
             </button>
             <div className="flex items-center gap-2">
               <span className="font-['DM_Mono'] text-[10px] t-muted border t-border-mid rounded px-2 py-1 uppercase tracking-widest hidden sm:inline">

@@ -25,8 +25,9 @@ const syne = Syne({
 });
 
 export const metadata: Metadata = {
-  title: '⚔ TOURNEY',
+  title: 'TOURNEY',
   description: 'Real-time tournament manager',
+  icons: { icon: '/launcher-icon.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
