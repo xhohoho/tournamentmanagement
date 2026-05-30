@@ -25,6 +25,7 @@ interface TourneyContext {
   loading: boolean;
   tickerText: string;
 
+  tournamentId: string;
   joinKey: string;
   chatMessages: ChatMessage[];
 
@@ -715,6 +716,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, shuffleState, spinQueue,
       spinCategories, spinItemCategory, defaultMaps, stageFormats,
+      tournamentId,
       joinKey, chatMessages,
       isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, loading, tickerText,
       setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, refresh, setTickerText, setStageFormats,

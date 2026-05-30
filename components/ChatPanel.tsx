@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import type { ChatMessage } from '@/lib/types';
 
-const CHAT_NAME_KEY = 'chat:name';
+// CHAT_NAME_KEY is now derived per-tournament inside the component
 
 function timeLabel(ts: number): string {
   const d = new Date(ts);
@@ -51,7 +51,8 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ open, onToggle }: ChatPanelProps) {
-  const { chatMessages, sendChat, clearChat, isAdmin } = useTourney();
+  const { chatMessages, sendChat, clearChat, isAdmin, tournamentId } = useTourney();
+  const CHAT_NAME_KEY = `chat:name:${tournamentId}`;
 
   const [chatName, setChatName] = useState<string>('');
   const [nameInput, setNameInput] = useState('');
@@ -64,11 +65,14 @@ export function ChatPanel({ open, onToggle }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Restore saved name
+  // Restore saved name — re-run whenever the tournament changes
   useEffect(() => {
+    setChatName('');
+    setNameSet(false);
+    setNameInput('');
     const saved = localStorage.getItem(CHAT_NAME_KEY);
     if (saved) { setChatName(saved); setNameSet(true); }
-  }, []);
+  }, [CHAT_NAME_KEY]);
 
   // Auto-scroll on new messages
   useEffect(() => {
