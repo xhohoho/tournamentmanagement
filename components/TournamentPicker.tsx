@@ -39,6 +39,11 @@ export function TournamentPicker({ onSelect }: Props) {
   const [editingPosterId, setEditingPosterId] = useState<string | null>(null);
   const [posterSaving, setPosterSaving] = useState(false);
 
+  // Delete state
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState('');
+
   // Shared upload helper — sends a file to /api/upload, returns the blob URL
   const uploadPoster = async (file: File): Promise<string | null> => {
     const fd = new FormData();
@@ -164,6 +169,35 @@ export function TournamentPicker({ onSelect }: Props) {
     } catch { /* ignore */ } finally {
       setPosterSaving(false);
       setEditingPosterId(null);
+    }
+  };
+
+  // ── Delete tournament ─────────────────────────────────────────────────────
+  const handleDelete = async (id: string) => {
+    setDeleting(true);
+    setDeleteErr('');
+    try {
+      const res = await fetch(`/api/tournaments?t=${id}`, {
+        method: 'DELETE',
+        headers: adminToken ? { 'X-Admin-Token': adminToken } : {},
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 403) {
+          localStorage.removeItem(ADMIN_TOKEN_KEY);
+          setAdminToken(null);
+          setDeleteErr('Session expired. Please unlock again.');
+        } else {
+          setDeleteErr(data.error ?? 'Failed to delete tournament.');
+        }
+        return;
+      }
+      setTournaments(data.tournaments ?? []);
+      setConfirmDeleteId(null);
+    } catch {
+      setDeleteErr('Network error. Please try again.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -383,6 +417,16 @@ export function TournamentPicker({ onSelect }: Props) {
                           />
                         </label>
                       )}
+
+                      {/* Admin: delete button (top-left) */}
+                      {isAdmin && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setConfirmDeleteId(t.id); setDeleteErr(''); }}
+                          className="absolute top-2 left-2 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 font-['DM_Mono'] text-[10px] text-red-400 hover:bg-red-900/70 hover:text-red-300 hover:border-red-500/50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                        >
+                          🗑 Delete
+                        </button>
+                      )}
                     </div>
 
                     {/* Card body */}
@@ -415,6 +459,48 @@ export function TournamentPicker({ onSelect }: Props) {
           </>
         )}
       </div>
+
+      {/* ── Delete confirmation modal ────────────────────────────────────────── */}
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50"
+          onClick={e => { if (e.target === e.currentTarget && !deleting) setConfirmDeleteId(null); }}
+        >
+          <div className="t-surface border border-red-500/40 rounded-2xl p-7 w-[360px] max-w-[95vw] shadow-2xl">
+            <div className="text-3xl mb-3">⚠️</div>
+            <h3 className="font-['Bebas_Neue'] text-2xl tracking-widest text-red-400 mb-1">DELETE TOURNAMENT</h3>
+            <p className="font-['DM_Mono'] text-xs t-muted mb-1">
+              You are about to permanently delete:
+            </p>
+            <p className="font-['DM_Mono'] text-sm t-text font-bold mb-1">
+              {tournaments.find(t => t.id === confirmDeleteId)?.name ?? confirmDeleteId}
+            </p>
+            <p className="font-['DM_Mono'] text-[10px] text-red-400/80 mb-5">
+              This will delete all tournament data including teams, players, brackets, chat, and maps. This action cannot be undone.
+            </p>
+            {deleteErr && (
+              <p className="font-['DM_Mono'] text-xs text-[var(--accent-red)] mb-3">{deleteErr}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer disabled:opacity-40"
+                onClick={() => { setConfirmDeleteId(null); setDeleteErr(''); }}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2.5 rounded-xl font-['DM_Mono'] text-sm font-bold text-white transition-all cursor-pointer hover:opacity-90 disabled:opacity-40"
+                style={{ background: 'var(--accent-red)' }}
+                onClick={() => handleDelete(confirmDeleteId)}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting…' : '🗑 Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
