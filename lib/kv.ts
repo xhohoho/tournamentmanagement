@@ -85,6 +85,7 @@ export function defaultState(): TournamentState {
     spinCategories: [],
     spinItemCategory: {},
     tickerText: 'Shop : https://suddenattack.safie.cc',
+    stageFormats: { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' },
   };
 }
 

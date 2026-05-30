@@ -20,7 +20,7 @@ export interface BracketMatch {
   winner: string | null;
   score1: number;   // wins for p1
   score2: number;   // wins for p2
-  format: 'bo1' | 'bo3'; // best-of
+  format: 'bo1' | 'bo3' | 'bo5'; // best-of
 }
 
 export interface GrandFinal {
@@ -29,8 +29,7 @@ export interface GrandFinal {
   winner: string | null;
   score1: number;
   score2: number;
-  format: 'bo1' | 'bo3';
-  /** True when the lower-bracket finalist won GF1, triggering a reset match (GF2). */
+  format: 'bo1' | 'bo3' | 'bo5';
   isReset?: boolean;
   /** Scores for the reset match (GF2). */
   resetScore1?: number;
@@ -97,6 +96,7 @@ export interface ServerState {
   spinCategories: string[];              // ordered category names
   spinItemCategory: Record<number, string>; // spinQueue index -> category name
   tickerText: string;
+  stageFormats: import('./types').StageFormats;
 }
 
 /**
@@ -117,6 +117,18 @@ export interface ManualTeamAssignment {
   index: number;
   members: string[];
   leader: string | null;
+}
+
+/**
+ * Per-stage match formats for the bracket.
+ * - groupStage: earliest rounds (all rounds except last two in SE, UB/LB early rounds in DE)
+ * - semiFinal: second-to-last round
+ * - grandFinal: final / GF in DE
+ */
+export interface StageFormats {
+  groupStage: 'bo1' | 'bo3' | 'bo5';
+  semiFinal:  'bo1' | 'bo3' | 'bo5';
+  grandFinal: 'bo1' | 'bo3' | 'bo5';
 }
 
 export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'chat';

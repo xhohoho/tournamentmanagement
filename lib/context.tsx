@@ -18,6 +18,7 @@ interface TourneyContext {
   spinCategories: string[];
   spinItemCategory: Record<number, string>;
   defaultMaps: string[];
+  stageFormats: import('@/lib/types').StageFormats;
   isAdmin: boolean;
   previewAsUser: boolean;
   adminToken: string | null;
@@ -30,6 +31,7 @@ interface TourneyContext {
   setIsAdmin: (v: boolean) => void;
   setPreviewAsUser: (v: boolean) => void;
   setAdminToken: (token: string | null) => void;
+  setStageFormats: (sf: import('@/lib/types').StageFormats) => Promise<void>;
   refresh: () => Promise<void>;
   setTickerText: (text: string) => Promise<void>;
 
@@ -54,8 +56,8 @@ interface TourneyContext {
   addReplacement: (teamId: string, originalName: string, replacementName: string) => Promise<{ error?: string }>;
   removeReplacement: (teamId: string, originalName: string) => Promise<{ error?: string }>;
 
-  generateBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string }>;
-  seedBracket: (matchFormat?: 'bo1' | 'bo3') => Promise<{ error?: string; shuffleState?: import('@/lib/types').ShuffleState | null }>;
+  generateBracket: (sf?: import('@/lib/types').StageFormats) => Promise<{ error?: string }>;
+  seedBracket: (sf?: import('@/lib/types').StageFormats) => Promise<{ error?: string; shuffleState?: import('@/lib/types').ShuffleState | null }>;
   updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   undoMatch: (section: string, ri: number, mi: number) => Promise<void>;
   updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
@@ -128,6 +130,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [roster, setRosterState] = useState<string[]>([]);
   const [teamMode, setTeamModeState] = useState<'leader' | 'random' | 'manual'>('leader');
   const [teams, setTeams] = useState<Team[]>([]);
+  const [stageFormats, setStageFormatsState] = useState<import('@/lib/types').StageFormats>({ groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' });
   const [elimMode, setElimModeState] = useState<'single' | 'double'>('single');
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [maps, setMaps] = useState<string[]>([]);
@@ -181,6 +184,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('players'))   setPlayers(data.players as Player[] ?? []);
     if (!fromSSE || !guard.guarded('roster'))    setRosterState(data.roster as string[] ?? []);
     if (!fromSSE || !guard.guarded('teamMode'))  setTeamModeState((data.teamMode as 'leader' | 'random' | 'manual') ?? 'leader');
+    if (!fromSSE || !guard.guarded('stageFormats')) setStageFormatsState((data.stageFormats as import('@/lib/types').StageFormats) ?? { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' });
     if (!fromSSE || !guard.guarded('teams'))     setTeams(data.teams as Team[] ?? []);
     if (!fromSSE || !guard.guarded('elimMode'))  setElimModeState((data.elimMode as 'single' | 'double') ?? 'single');
     if (!fromSSE || !guard.guarded('bracket'))   setBracket((data.bracket as Bracket | null) ?? null);
@@ -473,12 +477,24 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   // ── Bracket ───────────────────────────────────────────────────────────────
-  const generateBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
+  const setStageFormats = async (sf: import('@/lib/types').StageFormats) => {
+    guard.touch('stageFormats');
+    setStageFormatsState(sf); // optimistic
+    // Persist by sending with a no-op generate call — API merges stageFormats on every POST
+    // We use a dedicated lightweight approach: just update KV directly via the bracket endpoint
+    await fetch(`/api/bracket?t=${t}`, {
+      method: 'POST',
+      headers: adminHeaders,
+      body: JSON.stringify({ elimMode, action: 'saveFormats', stageFormats: sf }),
+    });
+  };
+
+  const generateBracket = async (sf?: import('@/lib/types').StageFormats) => {
     guard.touch('bracket');
     const res = await fetch(`/api/bracket?t=${t}`, {
       method: 'POST',
       headers: adminHeaders,
-      body: JSON.stringify({ elimMode, matchFormat, action: 'generate' }),
+      body: JSON.stringify({ elimMode, matchFormat: 'bo1', action: 'generate', stageFormats: sf ?? stageFormats }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
@@ -486,12 +502,12 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     return {};
   };
 
-  const seedBracket = async (matchFormat: 'bo1' | 'bo3' = 'bo1') => {
+  const seedBracket = async (sf?: import('@/lib/types').StageFormats) => {
     guard.touch('bracket');
     const res = await fetch(`/api/bracket?t=${t}`, {
       method: 'POST',
       headers: adminHeaders,
-      body: JSON.stringify({ elimMode, matchFormat, action: 'seed' }),
+      body: JSON.stringify({ elimMode, matchFormat: 'bo1', action: 'seed', stageFormats: sf ?? stageFormats }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
@@ -700,10 +716,10 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   return (
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, shuffleState, spinQueue,
-      spinCategories, spinItemCategory, defaultMaps,
+      spinCategories, spinItemCategory, defaultMaps, stageFormats,
       joinKey, chatMessages,
       isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, loading, tickerText,
-      setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, refresh, setTickerText,
+      setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, refresh, setTickerText, setStageFormats,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       setJoinKey,

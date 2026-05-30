@@ -65,10 +65,10 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
 
 // ─── PlayerRow ────────────────────────────────────────────────────────────────
 function PlayerRow({
-  player, score, isWinner, isLoser, showScore, canEdit, isBo3, onCommit,
+  player, score, isWinner, isLoser, showScore, canEdit, maxWins, onCommit,
 }: {
   player: string | null; score: number; isWinner: boolean; isLoser: boolean;
-  showScore: boolean; canEdit?: boolean; isBo3?: boolean;
+  showScore: boolean; canEdit?: boolean; maxWins?: number;
   onCommit?: (n: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -99,7 +99,7 @@ function PlayerRow({
       {showScore && (
         editing ? (
           <input
-            autoFocus type="number" min={0} max={isBo3 ? 2 : 1}
+            autoFocus type="number" min={0} max={maxWins ?? 1}
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onBlur={commit}
@@ -120,11 +120,10 @@ function PlayerRow({
 }
 
 // ─── RoundHeader (with map drop zones) ───────────────────────────────────────
-function RoundHeader({ section, ri, label, matchCount, isBo3, isAdmin }: {
-  section: string; ri: number; label: string; matchCount: number; isBo3: boolean; isAdmin: boolean;
+function RoundHeader({ section, ri, label, matchCount, slotCount, isAdmin }: {
+  section: string; ri: number; label: string; matchCount: number; slotCount: number; isAdmin: boolean;
 }) {
   const { assignStage } = useTourney();
-  const slotCount = isBo3 ? 3 : 1;
   return (
     <div className="flex items-end justify-between w-full">
       <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim">{label}</div>
@@ -150,10 +149,9 @@ function RoundHeader({ section, ri, label, matchCount, isBo3, isAdmin }: {
 }
 
 // ─── MapSlots ─────────────────────────────────────────────────────────────────
-function MapSlots({ matchKey, isBo3, isAdmin }: { matchKey: string; isBo3: boolean; isAdmin: boolean }) {
+function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCount: number; isAdmin: boolean }) {
   const { stageMaps, assignStage, clearStage } = useTourney();
   const maps = parseStageMaps(stageMaps[matchKey] || '');
-  const slotCount = isBo3 ? 3 : 1;
   return (
     <div className="flex h-7 border-t t-border bg-[var(--bg-surface)] shrink-0">
       {Array.from({ length: slotCount }).map((_, slotIdx) => {
@@ -174,7 +172,7 @@ function MapSlots({ matchKey, isBo3, isAdmin }: { matchKey: string; isBo3: boole
                 )}
               </>
             ) : (
-              <span className="opacity-40">{isBo3 ? `Map ${slotIdx + 1}` : 'Drop Map'}</span>
+              <span className="opacity-40">{slotCount > 1 ? `Map ${slotIdx + 1}` : 'Drop Map'}</span>
             )}
           </div>
         );
@@ -202,6 +200,9 @@ function MatchCard({
   useEffect(() => { setS1(match.score1); setS2(match.score2); }, [match.score1, match.score2]);
 
   const isBo3 = match.format === 'bo3';
+  const isBo5 = match.format === 'bo5';
+  const maxWins = isBo5 ? 3 : isBo3 ? 2 : 1;
+  const slotCount = isBo5 ? 5 : isBo3 ? 3 : 1;
   const isDone = !!match.winner;
   const canEdit = isAdmin && !!match.p1 && !!match.p2 && !isDone;
   const canUndo = isAdmin && isDone;
@@ -218,9 +219,9 @@ function MatchCard({
         className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col"
         style={{ width: CARD_W, height: CARD_H, ...borderStyle }}
       >
-        <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS1(n)} />
-        <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} isBo3={isBo3} onCommit={n => setS2(n)} />
-        <MapSlots matchKey={matchKey} isBo3={isBo3} isAdmin={isAdmin} />
+        <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} />
+        <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} />
+        <MapSlots matchKey={matchKey} slotCount={slotCount} isAdmin={isAdmin} />
       </div>
       {isModified && (
         <div className="flex flex-col gap-1.5" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)', zIndex: 10 }}>
@@ -237,15 +238,14 @@ function MatchCard({
 
 // ─── BracketTab ────────────────────────────────────────────────────────────────
 export function BracketTab({ spinResults }: { spinResults: string[] }) {
-  const { bracket, elimMode, teams, isAdmin, loading, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
+  const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
   const [seeding, setSeeding] = useState(false);
-  // Derive matchFormat from the existing bracket so it survives refresh.
-  // Falls back to 'bo1' only when no bracket exists yet.
-  const bracketFormat = bracket?.upper[0]?.[0]?.format ?? null;
-  const [matchFormat, setMatchFormat] = useState<'bo1' | 'bo3'>(bracketFormat ?? 'bo1');
-  useEffect(() => { if (bracketFormat) setMatchFormat(bracketFormat); }, [bracketFormat]);
+  // Local copy of stageFormats so the picker feels instant
+  const [localSF, setLocalSF] = useState(stageFormats);
+  // Keep localSF in sync with server (e.g. on initial load / other admin)
+  useEffect(() => { setLocalSF(stageFormats); }, [stageFormats]);
   const [pendingElim, setPendingElim] = useState<'single' | 'double' | null>(null);
   const displayElim = pendingElim ?? elimMode;
 
@@ -325,22 +325,45 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
               ))}
             </div>
             <div className="h-8 w-px" style={{ background: 'var(--border-mid)' }} />
-            <div className="flex gap-2">
-              {[{ id: 'bo1', label: 'BO1', desc: 'Best of 1' }, { id: 'bo3', label: 'BO3', desc: 'Best of 3' }].map(opt => (
-                <div key={opt.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all select-none" style={{ borderColor: matchFormat === opt.id ? 'var(--accent-gold)' : 'var(--border)', background: matchFormat === opt.id ? 'rgba(224,144,16,0.07)' : 'var(--bg-elevated)', cursor: hasBracket ? 'not-allowed' : 'pointer', opacity: hasBracket && matchFormat !== opt.id ? 0.45 : 1 }} onClick={() => !hasBracket && setMatchFormat(opt.id as 'bo1' | 'bo3')}>
-                  <div>
-                    <div className="font-['DM_Mono'] text-xs font-bold" style={{ color: matchFormat === opt.id ? 'var(--accent-gold)' : 'var(--text)' }}>{opt.label}{hasBracket && matchFormat === opt.id && <span className="ml-1.5 font-normal t-dim">●</span>}</div>
-                    <div className="font-['DM_Mono'] text-[10px] t-muted">{opt.desc}</div>
+            {/* Per-stage format picker */}
+            <div className="flex flex-col gap-1.5">
+              <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim mb-0.5">Match Format</div>
+              {([
+                { key: 'groupStage', label: 'Group Stage' },
+                { key: 'semiFinal',  label: 'Semi Final'  },
+                { key: 'grandFinal', label: 'Grand Final' },
+              ] as { key: keyof typeof localSF; label: string }[]).map(({ key, label }) => (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="font-['DM_Mono'] text-[10px] t-muted w-24 shrink-0">{label}</span>
+                  <div className="flex gap-1">
+                    {(['bo1', 'bo3', 'bo5'] as const).map(fmt => (
+                      <button
+                        key={fmt}
+                        disabled={hasBracket}
+                        onClick={() => {
+                          const next = { ...localSF, [key]: fmt };
+                          setLocalSF(next);
+                          setStageFormats(next);
+                        }}
+                        className="px-2 py-0.5 font-['DM_Mono'] text-[10px] font-bold rounded border-2 transition-all cursor-pointer disabled:cursor-not-allowed"
+                        style={{
+                          borderColor: localSF[key] === fmt ? 'var(--accent-gold)' : 'var(--border)',
+                          background:  localSF[key] === fmt ? 'rgba(224,144,16,0.1)' : 'var(--bg-elevated)',
+                          color:       localSF[key] === fmt ? 'var(--accent-gold)' : 'var(--text-dim)',
+                          opacity:     hasBracket && localSF[key] !== fmt ? 0.4 : 1,
+                        }}
+                      >{fmt.toUpperCase()}</button>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
               {!hasBracket ? (
-                <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-red)' }} onClick={async () => { if (!isAdmin || generating) return; setErr(''); setGenerating(true); const r = await generateBracket(matchFormat); setGenerating(false); if (r?.error) setErr(r.error); }} disabled={!hasTeams || generating}>{generating ? '⏳ Generating…' : '⚡ Generate Bracket'}</button>
+                <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-red)' }} onClick={async () => { if (!isAdmin || generating) return; setErr(''); setGenerating(true); const r = await generateBracket(localSF); setGenerating(false); if (r?.error) setErr(r.error); }} disabled={!hasTeams || generating}>{generating ? '⏳ Generating…' : '⚡ Generate Bracket'}</button>
               ) : (
                 <>
-                  <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-green)' }} onClick={async () => { if (!isAdmin || seeding) return; setErr(''); setSeeding(true); const r = await seedBracket(matchFormat); setSeeding(false); if (r?.error) setErr(r.error); else if (r?.shuffleState) runRevealAnimation(r.shuffleState.reveals, r.shuffleState.delayMs); }} disabled={seeding}>{seeding ? '🎲 Shuffling…' : '🎲 Shuffle Teams'}</button>
+                  <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-green)' }} onClick={async () => { if (!isAdmin || seeding) return; setErr(''); setSeeding(true); const r = await seedBracket(localSF); setSeeding(false); if (r?.error) setErr(r.error); else if (r?.shuffleState) runRevealAnimation(r.shuffleState.reveals, r.shuffleState.delayMs); }} disabled={seeding}>{seeding ? '🎲 Shuffling…' : '🎲 Shuffle Teams'}</button>
                   <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset Bracket</button>
                 </>
               )}
@@ -388,8 +411,6 @@ function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo, isSlo
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isSlotRevealed: (slotKey: string) => boolean;
 }) {
-  const isBo3 = bracket.upper[0]?.[0]?.format === 'bo3';
-  const globalFormat = isBo3 ? 'Best of 3' : 'Best of 1';
   const typeLabel = bracket.type === 'single' ? 'Single Elim' : 'Double Elim';
 
   return (
@@ -399,7 +420,6 @@ function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo, isSlo
           {bracket.type === 'single' ? 'Bracket' : 'Tournament Bracket'}
           <div className="flex gap-2">
             <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${bracket.type === 'single' ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>{typeLabel}</span>
-            <span className="text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase bg-[rgba(224,144,16,0.1)] text-[var(--accent-gold)] border-[rgba(224,144,16,0.3)]">{globalFormat}</span>
           </div>
         </div>
         <div className="overflow-x-auto overflow-y-visible pb-4">
@@ -479,6 +499,8 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
       </svg>
       {rounds.map((round, colIdx) => {
         const isBo3 = round[0]?.format === 'bo3';
+        const isBo5 = round[0]?.format === 'bo5';
+        const slotCount = isBo5 ? 5 : isBo3 ? 3 : 1;
         const isFinal = colIdx === rounds.length - 1 && round.length === 1;
         const isSemi = colIdx === rounds.length - 2 && round.length === 2 && rounds.length >= 3;
         const isQuarter = colIdx === rounds.length - 3 && round.length === 4 && rounds.length >= 4;
@@ -487,7 +509,7 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
           <div key={`se-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: ubCardTop(colIdx, mi) + OFFSET_Y, left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
               <div style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6 }}>
-                <RoundHeader section="upper" ri={colIdx} label={label} matchCount={round.length} isBo3={isBo3} isAdmin={isAdmin} />
+                <RoundHeader section="upper" ri={colIdx} label={label} matchCount={round.length} slotCount={slotCount} isAdmin={isAdmin} />
               </div>
             )}
             <MatchCard
@@ -657,13 +679,15 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
       {/* ── UB Cards ──────────────────────────────────────────────────── */}
       {ubRounds.map((round, colIdx) => {
         const isBo3 = round[0]?.format === 'bo3';
+        const isBo5ub = round[0]?.format === 'bo5';
+        const slotCount = isBo5ub ? 5 : isBo3 ? 3 : 1;
         const isFinal = colIdx === ubRounds.length - 1 && round.length === 1;
         const label = isFinal ? 'Upper Final' : `Upper Round ${colIdx + 1}`;
         return round.map((match, mi) => (
           <div key={`ub-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: ubOriginY + ubCardTop(colIdx, mi), left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
               <div style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6 }}>
-                <RoundHeader section="upper" ri={colIdx} label={label} matchCount={round.length} isBo3={isBo3} isAdmin={isAdmin} />
+                <RoundHeader section="upper" ri={colIdx} label={label} matchCount={round.length} slotCount={slotCount} isAdmin={isAdmin} />
               </div>
             )}
             <MatchCard
@@ -702,14 +726,16 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
 
       {/* ── LB Cards ──────────────────────────────────────────────────── */}
       {lbRounds.map((round, colIdx) => {
-        const isBo3 = round[0]?.format === 'bo3';
+        const isBo3lb = round[0]?.format === 'bo3';
+        const isBo5lb = round[0]?.format === 'bo5';
+        const slotCountLb = isBo5lb ? 5 : isBo3lb ? 3 : 1;
         const isFinal = colIdx === lbRounds.length - 1 && round.length === 1;
         const label = isFinal ? 'Lower Final' : `Lower R${colIdx + 1}`;
         return round.map((match, mi) => (
           <div key={`lb-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: lbOriginY + lbCardTop(colIdx, mi), left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
               <div style={{ position: 'absolute', bottom: '100%', left: 0, width: CARD_W, paddingBottom: 6 }}>
-                <RoundHeader section="lower" ri={colIdx} label={label} matchCount={round.length} isBo3={isBo3} isAdmin={isAdmin} />
+                <RoundHeader section="lower" ri={colIdx} label={label} matchCount={round.length} slotCount={slotCountLb} isAdmin={isAdmin} />
               </div>
             )}
             <MatchCard
