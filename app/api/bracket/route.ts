@@ -103,23 +103,34 @@ function sweepBracket(bracket: Bracket): Bracket {
  * Given the total number of rounds and a round index, return the correct
  * match format based on the organiser's stage config.
  *
- * SE:  last round = grandFinal, second-to-last = semiFinal, rest = groupStage
- * DE upper: last = grandFinal candidate, second-to-last = semiFinal, rest = groupStage
- * DE lower/GF: grandFinal always
+ * SE  upper:    last = grandFinal, second-to-last = semiFinal, rest = groupStage
+ * DE  upper_de: last = semiFinal (Upper Final ≠ Grand Final), rest = groupStage
+ * DE  lower:    last = semiFinal (LB Final feeds GF), rest = groupStage
+ * GF:           always grandFinal
  */
 function stageFormat(
   sf: StageFormats,
   totalRounds: number,
   roundIdx: number,
-  section: 'upper' | 'lower' | 'gf' = 'upper',
+  section: 'upper' | 'upper_de' | 'lower' | 'gf' = 'upper',
 ): 'bo1' | 'bo3' | 'bo5' {
   if (section === 'gf') return sf.grandFinal;
+
+  if (section === 'upper_de') {
+    // In DE the Upper Bracket Final is NOT the Grand Final — it seeds GF p1.
+    // Treat it as semiFinal so only the dedicated GF match gets grandFinal format.
+    if (roundIdx === totalRounds - 1) return sf.semiFinal;  // Upper Final  → BO3
+    if (roundIdx === totalRounds - 2) return sf.semiFinal;  // Upper Semi   → BO3
+    return sf.groupStage;                                   // Early rounds → BO1
+  }
+
   if (section === 'lower') {
-    // Lower bracket: last round = grandFinal feeder, treat as semiFinal
+    // LB Final feeds the Grand Final — treat as semiFinal.
     if (roundIdx === totalRounds - 1) return sf.semiFinal;
     return sf.groupStage;
   }
-  // Upper bracket / SE
+
+  // SE upper bracket: the last round IS the Grand Final.
   if (roundIdx === totalRounds - 1) return sf.grandFinal;
   if (roundIdx === totalRounds - 2) return sf.semiFinal;
   return sf.groupStage;
@@ -127,11 +138,14 @@ function stageFormat(
 
 // ─── Single Elimination ───────────────────────────────────────────────────────
 
-function buildSE(names: string[], sf: StageFormats): BracketMatch[][] {
+function buildSE(names: string[], sf: StageFormats, isDE = false): BracketMatch[][] {
   const size = nextPow2(names.length);
-  // First pass: build structure to know total round count
   const roundCount = Math.log2(size);
-  const r0: BracketMatch[] = Array.from({ length: size / 2 }, () => emptyMatch(stageFormat(sf, roundCount, 0)));
+  // Use 'upper_de' when this SE structure is the upper half of a DE bracket so
+  // the Upper Final gets semiFinal format instead of grandFinal format.
+  const sec = isDE ? 'upper_de' : 'upper';
+
+  const r0: BracketMatch[] = Array.from({ length: size / 2 }, () => emptyMatch(stageFormat(sf, roundCount, 0, sec)));
 
   // Distribute players optimally to avoid dead branches (null v null matches)
   for (let i = 0; i < size / 2; i++) {
@@ -150,7 +164,7 @@ function buildSE(names: string[], sf: StageFormats): BracketMatch[][] {
   let ri = 1;
   while (prev.length > 1) {
     const next: BracketMatch[] = [];
-    for (let i = 0; i < prev.length; i += 2) next.push(emptyMatch(stageFormat(sf, roundCount, ri)));
+    for (let i = 0; i < prev.length; i += 2) next.push(emptyMatch(stageFormat(sf, roundCount, ri, sec)));
     rounds.push(next);
     prev = next;
     ri++;
@@ -161,7 +175,7 @@ function buildSE(names: string[], sf: StageFormats): BracketMatch[][] {
 // ─── Double Elimination ───────────────────────────────────────────────────────
 
 function buildDE(names: string[], sf: StageFormats): { upper: BracketMatch[][]; lower: BracketMatch[][] } {
-  const upper = buildSE(names, sf);
+  const upper = buildSE(names, sf, true); // isDE=true → UB Final gets semiFinal format, not grandFinal
   const ubRounds = upper.length;
   const lower: BracketMatch[][] = [];
   const lbRoundCount = 2 * (ubRounds - 1);
@@ -226,12 +240,12 @@ export async function POST(req: NextRequest) {
     if (elimMode === 'single') {
       const size = nextPow2(teamCount);
       const roundCount = Math.log2(size);
-      const r0: BracketMatch[] = Array.from({ length: size / 2 }, () => emptyMatch(stageFormat(sf, roundCount, 0)));
+      const r0: BracketMatch[] = Array.from({ length: size / 2 }, () => emptyMatch(stageFormat(sf, roundCount, 0, 'upper')));
       const rounds: BracketMatch[][] = [r0];
       let prev = r0; let genRi = 1;
       while (prev.length > 1) {
         const next: BracketMatch[] = [];
-        for (let i = 0; i < prev.length; i += 2) next.push(emptyMatch(stageFormat(sf, roundCount, genRi)));
+        for (let i = 0; i < prev.length; i += 2) next.push(emptyMatch(stageFormat(sf, roundCount, genRi, 'upper')));
         rounds.push(next); prev = next; genRi++;
       }
       const thirdPlace = teamCount >= 4 ? emptyMatch(sf.semiFinal) : undefined;
