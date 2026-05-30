@@ -100,13 +100,20 @@ function sweepBracket(bracket: Bracket): Bracket {
 
 // ─── Stage format resolver ────────────────────────────────────────────────────
 /**
- * Given the total number of rounds and a round index, return the correct
- * match format based on the organiser's stage config.
+ * Maps a round index to the correct match format for each bracket section.
  *
- * SE  upper:    last = grandFinal, second-to-last = semiFinal, rest = groupStage
- * DE  upper_de: last = semiFinal (Upper Final ≠ Grand Final), rest = groupStage
- * DE  lower:    last = semiFinal (LB Final feeds GF), rest = groupStage
- * GF:           always grandFinal
+ * Naming convention (12-team DE example, nextPow2=16, 4 UB rounds, 6 LB rounds):
+ *
+ *  UB (upper_de):  R0 R1 R2  R3(UF)       → BO1 BO1 BO1 BO3
+ *  LB (lower):     R0 R1 R2 R3  R4(SF) R5(F) → BO1 BO1 BO1 BO1 BO3 BO3
+ *  GF:             always grandFinal          → BO5
+ *  SE (upper):     R0…Rn-2(SF) Rn-1(F)       → BO1…BO3 BO5
+ *
+ * Rules:
+ *  upper_de  last only       → semiFinal   (Upper Final seeds GF p1, ≠ real GF)
+ *  lower     last two        → semiFinal   (LB Semi + LB Final)
+ *  upper/SE  last → grandFinal, second-to-last → semiFinal, rest → groupStage
+ *  gf        always          → grandFinal
  */
 function stageFormat(
   sf: StageFormats,
@@ -117,20 +124,20 @@ function stageFormat(
   if (section === 'gf') return sf.grandFinal;
 
   if (section === 'upper_de') {
-    // In DE the Upper Bracket Final is NOT the Grand Final — it seeds GF p1.
-    // Treat it as semiFinal so only the dedicated GF match gets grandFinal format.
-    if (roundIdx === totalRounds - 1) return sf.semiFinal;  // Upper Final  → BO3
-    if (roundIdx === totalRounds - 2) return sf.semiFinal;  // Upper Semi   → BO3
-    return sf.groupStage;                                   // Early rounds → BO1
+    // Only the Upper Final (last UB round) is elevated to semiFinal.
+    // Everything before it is group-stage — even with 12 teams R2 is QF, not SF.
+    if (roundIdx === totalRounds - 1) return sf.semiFinal;  // Upper Final → BO3
+    return sf.groupStage;                                   // All other UB rounds → BO1
   }
 
   if (section === 'lower') {
-    // LB Final feeds the Grand Final — treat as semiFinal.
-    if (roundIdx === totalRounds - 1) return sf.semiFinal;
-    return sf.groupStage;
+    // Last two LB rounds are semiFinal-level (LB Semi + LB Final).
+    // Everything earlier is group-stage.
+    if (roundIdx >= totalRounds - 2) return sf.semiFinal;  // LB Semi + LB Final → BO3
+    return sf.groupStage;                                  // Early LB rounds → BO1
   }
 
-  // SE upper bracket: the last round IS the Grand Final.
+  // SE upper bracket: last round IS the Grand Final, second-to-last is Semi Final.
   if (roundIdx === totalRounds - 1) return sf.grandFinal;
   if (roundIdx === totalRounds - 2) return sf.semiFinal;
   return sf.groupStage;
