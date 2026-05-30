@@ -9,7 +9,9 @@ export interface TournamentMeta {
   id: string;       // slug, e.g. "kabut"
   name: string;     // display name, e.g. "Kabut Tournament"
   createdAt: number;
-  posterUrl?: string; // optional poster/banner image URL
+  posterUrl?: string;   // optional poster/banner image URL
+  tournamentDate?: number; // unix ms — when the tournament takes place
+  organizer?: string;      // organizer name / team / discord
 }
 
 export async function listTournaments(): Promise<TournamentMeta[]> {
@@ -20,11 +22,19 @@ export async function listTournaments(): Promise<TournamentMeta[]> {
   }
 }
 
-export async function registerTournament(id: string, name: string, posterUrl?: string): Promise<TournamentMeta[]> {
+export async function registerTournament(
+  id: string,
+  name: string,
+  posterUrl?: string,
+  tournamentDate?: number,
+  organizer?: string,
+): Promise<TournamentMeta[]> {
   const list = await listTournaments();
   if (list.find(t => t.id === id)) return list; // already exists
   const entry: TournamentMeta = { id, name, createdAt: Date.now() };
   if (posterUrl) entry.posterUrl = posterUrl;
+  if (tournamentDate) entry.tournamentDate = tournamentDate;
+  if (organizer) entry.organizer = organizer;
   const next = [...list, entry];
   await kv.set(REGISTRY_KEY, next);
   return next;
@@ -32,7 +42,7 @@ export async function registerTournament(id: string, name: string, posterUrl?: s
 
 export async function updateTournamentMeta(
   id: string,
-  patch: Partial<Pick<TournamentMeta, 'name' | 'posterUrl'>>,
+  patch: Partial<Pick<TournamentMeta, 'name' | 'posterUrl' | 'tournamentDate' | 'organizer'>>,
 ): Promise<TournamentMeta[]> {
   const list = await listTournaments();
   const next = list.map(t => t.id === id ? { ...t, ...patch } : t);

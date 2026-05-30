@@ -7,6 +7,8 @@ export interface TournamentMeta {
   name: string;
   createdAt: number;
   posterUrl?: string;
+  tournamentDate?: number;
+  organizer?: string;
 }
 
 const ADMIN_TOKEN_KEY = 'adminToken';
@@ -30,6 +32,8 @@ export function TournamentPicker({ onSelect }: Props) {
   const [creating, setCreating] = useState(false);
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
+  const [newOrganizer, setNewOrganizer] = useState('');
+  const [newTournamentDate, setNewTournamentDate] = useState('');
   const [newPosterFile, setNewPosterFile] = useState<File | null>(null);
   const [newPosterPreview, setNewPosterPreview] = useState<string>('');
   const [createErr, setCreateErr] = useState('');
@@ -147,7 +151,13 @@ export function TournamentPicker({ onSelect }: Props) {
       const res = await fetch('/api/tournaments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-        body: JSON.stringify({ id: safeId, name: safeName, posterUrl: posterUrl || undefined }),
+        body: JSON.stringify({
+          id: safeId,
+          name: safeName,
+          posterUrl: posterUrl || undefined,
+          organizer: newOrganizer.trim() || undefined,
+          tournamentDate: newTournamentDate ? new Date(newTournamentDate).getTime() : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -156,7 +166,7 @@ export function TournamentPicker({ onSelect }: Props) {
         return;
       }
       setTournaments(data.tournaments ?? []);
-      setCreating(false); setNewId(''); setNewName(''); setNewPosterFile(null); setNewPosterPreview('');
+      setCreating(false); setNewId(''); setNewName(''); setNewOrganizer(''); setNewTournamentDate(''); setNewPosterFile(null); setNewPosterPreview('');
       onSelect(data.id, adminToken ?? undefined);
     } catch {
       setCreateErr('Network error. Please try again.');
@@ -326,6 +336,25 @@ export function TournamentPicker({ onSelect }: Props) {
                 <p className="font-['DM_Mono'] text-[10px] t-muted mt-1">Letters, numbers, hyphens only.</p>
               </div>
               <div>
+                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Tournament Date & Time <span className="normal-case tracking-normal t-dim">(optional)</span></label>
+                <input
+                  type="datetime-local"
+                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+                  value={newTournamentDate}
+                  onChange={e => setNewTournamentDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Organizer <span className="normal-case tracking-normal t-dim">(optional)</span></label>
+                <input
+                  type="text"
+                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+                  placeholder="e.g. Kabut Esports"
+                  value={newOrganizer}
+                  onChange={e => setNewOrganizer(e.target.value.slice(0, 100))}
+                />
+              </div>
+              <div>
                 <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Poster Image <span className="normal-case tracking-normal t-dim">(optional)</span></label>
                 <label className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-dashed t-border-mid t-muted hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer">
                   📁 {newPosterFile ? newPosterFile.name : 'Choose image…'}
@@ -356,7 +385,7 @@ export function TournamentPicker({ onSelect }: Props) {
               <div className="flex gap-3 pt-1">
                 <button
                   className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
-                  onClick={() => { setCreating(false); setCreateErr(''); setNewId(''); setNewName(''); setNewPosterFile(null); setNewPosterPreview(''); }}
+                  onClick={() => { setCreating(false); setCreateErr(''); setNewId(''); setNewName(''); setNewOrganizer(''); setNewTournamentDate(''); setNewPosterFile(null); setNewPosterPreview(''); }}
                   disabled={saving}
                 >Cancel</button>
                 <button
@@ -446,9 +475,20 @@ export function TournamentPicker({ onSelect }: Props) {
                       <div className="font-['Bebas_Neue'] text-xl tracking-wider t-text leading-tight mb-0.5 group-hover:text-[var(--accent)] transition-colors">
                         {t.name}
                       </div>
-                      <div className="font-['DM_Mono'] text-[10px] t-muted mb-4">
-                        /{t.id} · {new Date(t.createdAt).toLocaleDateString()}
+                      <div className="font-['DM_Mono'] text-[10px] t-muted mb-1">
+                        /{t.id} · Created {new Date(t.createdAt).toLocaleDateString()}
                       </div>
+                      {t.tournamentDate && (
+                        <div className="font-['DM_Mono'] text-[10px] mb-0.5" style={{ color: 'var(--accent-gold)' }}>
+                          📅 {new Date(t.tournamentDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                        </div>
+                      )}
+                      {t.organizer && (
+                        <div className="font-['DM_Mono'] text-[10px] t-muted mb-3">
+                          🏢 {t.organizer}
+                        </div>
+                      )}
+                      {!t.tournamentDate && !t.organizer && <div className="mb-3" />}
                       <button
                         onClick={() => onSelect(t.id, adminToken ?? undefined)}
                         className="mt-auto w-full py-2.5 rounded-xl font-['DM_Mono'] text-xs font-bold uppercase tracking-widest text-white transition-all cursor-pointer hover:opacity-90"
