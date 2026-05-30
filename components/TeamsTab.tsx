@@ -101,6 +101,107 @@ export function TeamsTab() {
   const [subDraft, setSubDraft] = useState('');
   const subInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Manual mode state ──────────────────────────────────────────────────────
+  // manualSlots[i] = array of player names assigned to team i
+  const n = Math.floor(roster.length / 5);
+  const [manualSlots, setManualSlots] = useState<string[][]>(() => Array.from({ length: Math.max(n, 2) }, () => []));
+  const [manualLeaders, setManualLeaders] = useState<(string | null)[]>(() => Array(Math.max(n, 2)).fill(null));
+  // dragInfo: which player is being dragged from which slot (-1 = unassigned pool)
+  const [dragging, setDragging] = useState<{ player: string; fromSlot: number } | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null); // slot index or -1 for pool
+
+  // Rebuild manual slots when roster/n changes (keep existing if player still in roster)
+  useEffect(() => {
+    setManualSlots(prev => {
+      const slots = Array.from({ length: Math.max(n, 2) }, (_, i) => (
+        (prev[i] ?? []).filter(p => roster.includes(p))
+      ));
+      return slots;
+    });
+    setManualLeaders(prev => Array.from({ length: Math.max(n, 2) }, (_, i) => {
+      const l = prev[i] ?? null;
+      return l && roster.includes(l) ? l : null;
+    }));
+  }, [roster, n]);
+
+  // Unassigned pool = roster players not yet in any manual slot
+  const assignedPlayers = manualSlots.flat();
+  const unassignedPool = roster.filter(p => !assignedPlayers.includes(p));
+
+  // Check if manual assignment is complete (all slots have exactly 5, all roster players used)
+  const manualComplete = n >= 2 && manualSlots.length === n &&
+    manualSlots.every(s => s.length === 5) && unassignedPool.length === 0;
+
+  const handleManualDragStart = (player: string, fromSlot: number) => {
+    setDragging({ player, fromSlot });
+  };
+
+  const handleManualDrop = (toSlot: number) => {
+    if (!dragging) return;
+    const { player, fromSlot } = dragging;
+    if (fromSlot === toSlot) { setDragging(null); setDragOver(null); return; }
+
+    setManualSlots(prev => {
+      const next = prev.map(s => [...s]);
+      // Remove from source
+      if (fromSlot >= 0) next[fromSlot] = next[fromSlot].filter(p => p !== player);
+      // If target slot is full (5), swap the last player back to source
+      if (toSlot >= 0) {
+        if (next[toSlot].length >= 5) {
+          const bumped = next[toSlot][next[toSlot].length - 1];
+          next[toSlot] = next[toSlot].slice(0, -1);
+          if (fromSlot >= 0) next[fromSlot].push(bumped);
+          // if from pool, bumped goes back to pool (nothing to do — it won't be in any slot)
+        }
+        next[toSlot].push(player);
+      }
+      return next;
+    });
+    // If dropped into pool (toSlot === -1), player is simply removed from its slot (handled above)
+    setDragging(null);
+    setDragOver(null);
+  };
+
+  const handleManualDropPool = () => {
+    if (!dragging || dragging.fromSlot < 0) { setDragging(null); setDragOver(null); return; }
+    const { player, fromSlot } = dragging;
+    setManualSlots(prev => {
+      const next = prev.map(s => [...s]);
+      next[fromSlot] = next[fromSlot].filter(p => p !== player);
+      return next;
+    });
+    // Also clear leader if it was this player
+    setManualLeaders(prev => prev.map((l, i) => (i === fromSlot && l === player ? null : l)));
+    setDragging(null);
+    setDragOver(null);
+  };
+
+  const autoFill = () => {
+    // Distribute unassigned players greedily into slots that need more
+    const pool = [...unassignedPool];
+    // Shuffle pool for randomness
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    setManualSlots(prev => {
+      const next = prev.map(s => [...s]);
+      let pi = 0;
+      for (let i = 0; i < next.length && pi < pool.length; i++) {
+        while (next[i].length < 5 && pi < pool.length) {
+          next[i].push(pool[pi++]);
+        }
+      }
+      return next;
+    });
+  };
+
+  const clearManual = () => {
+    setManualSlots(Array.from({ length: Math.max(n, 2) }, () => []));
+    setManualLeaders(Array(Math.max(n, 2)).fill(null));
+  };
+  // ── End manual mode state ──────────────────────────────────────────────────
+
   const totalSlots = teams.length * 5;
   const revealCount = useReveal(revealing, totalSlots);
   const revealOrderMap = useRef<Map<string, number>>(new Map());
@@ -129,7 +230,6 @@ export function TeamsTab() {
     }
   }, [expandedSub]);
 
-  const n = Math.floor(roster.length / 5);
   const previewSlots = n > 0 ? n : Math.max(2, Math.ceil(10 / 5));
 
   useEffect(() => { setLeaders(Array(n).fill('')); }, [n]);
@@ -150,7 +250,17 @@ export function TeamsTab() {
     setRevealing(false);
     setForming(true);
     setExpandedSub(null);
-    const result = await formTeams(teamMode === 'leader' ? leaders : undefined);
+    let result;
+    if (teamMode === 'manual') {
+      const manualTeams = manualSlots.map((members, index) => ({
+        index,
+        members,
+        leader: manualLeaders[index] ?? null,
+      }));
+      result = await formTeams(undefined, manualTeams);
+    } else {
+      result = await formTeams(teamMode === 'leader' ? leaders : undefined);
+    }
     setForming(false);
     if (result.error) { setErr(result.error); return; }
     if (result.teams) seedRevealOrder(result.teams);
@@ -206,6 +316,7 @@ export function TeamsTab() {
                 {[
                   { id: 'leader', icon: '👑', label: 'Leader + Random', desc: 'Pick captains, fill rest randomly.' },
                   { id: 'random', icon: '🎲', label: 'Fully Random',    desc: 'All members assigned randomly.' },
+                  { id: 'manual', icon: '✍️', label: 'Manual',          desc: 'Drag & drop every player yourself.' },
                 ].map(opt => (
                   <div
                     key={opt.id}
@@ -214,7 +325,7 @@ export function TeamsTab() {
                       borderColor: teamMode === opt.id ? 'var(--accent-red)' : 'var(--border)',
                       background:  teamMode === opt.id ? 'rgba(232,41,74,0.06)' : 'var(--bg-elevated)',
                     }}
-                    onClick={() => setTeamMode(opt.id as 'leader' | 'random')}
+                    onClick={() => setTeamMode(opt.id as 'leader' | 'random' | 'manual')}
                   >
                     <span className="text-xl shrink-0 mt-0.5">{opt.icon}</span>
                     <div>
@@ -248,7 +359,7 @@ export function TeamsTab() {
                   className="flex-1 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
                   onClick={handleForm}
-                  disabled={!rosterOk || forming}
+                  disabled={!rosterOk || forming || (teamMode === 'manual' && !manualComplete)}
                 >
                   {forming ? 'Forming...' : 'Form Teams'}
                 </button>
@@ -273,8 +384,175 @@ export function TeamsTab() {
           </div>
         )}
 
-        {/* RIGHT: Teams grid */}
+        {/* RIGHT: Teams grid / Manual Assignment */}
         <div className="flex-1 t-surface border t-border rounded-2xl p-4 min-h-0 overflow-hidden flex flex-col">
+
+          {/* ── Manual Assignment UI ── */}
+          {isAdmin && teamMode === 'manual' && teams.length === 0 ? (
+            <>
+              <div className="flex items-center gap-3 mb-3 shrink-0">
+                <h2 className="font-['Bebas_Neue'] text-lg tracking-widest t-text flex-1">
+                  Manual Assignment
+                  {rosterOk && (
+                    <span className="font-['DM_Mono'] text-xs t-muted ml-2 normal-case tracking-normal">
+                      {assignedPlayers.length}/{roster.length} assigned
+                    </span>
+                  )}
+                </h2>
+                {rosterOk && (
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={autoFill}
+                      disabled={unassignedPool.length === 0}
+                      className="px-2.5 py-1 font-['DM_Mono'] font-bold rounded-lg text-xs transition-all disabled:opacity-30 cursor-pointer"
+                      style={{ background: 'var(--accent-green)', color: '#fff' }}
+                    >Auto-fill</button>
+                    <button
+                      onClick={clearManual}
+                      className="px-2.5 py-1 font-['DM_Mono'] font-bold rounded-lg text-xs border t-muted cursor-pointer"
+                      style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)' }}
+                    >Clear</button>
+                  </div>
+                )}
+              </div>
+
+              {!rosterOk ? (
+                <p className="font-['DM_Mono'] text-xs t-muted">Need at least 10 players in multiples of 5 to use manual mode.</p>
+              ) : (
+                <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3">
+
+                  {/* Unassigned pool */}
+                  <div
+                    className="rounded-xl border-2 transition-all"
+                    style={{
+                      borderColor: dragOver === -1 ? 'var(--accent-gold)' : 'var(--border)',
+                      background: dragOver === -1 ? 'rgba(255,200,50,0.05)' : 'var(--bg-elevated)',
+                      minHeight: 44,
+                    }}
+                    onDragOver={e => { e.preventDefault(); setDragOver(-1); }}
+                    onDragLeave={() => setDragOver(null)}
+                    onDrop={e => { e.preventDefault(); handleManualDropPool(); }}
+                  >
+                    <div className="px-3 pt-2 pb-1 border-b flex items-center gap-2" style={{ borderColor: 'var(--border)' }}>
+                      <span className="font-['Bebas_Neue'] tracking-wide t-muted" style={{ fontSize: 13 }}>Unassigned Pool</span>
+                      <span
+                        className="font-['DM_Mono'] text-[10px] px-1.5 py-0.5 rounded-full"
+                        style={{ background: unassignedPool.length > 0 ? 'var(--accent-red)' : 'var(--bg-hover)', color: unassignedPool.length > 0 ? '#fff' : 'var(--text-dim)' }}
+                      >{unassignedPool.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 px-3 py-2">
+                      {unassignedPool.length === 0 ? (
+                        <span className="font-['DM_Mono'] text-[10px] t-dim italic">All players assigned ✓</span>
+                      ) : unassignedPool.map(p => (
+                        <div
+                          key={p}
+                          draggable
+                          onDragStart={() => handleManualDragStart(p, -1)}
+                          className="px-2 py-0.5 rounded-lg font-['DM_Mono'] text-[11px] t-text cursor-grab active:opacity-60 select-none"
+                          style={{ background: 'var(--bg-hover)', border: '1px solid var(--border-mid)' }}
+                        >{p}</div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Team slots grid */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: `repeat(${Math.min(n, Math.ceil(Math.sqrt(n * 1.5)))}, minmax(0, 1fr))`,
+                      gap: 10,
+                    }}
+                  >
+                    {Array.from({ length: n }, (_, i) => {
+                      const color = TEAM_COLORS[i % TEAM_COLORS.length];
+                      const slotMembers = manualSlots[i] ?? [];
+                      const leader = manualLeaders[i] ?? null;
+                      const isFull = slotMembers.length === 5;
+                      const isOver = dragOver === i;
+                      return (
+                        <div
+                          key={i}
+                          className="rounded-xl border-2 flex flex-col overflow-hidden transition-all"
+                          style={{
+                            borderTopColor: color,
+                            borderTopWidth: 3,
+                            borderColor: isOver ? color : (isFull ? 'var(--accent-green)' : 'var(--border)'),
+                            background: isOver ? `${color}10` : 'var(--bg-elevated)',
+                          }}
+                          onDragOver={e => { e.preventDefault(); setDragOver(i); }}
+                          onDragLeave={() => setDragOver(null)}
+                          onDrop={e => { e.preventDefault(); handleManualDrop(i); }}
+                        >
+                          {/* slot header */}
+                          <div className="px-3 pt-2 pb-1.5 border-b flex items-center gap-1" style={{ borderColor: 'var(--border)' }}>
+                            <h3 className="font-['Bebas_Neue'] tracking-wide flex-1" style={{ color, fontSize: 'clamp(12px,1.1vw,17px)' }}>
+                              Team {i + 1}
+                            </h3>
+                            <span className="font-['DM_Mono'] shrink-0" style={{ fontSize: 9, color: isFull ? 'var(--accent-green)' : 'var(--text-dim)' }}>
+                              {slotMembers.length}/5
+                            </span>
+                          </div>
+                          {/* members */}
+                          <div className="flex flex-col px-2 py-1.5 gap-0.5">
+                            {slotMembers.map(p => (
+                              <div
+                                key={p}
+                                draggable
+                                onDragStart={() => handleManualDragStart(p, i)}
+                                className="flex items-center gap-1 rounded px-1 py-0.5 group cursor-grab active:opacity-60 select-none"
+                                style={{ fontSize: 'clamp(9px,0.75vw,12px)' }}
+                              >
+                                <span className="shrink-0 w-4" style={{ fontSize: 9, color: p === leader ? 'var(--accent-gold)' : 'var(--text-dim)' }}>
+                                  {p === leader ? '👑' : '·'}
+                                </span>
+                                <span
+                                  className="font-['DM_Mono'] flex-1 truncate t-text"
+                                  style={{ fontSize: 'clamp(9px,0.75vw,12px)' }}
+                                >{p}</span>
+                                {/* crown toggle */}
+                                <button
+                                  onClick={() => setManualLeaders(prev => prev.map((l, idx) => idx === i ? (l === p ? null : p) : l))}
+                                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                  style={{ fontSize: 9, color: p === leader ? 'var(--accent-gold)' : 'var(--text-dim)' }}
+                                  title={p === leader ? 'Remove captain' : 'Make captain'}
+                                >👑</button>
+                                {/* remove button */}
+                                <button
+                                  onClick={() => {
+                                    setManualSlots(prev => { const next = prev.map(s => [...s]); next[i] = next[i].filter(m => m !== p); return next; });
+                                    setManualLeaders(prev => prev.map((l, idx) => idx === i && l === p ? null : l));
+                                  }}
+                                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                  style={{ fontSize: 9, color: 'var(--accent-red)' }}
+                                  title="Remove from team"
+                                >✕</button>
+                              </div>
+                            ))}
+                            {/* empty placeholder rows */}
+                            {Array.from({ length: 5 - slotMembers.length }, (_, j) => (
+                              <div key={j} className="flex items-center gap-1 px-1 py-0.5">
+                                <span className="w-4 shrink-0 t-dim" style={{ fontSize: 9 }}>·</span>
+                                <div className="flex-1 h-1.5 rounded" style={{ background: 'var(--bg-hover)', opacity: 0.5 }} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {!manualComplete && rosterOk && (
+                    <p className="font-['DM_Mono'] text-[10px] t-dim">
+                      {unassignedPool.length > 0
+                        ? `${unassignedPool.length} player${unassignedPool.length !== 1 ? 's' : ''} left to assign — drag them into a team slot.`
+                        : 'Some teams don’t have 5 players yet.'}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
           <h2 className="font-['Bebas_Neue'] text-lg tracking-widest t-text mb-3 shrink-0">
             {teams.length > 0
               ? 'Teams'
@@ -539,6 +817,8 @@ export function TeamsTab() {
                 </div>
               ))}
             </div>
+          )}
+          </>
           )}
         </div>
       </div>

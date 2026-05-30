@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ teams: updatedTeams });
   }
 
-  const { teamMode, leaders } = body;
+  const { teamMode, leaders, manualTeams } = body;
   if (roster.length < 10 || roster.length % 5 !== 0) {
     return NextResponse.json({ error: 'Need 10+ roster players in multiples of 5' }, { status: 400 });
   }
@@ -37,7 +37,27 @@ export async function POST(req: NextRequest) {
   const n = Math.floor(roster.length / 5);
   const teams: Team[] = [];
 
-  if (teamMode === 'random') {
+  if (teamMode === 'manual') {
+    // manualTeams: Array<{ index: number; members: string[]; leader: string | null }>
+    if (!Array.isArray(manualTeams) || manualTeams.length !== n) {
+      return NextResponse.json({ error: `Expected ${n} teams in manualTeams` }, { status: 400 });
+    }
+    const allAssigned = manualTeams.flatMap((t: { members: string[] }) => t.members);
+    if (allAssigned.length !== roster.length || new Set(allAssigned).size !== roster.length) {
+      return NextResponse.json({ error: 'Each roster player must appear in exactly one team' }, { status: 400 });
+    }
+    const notInRoster = allAssigned.find((p: string) => !roster.includes(p));
+    if (notInRoster) return NextResponse.json({ error: `"${notInRoster}" is not in the roster` }, { status: 400 });
+    for (let i = 0; i < n; i++) {
+      const slot = manualTeams.find((t: { index: number }) => t.index === i) ?? manualTeams[i];
+      teams.push({
+        name: 'Team ' + (i + 1),
+        color: TEAM_COLORS[i % TEAM_COLORS.length],
+        leader: slot.leader ?? null,
+        members: slot.members,
+      });
+    }
+  } else if (teamMode === 'random') {
     const pool = shuffle(roster);
     for (let i = 0; i < n; i++) {
       teams.push({ name: 'Team ' + (i + 1), color: TEAM_COLORS[i % TEAM_COLORS.length], leader: null, members: pool.slice(i * 5, i * 5 + 5) });

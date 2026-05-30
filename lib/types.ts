@@ -82,7 +82,7 @@ export interface ServerState {
   adminPwHash: string;
   players: Player[];
   roster: string[];
-  teamMode: 'leader' | 'random';
+  teamMode: 'leader' | 'random' | 'manual';
   teams: Team[];
   elimMode: 'single' | 'double';
   bracket: Bracket | null;
@@ -110,5 +110,13 @@ export type ClientState = Omit<ServerState, 'adminPwHash'>;
  * server-side code that imports TournamentState continues to compile.
  */
 export type TournamentState = ServerState;
+
+/** Per-team manual assignment used when teamMode === 'manual'. */
+export interface ManualTeamAssignment {
+  /** Slot index 0-based — determines team color/name. */
+  index: number;
+  members: string[];
+  leader: string | null;
+}
 
 export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'chat';

@@ -6,7 +6,7 @@ import type { Player, Team, Bracket, ChatMessage } from '@/lib/types';
 interface TourneyContext {
   players: Player[];
   roster: string[];
-  teamMode: 'leader' | 'random';
+  teamMode: 'leader' | 'random' | 'manual';
   teams: Team[];
   elimMode: 'single' | 'double';
   bracket: Bracket | null;
@@ -46,9 +46,9 @@ interface TourneyContext {
   sendChat: (name: string, text: string) => Promise<{ error?: string }>;
   clearChat: () => Promise<void>;
 
-  formTeams: (leaders?: string[]) => Promise<{ error?: string; teams?: Team[] }>;
+  formTeams: (leaders?: string[], manualTeams?: import('@/lib/types').ManualTeamAssignment[]) => Promise<{ error?: string; teams?: Team[] }>;
   resetTeams: () => Promise<void>;
-  setTeamMode: (mode: 'leader' | 'random') => Promise<void>;
+  setTeamMode: (mode: 'leader' | 'random' | 'manual') => Promise<void>;
   renameTeam: (teamId: string, customName: string) => Promise<{ error?: string }>;
   setTeamNameFromLeader: (teamId: string) => Promise<{ error?: string }>;
   addReplacement: (teamId: string, originalName: string, replacementName: string) => Promise<{ error?: string }>;
@@ -126,7 +126,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const t = encodeURIComponent(tournamentId);
   const [players, setPlayers] = useState<Player[]>([]);
   const [roster, setRosterState] = useState<string[]>([]);
-  const [teamMode, setTeamModeState] = useState<'leader' | 'random'>('leader');
+  const [teamMode, setTeamModeState] = useState<'leader' | 'random' | 'manual'>('leader');
   const [teams, setTeams] = useState<Team[]>([]);
   const [elimMode, setElimModeState] = useState<'single' | 'double'>('single');
   const [bracket, setBracket] = useState<Bracket | null>(null);
@@ -180,7 +180,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const applySnapshot = useCallback((data: Record<string, unknown>, fromSSE = false) => {
     if (!fromSSE || !guard.guarded('players'))   setPlayers(data.players as Player[] ?? []);
     if (!fromSSE || !guard.guarded('roster'))    setRosterState(data.roster as string[] ?? []);
-    if (!fromSSE || !guard.guarded('teamMode'))  setTeamModeState((data.teamMode as 'leader' | 'random') ?? 'leader');
+    if (!fromSSE || !guard.guarded('teamMode'))  setTeamModeState((data.teamMode as 'leader' | 'random' | 'manual') ?? 'leader');
     if (!fromSSE || !guard.guarded('teams'))     setTeams(data.teams as Team[] ?? []);
     if (!fromSSE || !guard.guarded('elimMode'))  setElimModeState((data.elimMode as 'single' | 'double') ?? 'single');
     if (!fromSSE || !guard.guarded('bracket'))   setBracket((data.bracket as Bracket | null) ?? null);
@@ -368,12 +368,12 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   // ── Teams ─────────────────────────────────────────────────────────────────
-  const formTeams = async (leaders?: string[]) => {
+  const formTeams = async (leaders?: string[], manualTeams?: import('@/lib/types').ManualTeamAssignment[]) => {
     guard.touch('teams'); guard.touch('bracket');
     const res = await fetch(`/api/teams?t=${t}`, {
       method: 'POST',
       headers: adminHeaders,
-      body: JSON.stringify({ teamMode, leaders }),
+      body: JSON.stringify({ teamMode, leaders, manualTeams }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
@@ -410,7 +410,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     setBracket(null);
   };
 
-  const setTeamMode = async (mode: 'leader' | 'random') => {
+  const setTeamMode = async (mode: 'leader' | 'random' | 'manual') => {
     guard.touch('teamMode');
     setTeamModeState(mode); // optimistic — instant UI feedback
     await fetch(`/api/teams?t=${t}`, {
