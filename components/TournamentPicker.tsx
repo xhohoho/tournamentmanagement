@@ -236,8 +236,9 @@ export function TournamentPicker({ onSelect }: Props) {
       <div className="relative z-10 w-full max-w-5xl mx-auto px-6 py-12">
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="font-['Bebas_Neue'] text-6xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent mb-2">
-            ⚔ TOURNEY
+          <div className="flex items-center justify-center gap-3 font-['Bebas_Neue'] text-6xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent mb-2">
+            <img src="/launcher-icon.png" alt="" className="w-14 h-14 object-contain" />
+            TOURNEY
           </div>
           <p className="font-['DM_Mono'] text-xs t-muted tracking-widest uppercase">Select a tournament to continue</p>
         </div>
