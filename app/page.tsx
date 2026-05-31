@@ -66,6 +66,11 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
     setTickerEditOpen(false);
   };
 
+  // isAdmin from context is already (rawAdmin && !previewAsUser) — false during preview.
+  // We need to know if the user IS an admin (ignoring preview) to show the right button.
+  // previewAsUser can only be true when the user is actually an admin, so:
+  const isActuallyAdmin = isAdmin || previewAsUser;
+
   if (loading) {
     return (
       <div className={`${dark ? 'dark' : ''} h-screen w-screen flex items-center justify-center t-bg`}>
@@ -109,7 +114,8 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
               >
                 {dark ? '☀️ Light' : '🌙 Dark'}
               </button>
-              {isAdmin && !previewAsUser && (
+              {/* Only show Ticker/Reset when actually acting as admin (not in preview) */}
+              {isAdmin && (
                 <>
                   <button
                     onClick={openTickerEdit}
@@ -129,8 +135,8 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   </button>
                 </>
               )}
-              {/* Admin status indicator — login is managed at the picker */}
-              {isAdmin ? (
+              {/* Admin / preview toggle button */}
+              {isActuallyAdmin ? (
                 <button
                   onClick={() => setPreviewAsUser(!previewAsUser)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
@@ -141,7 +147,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   title={previewAsUser ? 'Switch back to admin view' : 'Preview as regular user'}
                 >
                   <span>{previewAsUser ? '👁' : '🔓'}</span>
-                  <span>{previewAsUser ? 'Preview' : `${adminName ?? 'Admin'} ✓`}</span>
+                  <span>{previewAsUser ? 'Preview (tap to exit)' : `${adminName ?? 'Admin'} ✓`}</span>
                 </button>
               ) : (
                 <button
@@ -244,7 +250,6 @@ export default function Home() {
   const [pickerAdminToken, setPickerAdminToken] = useState<string | undefined>(undefined);
   const [pickerAdminInfo, setPickerAdminInfo] = useState<{ adminId: string; name: string; isSuperAdmin: boolean } | null>(null);
 
-  // Persist last-used tournament in localStorage so returning users skip the picker
   useEffect(() => {
     const saved = localStorage.getItem('lastTournamentId');
     if (saved) setTournamentId(saved);
