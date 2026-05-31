@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Player, Team, Bracket, ChatMessage } from '@/lib/types';
+import type { Player, Team, Bracket, ChatMessage, FFAState, FFAMapInfo, FFAPlayerScore } from '@/lib/types';
 
 interface TourneyContext {
   players: Player[];
@@ -19,6 +19,7 @@ interface TourneyContext {
   spinItemCategory: Record<number, string>;
   defaultMaps: string[];
   stageFormats: import('@/lib/types').StageFormats;
+  ffa: FFAState;
   isAdmin: boolean;
   previewAsUser: boolean;
   adminToken: string | null;
@@ -79,6 +80,17 @@ interface TourneyContext {
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
+
+  // FFA actions
+  createFFAMatch: (mapInfo: FFAMapInfo) => Promise<{ error?: string }>;
+  updateFFAScore: (matchId: string, playerName: string, score: number, imageUrl?: string) => Promise<void>;
+  removeFFAScore: (matchId: string, playerName: string) => Promise<void>;
+  setFFAScores: (matchId: string, scores: FFAPlayerScore[]) => Promise<void>;
+  setFFAPlayers: (players: string[]) => Promise<void>;
+  deleteFFAMatch: (matchId: string) => Promise<void>;
+  lockFFAMatch: (matchId: string, locked: boolean) => Promise<void>;
+  updateFFAMapInfo: (matchId: string, mapInfo: FFAMapInfo) => Promise<void>;
+  setFFAMatchImage: (matchId: string, imageUrl: string) => Promise<void>;
 
   resetAll: () => Promise<void>;
 }
@@ -148,6 +160,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [defaultMaps, setDefaultMaps] = useState<string[]>([]);
   const [joinKey, setJoinKeyState] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [ffa, setFFA] = useState<FFAState>({ matches: [], players: [] });
   const [isAdmin, setIsAdminState] = useState(!!initialAdminToken);
   const [previewAsUser, setPreviewAsUserState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(initialAdminToken ?? null);
@@ -218,6 +231,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('joinKey'))   setJoinKeyState(data.joinKey as string ?? '');
     if (!fromSSE || !guard.guarded('chat'))      setChatMessages(data.chatMessages as ChatMessage[] ?? []);
     if (!fromSSE || !guard.guarded('tickerText')) setTickerTextState(data.tickerText as string ?? '');
+    if (!fromSSE || !guard.guarded('ffa'))       setFFA((data.ffa as FFAState) ?? { matches: [], players: [] });
 
     // spinState: always accept (driven by server spin animation)
     setSpinState(data.spinState as import('@/lib/types').SpinState | null ?? null);
@@ -710,9 +724,66 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     });
   };
 
+  // ── FFA ───────────────────────────────────────────────────────────────────
+  const ffaPatch = async (body: Record<string, unknown>) => {
+    guard.touch('ffa');
+    const res = await fetch(`/api/ffa?t=${t}`, {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ffa) setFFA(data.ffa);
+  };
+
+  const createFFAMatch = async (mapInfo: FFAMapInfo) => {
+    guard.touch('ffa');
+    const res = await fetch(`/api/ffa?t=${t}`, {
+      method: 'POST',
+      headers: adminHeaders,
+      body: JSON.stringify({ mapInfo }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    if (data.ffa) setFFA(data.ffa);
+    return {};
+  };
+
+  const updateFFAScore = async (matchId: string, playerName: string, score: number, imageUrl?: string) => {
+    await ffaPatch({ action: 'updateScore', matchId, playerName, score, ...(imageUrl !== undefined ? { imageUrl } : {}) });
+  };
+
+  const removeFFAScore = async (matchId: string, playerName: string) => {
+    await ffaPatch({ action: 'removeScore', matchId, playerName });
+  };
+
+  const setFFAScores = async (matchId: string, scores: FFAPlayerScore[]) => {
+    await ffaPatch({ action: 'setScores', matchId, scores });
+  };
+
+  const setFFAPlayers = async (players: string[]) => {
+    await ffaPatch({ action: 'setPlayers', players });
+  };
+
+  const deleteFFAMatch = async (matchId: string) => {
+    await ffaPatch({ action: 'deleteMatch', matchId });
+  };
+
+  const lockFFAMatch = async (matchId: string, locked: boolean) => {
+    await ffaPatch({ action: 'lockMatch', matchId, locked });
+  };
+
+  const updateFFAMapInfo = async (matchId: string, mapInfo: FFAMapInfo) => {
+    await ffaPatch({ action: 'updateMapInfo', matchId, mapInfo });
+  };
+
+  const setFFAMatchImage = async (matchId: string, imageUrl: string) => {
+    await ffaPatch({ action: 'setMatchImage', matchId, imageUrl });
+  };
+
   const resetAll = async () => {
     // Touch everything so SSE from the reset doesn't race with local clear
-    ['players','roster','teams','bracket','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps'].forEach(f => guard.touch(f));
+    ['players','roster','teams','bracket','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps','ffa'].forEach(f => guard.touch(f));
     await fetch(`/api/reset?t=${t}`, { method: 'DELETE', headers: adminHeaders });
     setPlayers([]);
     setRosterState([]);
@@ -726,12 +797,13 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     setSpinItemCategory({});
     setSpinState(null);
     setShuffleState(null);
+    setFFA({ matches: [], players: [] });
   };
 
   return (
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, shuffleState, spinQueue,
-      spinCategories, spinItemCategory, defaultMaps, stageFormats,
+      spinCategories, spinItemCategory, defaultMaps, stageFormats, ffa,
       tournamentId,
       joinKey, chatMessages,
       isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, adminId, adminName, isSuperAdmin, loading, tickerText,
@@ -744,6 +816,8 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       assignLeader,
+      createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,
+      deleteFFAMatch, lockFFAMatch, updateFFAMapInfo, setFFAMatchImage,
       resetAll,
     }}>
       {children}

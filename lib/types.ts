@@ -85,6 +85,42 @@ export interface SpinState {
   result: string;      // winning map (set when spin completes)
 }
 
+// ─── Free For All ─────────────────────────────────────────────────────────────
+
+/** Map details shown in the FFA tab header (from the screenshot). */
+export interface FFAMapInfo {
+  title: string;       // e.g. "Tour"
+  mapName: string;     // e.g. "London"
+  scoreLimit: number;  // e.g. 50
+  timeLimit: number;   // minutes, e.g. 20
+  maxPlayers: string;  // e.g. "8 vs 8"
+  password: string;
+  server: string;
+  imageUrl?: string;   // optional uploaded screenshot URL
+}
+
+/** Per-player score entry in a FFA match. */
+export interface FFAPlayerScore {
+  playerName: string;
+  score: number;
+  imageUrl?: string; // optional score screenshot for this player
+}
+
+/** A single FFA match/round. */
+export interface FFAMatch {
+  id: string;
+  createdAt: number;
+  mapInfo: FFAMapInfo;
+  scores: FFAPlayerScore[];
+  locked: boolean; // admin can lock to prevent further edits
+}
+
+/** Full FFA state stored on server. */
+export interface FFAState {
+  matches: FFAMatch[];
+  players: string[]; // list of player names participating
+}
+
 /** Full state stored in KV — never sent to the client as-is. */
 export interface ServerState {
   /** @deprecated Per-tournament passwords removed. Use admin accounts instead. */
@@ -109,6 +145,7 @@ export interface ServerState {
   spinItemCategory: Record<number, string>; // spinQueue index -> category name
   tickerText: string;
   stageFormats: import('./types').StageFormats;
+  ffa: FFAState;
 }
 
 /**
@@ -143,4 +180,4 @@ export interface StageFormats {
   grandFinal: 'bo1' | 'bo3' | 'bo5';
 }
 
-export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'chat';
+export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'ffa' | 'chat';

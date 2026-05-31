@@ -8,6 +8,7 @@ import { PlayersTab } from '@/components/PlayersTab';
 import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
 import { MapsTab } from '@/components/MapsTab';
+import { FFATab } from '@/components/FFATab';
 import { ChatPanel } from '@/components/ChatPanel';
 import BottomTicker from '@/components/BottomTicker';
 import { useTourney } from '@/lib/context';
@@ -18,11 +19,12 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'teams',   icon: '🛡',  label: 'Teams'   },
   { id: 'bracket', icon: '🏆', label: 'Bracket'  },
   { id: 'maps',    icon: '🗺',  label: 'Maps'     },
+  { id: 'ffa',     icon: '🎮', label: 'FFA'      },
 ];
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
-  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
+  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText, ffa } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
@@ -173,6 +175,11 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                     {roster.length > 0 ? roster.length : players.length}
                   </span>
                 )}
+                {tab.id === 'ffa' && (ffa.matches?.length ?? 0) > 0 && (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[var(--accent-red)] text-white text-[9px] font-bold">
+                    {ffa.matches.length}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -185,6 +192,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={filteredSpinResults} /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab activeCategory={activeCategory} setActiveCategory={setActiveCategory} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'ffa'     ? '' : 'hidden'}`}><FFATab /></div>
           </div>
         </main>
 
