@@ -56,8 +56,20 @@ export interface TournamentMeta {
 export async function listTournaments(): Promise<TournamentMeta[]> {
   try {
     const list = (await kv.get<TournamentMeta[]>(REGISTRY_KEY)) ?? [];
-    // Backfill collaborators for legacy entries that predate this field
-    return list.map(t => ({ ...t, collaborators: t.collaborators ?? [] }));
+    // Check if any legacy backfill is needed (missing ownerAdminId or collaborators).
+    const needsBackfill = list.some(t => !t.ownerAdminId || !t.collaborators);
+    if (!needsBackfill) return list;
+    // Find the first super admin to use as fallback owner for ownerless tournaments.
+    const accounts = await listAdminAccounts();
+    const superAdmin = accounts.find(a => a.isSuperAdmin);
+    const backfilled = list.map(t => ({
+      ...t,
+      collaborators: t.collaborators ?? [],
+      ownerAdminId: t.ownerAdminId || superAdmin?.adminId || '',
+    }));
+    // Persist the backfill so this only runs once.
+    await kv.set(REGISTRY_KEY, backfilled);
+    return backfilled;
   } catch {
     return [];
   }

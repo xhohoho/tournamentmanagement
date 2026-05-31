@@ -372,12 +372,15 @@ export function TournamentPicker({ onSelect }: Props) {
   };
 
   // Helper: returns true if the current admin can manage this tournament.
-  // Mirrors server-side canAccessTournament but also handles legacy tournaments
-  // that have no ownerAdminId (they should be super-admin-only).
+  // Rules mirror server-side canAccessTournament:
+  //   1. Super admin → always allowed
+  //   2. Owner → always allowed
+  //   3. Collaborator → allowed if adminId is in meta.collaborators
+  //   4. Legacy tournament (no ownerAdminId) → allowed only if a collaborator
+  //      (a super admin already explicitly granted access via the toggle)
   const canManage = (t: TournamentMeta): boolean => {
     if (!adminInfo) return false;
     if (adminInfo.isSuperAdmin) return true;
-    if (!t.ownerAdminId) return false;          // legacy / unowned — super admin only
     if (t.ownerAdminId === adminInfo.adminId) return true;
     if (t.collaborators?.includes(adminInfo.adminId)) return true;
     return false;
