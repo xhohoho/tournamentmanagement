@@ -286,9 +286,11 @@ function ScoreTabSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean
 
 // ─── Winners Section ──────────────────────────────────────────────────────────
 function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean }) {
-  const { setFFAMatchWinners } = useTourney();
+  const { setFFAMatchWinners, roster, players } = useTourney();
 
-  // Local draft state for the edit form
+  // Prefer roster; fall back to the queue if roster is empty
+  const playerList = roster.length > 0 ? roster : players.map(p => p.name);
+
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<FFAWinner[]>([]);
   const [saving, setSaving] = useState(false);
@@ -297,7 +299,6 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
   const hasWinners = winners.length > 0;
 
   const openEdit = () => {
-    // Seed draft from saved winners, always at least 1 row
     setDraft(winners.length > 0 ? winners.map(w => ({ ...w })) : [{ playerName: '', prize: '' }]);
     setEditing(true);
   };
@@ -308,7 +309,6 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
     setDraft(prev => prev.map((w, idx) => idx === i ? { ...w, [field]: val } : w));
 
   const handleSave = async () => {
-    // Strip empty rows before saving
     const cleaned = draft.filter(w => w.playerName.trim());
     setSaving(true);
     await setFFAMatchWinners(match.id, cleaned);
@@ -316,10 +316,10 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
     setEditing(false);
   };
 
-  const handleCancel = () => setEditing(false);
-
-  // ── Medal emoji by position ──────────────────────────────────────────────
   const medal = (i: number) => ['🥇', '🥈', '🥉'][i] ?? `#${i + 1}`;
+
+  // Names already picked in other rows (to disable in dropdowns)
+  const pickedNames = draft.map(r => r.playerName).filter(Boolean);
 
   return (
     <div className="px-4 pb-4 flex flex-col gap-3 border-t t-border pt-4">
@@ -363,13 +363,9 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
               >
                 <span className="text-lg leading-none w-6 text-center flex-shrink-0">{medal(i)}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-['Bebas_Neue'] text-base tracking-wider t-text leading-tight truncate">
-                    {w.playerName}
-                  </p>
+                  <p className="font-['Bebas_Neue'] text-base tracking-wider t-text leading-tight truncate">{w.playerName}</p>
                   {w.prize && (
-                    <p className="font-['DM_Mono'] text-[10px] tracking-wide truncate" style={{ color: 'var(--accent-gold)' }}>
-                      {w.prize}
-                    </p>
+                    <p className="font-['DM_Mono'] text-[10px] tracking-wide truncate" style={{ color: 'var(--accent-gold)' }}>{w.prize}</p>
                   )}
                 </div>
               </div>
@@ -388,22 +384,45 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
       {/* ── Edit form (admin only) ───────────────────────────────────────── */}
       {editing && (
         <div className="flex flex-col gap-3">
+          {/* No roster warning */}
+          {playerList.length === 0 && (
+            <p className="font-['DM_Mono'] text-[10px] text-[var(--accent-gold)] bg-[rgba(255,176,32,0.08)] border border-[rgba(255,176,32,0.2)] rounded-xl px-3 py-2">
+              ⚠ No players in roster yet. Add players in the Players tab first.
+            </p>
+          )}
+
           {draft.map((row, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="text-base w-6 text-center flex-shrink-0">{medal(i)}</span>
-              <input
-                className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors"
-                placeholder="Player name…"
+
+              {/* Player dropdown */}
+              <select
+                className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors cursor-pointer"
                 value={row.playerName}
                 onChange={e => setField(i, 'playerName', e.target.value)}
-                autoFocus={i === 0}
-              />
+                style={{ background: 'var(--bg-elevated)' }}
+              >
+                <option value="">— Select player —</option>
+                {playerList.map(name => (
+                  <option
+                    key={name}
+                    value={name}
+                    // Disable if already picked in another row
+                    disabled={name !== row.playerName && pickedNames.includes(name)}
+                  >
+                    {name}{name !== row.playerName && pickedNames.includes(name) ? ' (taken)' : ''}
+                  </option>
+                ))}
+              </select>
+
+              {/* Prize input */}
               <input
                 className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors"
                 placeholder="Prize (e.g. RP 50,000)"
                 value={row.prize}
                 onChange={e => setField(i, 'prize', e.target.value)}
               />
+
               {draft.length > 1 && (
                 <button
                   className="px-2 py-2 rounded-lg t-elevated border t-border-mid font-['DM_Mono'] text-[10px] t-dim hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] transition-colors cursor-pointer flex-shrink-0"
@@ -414,7 +433,7 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
             </div>
           ))}
 
-          {draft.length < 10 && (
+          {draft.length < playerList.length && (
             <button
               className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-xl t-elevated border border-dashed t-border-mid font-['DM_Mono'] text-[10px] t-muted hover:border-[var(--accent)] hover:t-text transition-colors cursor-pointer"
               onClick={addRow}
@@ -426,11 +445,11 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
           <div className="flex gap-2 pt-1">
             <button
               className="flex-1 py-2 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-xs hover:border-[var(--accent)] transition-colors cursor-pointer"
-              onClick={handleCancel}
+              onClick={() => setEditing(false)}
               disabled={saving}
             >Cancel</button>
             <button
-              className="flex-1 py-2 rounded-xl font-['DM_Mono'] text-xs font-bold text-white hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer"
+              className="flex-1 py-2 rounded-xl font-['DM_Mono'] text-xs font-bold hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer"
               style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
               onClick={handleSave}
               disabled={saving || draft.every(r => !r.playerName.trim())}
