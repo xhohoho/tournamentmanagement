@@ -285,6 +285,11 @@ function ScoreTabSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean
 }
 
 // ─── Winners Section ──────────────────────────────────────────────────────────
+// Each draft row carries an extra `custom` flag: when true the admin types a
+// free-form name instead of picking from the roster dropdown.  This lets
+// players who joined mid-match (not in the roster) be declared as winners.
+type DraftWinner = FFAWinner & { custom: boolean };
+
 function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean }) {
   const { setFFAMatchWinners, roster, players } = useTourney();
 
@@ -292,24 +297,36 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
   const playerList = roster.length > 0 ? roster : players.map(p => p.name);
 
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<FFAWinner[]>([]);
+  const [draft, setDraft] = useState<DraftWinner[]>([]);
   const [saving, setSaving] = useState(false);
 
   const winners = match.winners ?? [];
   const hasWinners = winners.length > 0;
 
   const openEdit = () => {
-    setDraft(winners.length > 0 ? winners.map(w => ({ ...w })) : [{ playerName: '', prize: '' }]);
+    // When reopening, preserve existing winners; detect custom names (not in playerList)
+    const initial: DraftWinner[] =
+      winners.length > 0
+        ? winners.map(w => ({ ...w, custom: !playerList.includes(w.playerName) }))
+        : [{ playerName: '', prize: '', custom: playerList.length === 0 }];
+    setDraft(initial);
     setEditing(true);
   };
 
-  const addRow = () => setDraft(prev => [...prev, { playerName: '', prize: '' }]);
+  const addRow = () =>
+    setDraft(prev => [...prev, { playerName: '', prize: '', custom: playerList.length === 0 }]);
   const removeRow = (i: number) => setDraft(prev => prev.filter((_, idx) => idx !== i));
   const setField = (i: number, field: keyof FFAWinner, val: string) =>
     setDraft(prev => prev.map((w, idx) => idx === i ? { ...w, [field]: val } : w));
+  const toggleCustom = (i: number) =>
+    setDraft(prev => prev.map((w, idx) =>
+      idx === i ? { ...w, custom: !w.custom, playerName: '' } : w
+    ));
 
   const handleSave = async () => {
-    const cleaned = draft.filter(w => w.playerName.trim());
+    const cleaned: FFAWinner[] = draft
+      .filter(w => w.playerName.trim())
+      .map(({ playerName, prize }) => ({ playerName: playerName.trim(), prize }));
     setSaving(true);
     await setFFAMatchWinners(match.id, cleaned);
     setSaving(false);
@@ -318,7 +335,7 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
 
   const medal = (i: number) => ['🥇', '🥈', '🥉'][i] ?? `#${i + 1}`;
 
-  // Names already picked in other rows (to disable in dropdowns)
+  // Names already picked in other rows (used to disable options in dropdowns)
   const pickedNames = draft.map(r => r.playerName).filter(Boolean);
 
   return (
@@ -367,6 +384,9 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
                   {w.prize && (
                     <p className="font-['DM_Mono'] text-[10px] tracking-wide truncate" style={{ color: 'var(--accent-gold)' }}>{w.prize}</p>
                   )}
+                  {!playerList.includes(w.playerName) && (
+                    <p className="font-['DM_Mono'] text-[9px] t-dim">guest / mid-match join</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -384,63 +404,86 @@ function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean 
       {/* ── Edit form (admin only) ───────────────────────────────────────── */}
       {editing && (
         <div className="flex flex-col gap-3">
-          {/* No roster warning */}
+          {/* Hint when roster is empty */}
           {playerList.length === 0 && (
             <p className="font-['DM_Mono'] text-[10px] text-[var(--accent-gold)] bg-[rgba(255,176,32,0.08)] border border-[rgba(255,176,32,0.2)] rounded-xl px-3 py-2">
-              ⚠ No players in roster yet. Add players in the Players tab first.
+              ⚠ No players in roster — using free-text name entry. Add players in the Players tab to enable the roster dropdown.
             </p>
           )}
 
           {draft.map((row, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="text-base w-6 text-center flex-shrink-0">{medal(i)}</span>
+            <div key={i} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base w-6 text-center flex-shrink-0">{medal(i)}</span>
 
-              {/* Player dropdown */}
-              <select
-                className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors cursor-pointer"
-                value={row.playerName}
-                onChange={e => setField(i, 'playerName', e.target.value)}
-                style={{ background: 'var(--bg-elevated)' }}
-              >
-                <option value="">— Select player —</option>
-                {playerList.map(name => (
-                  <option
-                    key={name}
-                    value={name}
-                    // Disable if already picked in another row
-                    disabled={name !== row.playerName && pickedNames.includes(name)}
+                {/* Player name: dropdown OR free-text depending on row.custom */}
+                {row.custom || playerList.length === 0 ? (
+                  <input
+                    className="flex-1 t-elevated border border-[rgba(255,176,32,0.35)] rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    placeholder="Type player name…"
+                    value={row.playerName}
+                    onChange={e => setField(i, 'playerName', e.target.value)}
+                    autoFocus={row.playerName === ''}
+                  />
+                ) : (
+                  <select
+                    className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors cursor-pointer"
+                    value={row.playerName}
+                    onChange={e => setField(i, 'playerName', e.target.value)}
+                    style={{ background: 'var(--bg-elevated)' }}
                   >
-                    {name}{name !== row.playerName && pickedNames.includes(name) ? ' (taken)' : ''}
-                  </option>
-                ))}
-              </select>
+                    <option value="">— Select player —</option>
+                    {playerList.map(name => (
+                      <option
+                        key={name}
+                        value={name}
+                        disabled={name !== row.playerName && pickedNames.includes(name)}
+                      >
+                        {name}{name !== row.playerName && pickedNames.includes(name) ? ' (taken)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
 
-              {/* Prize input */}
-              <input
-                className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors"
-                placeholder="Prize (e.g. RP 50,000)"
-                value={row.prize}
-                onChange={e => setField(i, 'prize', e.target.value)}
-              />
+                {/* Prize input */}
+                <input
+                  className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors"
+                  placeholder="Prize (e.g. RP 50,000)"
+                  value={row.prize}
+                  onChange={e => setField(i, 'prize', e.target.value)}
+                />
 
-              {draft.length > 1 && (
+                {draft.length > 1 && (
+                  <button
+                    className="px-2 py-2 rounded-lg t-elevated border t-border-mid font-['DM_Mono'] text-[10px] t-dim hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] transition-colors cursor-pointer flex-shrink-0"
+                    onClick={() => removeRow(i)}
+                    title="Remove row"
+                  >✕</button>
+                )}
+              </div>
+
+              {/* Toggle between roster dropdown and custom name input */}
+              {playerList.length > 0 && (
                 <button
-                  className="px-2 py-2 rounded-lg t-elevated border t-border-mid font-['DM_Mono'] text-[10px] t-dim hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] transition-colors cursor-pointer flex-shrink-0"
-                  onClick={() => removeRow(i)}
-                  title="Remove row"
-                >✕</button>
+                  className="self-start ml-8 flex items-center gap-1 font-['DM_Mono'] text-[9px] transition-colors cursor-pointer"
+                  style={{ color: row.custom ? 'var(--accent-gold)' : 'var(--text-dim)' }}
+                  onClick={() => toggleCustom(i)}
+                  title={row.custom ? 'Switch back to roster dropdown' : 'Type a custom name (guest / mid-match join)'}
+                >
+                  {row.custom
+                    ? '📋 Pick from roster instead'
+                    : '✏️ Guest / joined mid-match? Type name'}
+                </button>
               )}
             </div>
           ))}
 
-          {draft.length < playerList.length && (
-            <button
-              className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-xl t-elevated border border-dashed t-border-mid font-['DM_Mono'] text-[10px] t-muted hover:border-[var(--accent)] hover:t-text transition-colors cursor-pointer"
-              onClick={addRow}
-            >
-              + Add row
-            </button>
-          )}
+          <button
+            className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-xl t-elevated border border-dashed t-border-mid font-['DM_Mono'] text-[10px] t-muted hover:border-[var(--accent)] hover:t-text transition-colors cursor-pointer"
+            onClick={addRow}
+          >
+            + Add row
+          </button>
 
           <div className="flex gap-2 pt-1">
             <button
