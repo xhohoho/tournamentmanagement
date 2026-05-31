@@ -14,6 +14,7 @@ const DEFAULT_MAP_INFO: FFAMapInfo = {
   password: '',
   server: 'SG',
   imageUrl: '',
+  rules: '',
 };
 
 function MapInfoForm({
@@ -127,6 +128,18 @@ function MapInfoForm({
           />
         </label>
       </div>
+
+      {/* Rules */}
+      <label className="flex flex-col gap-1">
+        <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Rules (optional)</span>
+        <textarea
+          rows={4}
+          className="t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors resize-none"
+          value={form.rules ?? ''}
+          onChange={e => set('rules', e.target.value)}
+          placeholder="e.g. No camping. No explosives. Top 3 players win points."
+        />
+      </label>
 
       {/* Map screenshot */}
       <div className="flex flex-col gap-1">
@@ -371,6 +384,14 @@ function MatchCard({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean }) {
           </div>
         ))}
       </div>
+
+      {/* Rules */}
+      {m.rules && (
+        <div className="px-4 py-3 border-b t-border">
+          <span className="font-['DM_Mono'] text-[9px] t-dim tracking-widest uppercase block mb-1">📜 Rules</span>
+          <p className="font-['DM_Mono'] text-xs t-text whitespace-pre-wrap leading-relaxed">{m.rules}</p>
+        </div>
+      )}
 
       {/* Edit map info modal */}
       {editingInfo && (

@@ -97,6 +97,7 @@ export interface FFAMapInfo {
   password: string;
   server: string;
   imageUrl?: string;   // optional uploaded screenshot URL
+  rules?: string;      // optional free-text rules for this match
 }
 
 /** Per-player score entry in a FFA match. */
