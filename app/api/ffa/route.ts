@@ -54,7 +54,8 @@ export async function POST(req: NextRequest) {
 //   setScores        { matchId, scores: FFAPlayerScore[] }
 //   lockMatch        { matchId, locked: boolean }
 //   deleteMatch      { matchId }
-//   setMatchImage    { matchId, imageUrl }
+//   setMatchImage    { matchId, imageUrl }         — updates mapInfo.imageUrl (header banner)
+//   setScoreImage    { matchId, scoreImageUrl }    — updates match.scoreImageUrl (score tab screenshot)
 export async function PATCH(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   const access = await checkTournamentAccess(req, tid);
@@ -94,6 +95,20 @@ export async function PATCH(req: NextRequest) {
         ...s.ffa,
         matches: (s.ffa?.matches ?? []).map(m =>
           m.id === matchId ? { ...m, mapInfo: { ...m.mapInfo, imageUrl } } : m
+        ),
+      },
+    }), tid);
+    return NextResponse.json({ ffa: next.ffa });
+  }
+
+  if (action === 'setScoreImage') {
+    const { scoreImageUrl } = body as { scoreImageUrl: string };
+    const next = await updateState(s => ({
+      ...s,
+      ffa: {
+        ...s.ffa,
+        matches: (s.ffa?.matches ?? []).map(m =>
+          m.id === matchId ? { ...m, scoreImageUrl } : m
         ),
       },
     }), tid);

@@ -113,6 +113,8 @@ export interface FFAMatch {
   mapInfo: FFAMapInfo;
   scores: FFAPlayerScore[];
   locked: boolean; // admin can lock to prevent further edits
+  /** Single score-tab screenshot uploaded by admin after the round ends. */
+  scoreImageUrl?: string;
 }
 
 /** Full FFA state stored on server. */

@@ -91,6 +91,8 @@ interface TourneyContext {
   lockFFAMatch: (matchId: string, locked: boolean) => Promise<void>;
   updateFFAMapInfo: (matchId: string, mapInfo: FFAMapInfo) => Promise<void>;
   setFFAMatchImage: (matchId: string, imageUrl: string) => Promise<void>;
+  /** Upload/replace the score-tab screenshot for a FFA match. Pass empty string to remove. */
+  setFFAMatchScoreImage: (matchId: string, scoreImageUrl: string) => Promise<void>;
 
   resetAll: () => Promise<void>;
 }
@@ -781,6 +783,10 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     await ffaPatch({ action: 'setMatchImage', matchId, imageUrl });
   };
 
+  const setFFAMatchScoreImage = async (matchId: string, scoreImageUrl: string) => {
+    await ffaPatch({ action: 'setScoreImage', matchId, scoreImageUrl });
+  };
+
   const resetAll = async () => {
     // Touch everything so SSE from the reset doesn't race with local clear
     ['players','roster','teams','bracket','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps','ffa'].forEach(f => guard.touch(f));
@@ -817,7 +823,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       assignLeader,
       createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,
-      deleteFFAMatch, lockFFAMatch, updateFFAMapInfo, setFFAMatchImage,
+      deleteFFAMatch, lockFFAMatch, updateFFAMapInfo, setFFAMatchImage, setFFAMatchScoreImage,
       resetAll,
     }}>
       {children}
