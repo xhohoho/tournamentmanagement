@@ -49,6 +49,16 @@ export function TournamentPicker({ onSelect }: Props) {
   const [editingPosterId, setEditingPosterId] = useState<string | null>(null);
   const [posterSaving, setPosterSaving] = useState(false);
 
+  // Edit tournament state
+  const [editingTournament, setEditingTournament] = useState<TournamentMeta | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editOrganizer, setEditOrganizer] = useState('');
+  const [editTournamentDate, setEditTournamentDate] = useState('');
+  const [editPosterFile, setEditPosterFile] = useState<File | null>(null);
+  const [editPosterPreview, setEditPosterPreview] = useState<string>('');
+  const [editErr, setEditErr] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
   // Delete state
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -185,6 +195,59 @@ export function TournamentPicker({ onSelect }: Props) {
       setCreateErr('Network error. Please try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ── Edit tournament ──────────────────────────────────────────────────────
+  const openEditTournament = (t: TournamentMeta, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTournament(t);
+    setEditName(t.name);
+    setEditOrganizer(t.organizer ?? '');
+    setEditTournamentDate(
+      t.tournamentDate
+        ? new Date(t.tournamentDate - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+        : ''
+    );
+    setEditPosterFile(null);
+    setEditPosterPreview(t.posterUrl ?? '');
+    setEditErr('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTournament) return;
+    setEditErr('');
+    const safeName = editName.trim();
+    if (!safeName) { setEditErr('Name is required.'); return; }
+    setEditSaving(true);
+    try {
+      let posterUrl: string | undefined = editingTournament.posterUrl;
+      if (editPosterFile) {
+        const uploadedUrl = await uploadPoster(editPosterFile);
+        if (uploadedUrl) posterUrl = uploadedUrl;
+      }
+      const body: Record<string, string | number | undefined> = {
+        name: safeName,
+        organizer: editOrganizer.trim() || undefined,
+        tournamentDate: editTournamentDate ? new Date(editTournamentDate).getTime() : undefined,
+        posterUrl,
+      };
+      const res = await fetch(`/api/tournaments?t=${editingTournament.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEditErr(data.error ?? 'Failed to update tournament.');
+        return;
+      }
+      setTournaments(data.tournaments ?? []);
+      setEditingTournament(null);
+    } catch {
+      setEditErr('Network error. Please try again.');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -509,14 +572,22 @@ export function TournamentPicker({ onSelect }: Props) {
                         </label>
                       )}
 
-                      {/* Admin: delete button (top-left) */}
+                      {/* Admin: delete + edit buttons (top-left) */}
                       {isAdmin && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setConfirmDeleteId(t.id); setDeleteErr(''); }}
-                          className="absolute top-2 left-2 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 font-['DM_Mono'] text-[10px] text-red-400 hover:bg-red-900/70 hover:text-red-300 hover:border-red-500/50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                        >
-                          🗑 Delete
-                        </button>
+                        <div className="absolute top-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={e => openEditTournament(t, e)}
+                            className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 font-['DM_Mono'] text-[10px] text-blue-300 hover:bg-blue-900/70 hover:text-blue-200 hover:border-blue-500/50 transition-all cursor-pointer"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setConfirmDeleteId(t.id); setDeleteErr(''); }}
+                            className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 font-['DM_Mono'] text-[10px] text-red-400 hover:bg-red-900/70 hover:text-red-300 hover:border-red-500/50 transition-all cursor-pointer"
+                          >
+                            🗑 Delete
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -560,6 +631,88 @@ export function TournamentPicker({ onSelect }: Props) {
           </>
         )}
       </div>
+
+      {/* ── Edit tournament modal ────────────────────────────────────────────── */}
+      {editingTournament && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4"
+          onClick={e => { if (e.target === e.currentTarget && !editSaving) setEditingTournament(null); }}
+        >
+          <div className="t-surface border t-border rounded-2xl p-6 w-[420px] max-w-[95vw] shadow-2xl">
+            <h3 className="font-['Bebas_Neue'] text-2xl tracking-widest t-text mb-4">✏️ EDIT TOURNAMENT</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Tournament Name</label>
+                <input
+                  type="text"
+                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Tournament Date & Time <span className="normal-case tracking-normal t-dim">(optional)</span></label>
+                <input
+                  type="datetime-local"
+                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+                  value={editTournamentDate}
+                  onChange={e => setEditTournamentDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Organizer <span className="normal-case tracking-normal t-dim">(optional)</span></label>
+                <input
+                  type="text"
+                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+                  placeholder="e.g. Kabut Esports"
+                  value={editOrganizer}
+                  onChange={e => setEditOrganizer(e.target.value.slice(0, 100))}
+                />
+              </div>
+              <div>
+                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Poster Image <span className="normal-case tracking-normal t-dim">(optional — replaces current)</span></label>
+                <label className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-dashed t-border-mid t-muted hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer">
+                  📁 {editPosterFile ? editPosterFile.name : 'Choose image…'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0] ?? null;
+                      setEditPosterFile(file);
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = ev => setEditPosterPreview(ev.target?.result as string);
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+                {editPosterPreview && (
+                  <div className="mt-2 rounded-lg overflow-hidden border t-border-mid h-28">
+                    <img src={editPosterPreview} alt="poster preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
+              {editErr && <p className="font-['DM_Mono'] text-xs text-[var(--accent-red)]">{editErr}</p>}
+              <div className="flex gap-3 pt-1">
+                <button
+                  className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+                  onClick={() => setEditingTournament(null)}
+                  disabled={editSaving}
+                >Cancel</button>
+                <button
+                  className="flex-1 py-2.5 rounded-xl text-white font-['DM_Mono'] text-sm font-bold hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer"
+                  style={{ background: 'var(--accent)' }}
+                  onClick={handleSaveEdit}
+                  disabled={editSaving || !editName.trim()}
+                >{editSaving ? 'Saving…' : 'Save Changes'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Poster lightbox ─────────────────────────────────────────────────── */}
       {lightboxUrl && (

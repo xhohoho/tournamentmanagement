@@ -51,11 +51,6 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
     return !prev;
   });
 
-  const handleAdminBtn = () => {
-    if (isAdmin || previewAsUser) { setPreviewAsUser(!previewAsUser); return; }
-    setAdminOpen(true);
-  };
-
   const handleReset = async () => {
     if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
     await resetAll();
@@ -147,19 +142,29 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   )}
                 </>
               )}
-              <button
-                onClick={handleAdminBtn}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
-                  isAdmin && !previewAsUser
-                    ? 'border-[var(--accent-gold)] text-[var(--accent-gold)] bg-[rgba(255,176,32,0.1)]'
-                    : isAdmin && previewAsUser
-                    ? 'border-[var(--accent)] text-[var(--accent)] bg-[rgba(77,124,255,0.06)]'
-                    : 't-border-mid t-muted t-elevated hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)]'
-                }`}
-              >
-                <span>{isAdmin ? (previewAsUser ? '👁' : '🔓') : '🔒'}</span>
-                <span>{isAdmin ? (previewAsUser ? 'Preview' : `${adminName ?? 'Admin'} ✓`) : 'Admin'}</span>
-              </button>
+              {/* Admin status indicator — login is managed at the picker */}
+              {isAdmin ? (
+                <button
+                  onClick={() => setPreviewAsUser(!previewAsUser)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
+                    previewAsUser
+                      ? 'border-[var(--accent)] text-[var(--accent)] bg-[rgba(77,124,255,0.06)]'
+                      : 'border-[var(--accent-gold)] text-[var(--accent-gold)] bg-[rgba(255,176,32,0.1)]'
+                  }`}
+                  title={previewAsUser ? 'Switch back to admin view' : 'Preview as regular user'}
+                >
+                  <span>{previewAsUser ? '👁' : '🔓'}</span>
+                  <span>{previewAsUser ? 'Preview' : `${adminName ?? 'Admin'} ✓`}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setAdminOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)] cursor-pointer"
+                  title="Log in as admin for this tournament"
+                >
+                  🔒 Admin
+                </button>
+              )}
             </div>
           </div>
         </header>
