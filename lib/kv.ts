@@ -57,7 +57,7 @@ export async function listTournaments(): Promise<TournamentMeta[]> {
   try {
     const list = (await kv.get<TournamentMeta[]>(REGISTRY_KEY)) ?? [];
     // Backfill collaborators for legacy entries that predate this field
-    return list.map(t => ({ collaborators: [], ...t }));
+    return list.map(t => ({ ...t, collaborators: t.collaborators ?? [] }));
   } catch {
     return [];
   }
