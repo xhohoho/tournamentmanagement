@@ -23,7 +23,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
-  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
+  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, isSuperAdmin, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
@@ -132,6 +132,19 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   >
                     {resetConfirm ? '⚠ Confirm Reset?' : '🔄 Reset All'}
                   </button>
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => setSuperAdminOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer"
+                      style={{
+                        borderColor: 'var(--accent-gold)',
+                        color: 'var(--accent-gold)',
+                        background: 'rgba(255,176,32,0.07)',
+                      }}
+                    >
+                      ★ Admins
+                    </button>
+                  )}
                 </>
               )}
               <button
