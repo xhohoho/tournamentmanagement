@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useTourney } from '@/lib/context';
-import type { FFAMapInfo, FFAMatch } from '@/lib/types';
+import type { FFAMapInfo, FFAMatch, FFAWinner } from '@/lib/types';
 
 // ─── default map info pre-filled from the screenshot ─────────────────────────
 const DEFAULT_MAP_INFO: FFAMapInfo = {
@@ -57,7 +57,6 @@ function MapInfoForm({
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-3">
-        {/* Map Name */}
         <label className="flex flex-col gap-1">
           <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Map Name</span>
           <input
@@ -67,7 +66,6 @@ function MapInfoForm({
             placeholder="e.g. London"
           />
         </label>
-        {/* Title / Mode */}
         <label className="flex flex-col gap-1">
           <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Title / Mode</span>
           <input
@@ -77,7 +75,6 @@ function MapInfoForm({
             placeholder="e.g. Tour"
           />
         </label>
-        {/* Score Limit */}
         <label className="flex flex-col gap-1">
           <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Score Limit (kills)</span>
           <input
@@ -87,7 +84,6 @@ function MapInfoForm({
             onChange={e => set('scoreLimit', Number(e.target.value))}
           />
         </label>
-        {/* Time Limit */}
         <label className="flex flex-col gap-1">
           <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Time Limit (min)</span>
           <input
@@ -97,7 +93,6 @@ function MapInfoForm({
             onChange={e => set('timeLimit', Number(e.target.value))}
           />
         </label>
-        {/* Max Players */}
         <label className="flex flex-col gap-1">
           <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Max Players</span>
           <input
@@ -107,7 +102,6 @@ function MapInfoForm({
             placeholder="e.g. 8 vs 8"
           />
         </label>
-        {/* Server */}
         <label className="flex flex-col gap-1">
           <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Server</span>
           <input
@@ -117,7 +111,6 @@ function MapInfoForm({
             placeholder="e.g. SG"
           />
         </label>
-        {/* Password */}
         <label className="flex flex-col gap-1 col-span-2">
           <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Password</span>
           <input
@@ -129,7 +122,6 @@ function MapInfoForm({
         </label>
       </div>
 
-      {/* Rules */}
       <label className="flex flex-col gap-1">
         <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Rules (optional)</span>
         <textarea
@@ -141,7 +133,6 @@ function MapInfoForm({
         />
       </label>
 
-      {/* Map screenshot */}
       <div className="flex flex-col gap-1">
         <span className="font-['DM_Mono'] text-[10px] t-muted tracking-widest uppercase">Map Screenshot (optional)</span>
         <div className="flex gap-2 items-center">
@@ -181,14 +172,8 @@ function MapInfoForm({
   );
 }
 
-// ─── Score Tab Image section inside a match card ──────────────────────────────
-function ScoreTabSection({
-  match,
-  isAdmin,
-}: {
-  match: FFAMatch;
-  isAdmin: boolean;
-}) {
+// ─── Score Tab Image section ──────────────────────────────────────────────────
+function ScoreTabSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean }) {
   const { setFFAMatchScoreImage, adminToken, tournamentId } = useTourney();
   const imgRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -218,7 +203,6 @@ function ScoreTabSection({
 
   return (
     <div className="p-4 flex flex-col gap-3">
-      {/* Section header */}
       <div className="flex items-center justify-between">
         <span className="font-['Bebas_Neue'] text-base tracking-widest t-text">🏆 Score Tab</span>
         {match.locked && (
@@ -226,7 +210,6 @@ function ScoreTabSection({
         )}
       </div>
 
-      {/* Image display */}
       {scoreImageUrl ? (
         <div className="relative group cursor-pointer" onClick={() => setLightbox(true)}>
           <img
@@ -252,7 +235,6 @@ function ScoreTabSection({
         </div>
       )}
 
-      {/* Admin controls */}
       {isAdmin && !match.locked && (
         <div className="flex gap-2">
           <input
@@ -267,13 +249,7 @@ function ScoreTabSection({
             onClick={() => imgRef.current?.click()}
             disabled={uploading}
           >
-            {uploading ? (
-              <>⏳ Uploading…</>
-            ) : scoreImageUrl ? (
-              <>🔄 Replace image</>
-            ) : (
-              <>📷 Upload score tab</>
-            )}
+            {uploading ? <>⏳ Uploading…</> : scoreImageUrl ? <>🔄 Replace image</> : <>📷 Upload score tab</>}
           </button>
           {scoreImageUrl && (
             <button
@@ -285,7 +261,6 @@ function ScoreTabSection({
         </div>
       )}
 
-      {/* Lightbox */}
       {lightbox && scoreImageUrl && (
         <div
           className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4"
@@ -309,15 +284,168 @@ function ScoreTabSection({
   );
 }
 
+// ─── Winners Section ──────────────────────────────────────────────────────────
+function WinnersSection({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean }) {
+  const { setFFAMatchWinners } = useTourney();
+
+  // Local draft state for the edit form
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<FFAWinner[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const winners = match.winners ?? [];
+  const hasWinners = winners.length > 0;
+
+  const openEdit = () => {
+    // Seed draft from saved winners, always at least 1 row
+    setDraft(winners.length > 0 ? winners.map(w => ({ ...w })) : [{ playerName: '', prize: '' }]);
+    setEditing(true);
+  };
+
+  const addRow = () => setDraft(prev => [...prev, { playerName: '', prize: '' }]);
+  const removeRow = (i: number) => setDraft(prev => prev.filter((_, idx) => idx !== i));
+  const setField = (i: number, field: keyof FFAWinner, val: string) =>
+    setDraft(prev => prev.map((w, idx) => idx === i ? { ...w, [field]: val } : w));
+
+  const handleSave = async () => {
+    // Strip empty rows before saving
+    const cleaned = draft.filter(w => w.playerName.trim());
+    setSaving(true);
+    await setFFAMatchWinners(match.id, cleaned);
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const handleCancel = () => setEditing(false);
+
+  // ── Medal emoji by position ──────────────────────────────────────────────
+  const medal = (i: number) => ['🥇', '🥈', '🥉'][i] ?? `#${i + 1}`;
+
+  return (
+    <div className="px-4 pb-4 flex flex-col gap-3 border-t t-border pt-4">
+      {/* Section header */}
+      <div className="flex items-center justify-between">
+        <span className="font-['Bebas_Neue'] text-base tracking-widest t-text">🎖 Winners</span>
+        {isAdmin && !editing && (
+          <button
+            className="px-2.5 py-1 rounded-lg t-elevated border t-border-mid font-['DM_Mono'] text-[10px] t-muted hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)] transition-colors cursor-pointer"
+            onClick={openEdit}
+          >
+            {hasWinners ? '✏️ Edit' : '+ Add Winners'}
+          </button>
+        )}
+      </div>
+
+      {/* ── Saved winners display ────────────────────────────────────────── */}
+      {!editing && (
+        hasWinners ? (
+          <div className="flex flex-col gap-2">
+            {winners.map((w, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                style={{
+                  background: i === 0
+                    ? 'linear-gradient(135deg, rgba(255,176,32,0.12), rgba(255,176,32,0.04))'
+                    : i === 1
+                    ? 'linear-gradient(135deg, rgba(180,190,200,0.10), rgba(180,190,200,0.03))'
+                    : i === 2
+                    ? 'linear-gradient(135deg, rgba(180,100,40,0.12), rgba(180,100,40,0.04))'
+                    : 'var(--bg-elevated)',
+                  border: i === 0
+                    ? '1px solid rgba(255,176,32,0.25)'
+                    : i === 1
+                    ? '1px solid rgba(180,190,200,0.20)'
+                    : i === 2
+                    ? '1px solid rgba(180,100,40,0.22)'
+                    : '1px solid var(--border-mid)',
+                }}
+              >
+                <span className="text-lg leading-none w-6 text-center flex-shrink-0">{medal(i)}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-['Bebas_Neue'] text-base tracking-wider t-text leading-tight truncate">
+                    {w.playerName}
+                  </p>
+                  {w.prize && (
+                    <p className="font-['DM_Mono'] text-[10px] tracking-wide truncate" style={{ color: 'var(--accent-gold)' }}>
+                      {w.prize}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-1.5 py-5 rounded-xl border-2 border-dashed t-border-mid opacity-50">
+            <span className="text-2xl">🎖</span>
+            <p className="font-['DM_Mono'] text-[10px] t-dim">
+              {isAdmin ? 'No winners set yet' : 'No winners declared yet'}
+            </p>
+          </div>
+        )
+      )}
+
+      {/* ── Edit form (admin only) ───────────────────────────────────────── */}
+      {editing && (
+        <div className="flex flex-col gap-3">
+          {draft.map((row, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-base w-6 text-center flex-shrink-0">{medal(i)}</span>
+              <input
+                className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors"
+                placeholder="Player name…"
+                value={row.playerName}
+                onChange={e => setField(i, 'playerName', e.target.value)}
+                autoFocus={i === 0}
+              />
+              <input
+                className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent-gold)] transition-colors"
+                placeholder="Prize (e.g. RP 50,000)"
+                value={row.prize}
+                onChange={e => setField(i, 'prize', e.target.value)}
+              />
+              {draft.length > 1 && (
+                <button
+                  className="px-2 py-2 rounded-lg t-elevated border t-border-mid font-['DM_Mono'] text-[10px] t-dim hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] transition-colors cursor-pointer flex-shrink-0"
+                  onClick={() => removeRow(i)}
+                  title="Remove row"
+                >✕</button>
+              )}
+            </div>
+          ))}
+
+          {draft.length < 10 && (
+            <button
+              className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-xl t-elevated border border-dashed t-border-mid font-['DM_Mono'] text-[10px] t-muted hover:border-[var(--accent)] hover:t-text transition-colors cursor-pointer"
+              onClick={addRow}
+            >
+              + Add row
+            </button>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              className="flex-1 py-2 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-xs hover:border-[var(--accent)] transition-colors cursor-pointer"
+              onClick={handleCancel}
+              disabled={saving}
+            >Cancel</button>
+            <button
+              className="flex-1 py-2 rounded-xl font-['DM_Mono'] text-xs font-bold text-white hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer"
+              style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
+              onClick={handleSave}
+              disabled={saving || draft.every(r => !r.playerName.trim())}
+            >{saving ? 'Saving…' : '💾 Save Winners'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Match Card ───────────────────────────────────────────────────────────────
 function MatchCard({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean }) {
-  const {
-    deleteFFAMatch, lockFFAMatch,
-    updateFFAMapInfo,
-  } = useTourney();
-
+  const { deleteFFAMatch, lockFFAMatch, updateFFAMapInfo } = useTourney();
   const [editingInfo, setEditingInfo] = useState(false);
-
   const m = match.mapInfo;
 
   return (
@@ -342,7 +470,6 @@ function MatchCard({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean }) {
           </div>
         )}
 
-        {/* Lock / delete controls */}
         {isAdmin && (
           <div className="absolute top-2 right-2 flex gap-1">
             <button
@@ -412,17 +539,16 @@ function MatchCard({ match, isAdmin }: { match: FFAMatch; isAdmin: boolean }) {
 
       {/* Score Tab Image */}
       <ScoreTabSection match={match} isAdmin={isAdmin} />
+
+      {/* Winners Block */}
+      <WinnersSection match={match} isAdmin={isAdmin} />
     </div>
   );
 }
 
 // ─── Main FFA Tab ─────────────────────────────────────────────────────────────
 export function FFATab() {
-  const {
-    ffa, isAdmin, loading,
-    createFFAMatch,
-  } = useTourney();
-
+  const { ffa, isAdmin, loading, createFFAMatch } = useTourney();
   const [showNewMatch, setShowNewMatch] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -450,11 +576,10 @@ export function FFATab() {
           <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Free For All</h1>
           <p className="font-['DM_Mono'] text-xs t-muted">
             {isAdmin
-              ? 'Create matches and upload the score tab screenshot after each round.'
+              ? 'Create matches, upload score tab screenshots, and declare winners.'
               : 'Live scoreboard — scores update in real time'}
           </p>
         </div>
-
         {isAdmin && (
           <button
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-white font-['DM_Mono'] text-xs font-bold hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40"

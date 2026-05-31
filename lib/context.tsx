@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Player, Team, Bracket, ChatMessage, FFAState, FFAMapInfo, FFAPlayerScore } from '@/lib/types';
+import type { Player, Team, Bracket, ChatMessage, FFAState, FFAMapInfo, FFAPlayerScore, FFAWinner } from '@/lib/types';
 
 interface TourneyContext {
   players: Player[];
@@ -93,6 +93,8 @@ interface TourneyContext {
   setFFAMatchImage: (matchId: string, imageUrl: string) => Promise<void>;
   /** Upload/replace the score-tab screenshot for a FFA match. Pass empty string to remove. */
   setFFAMatchScoreImage: (matchId: string, scoreImageUrl: string) => Promise<void>;
+  /** Set/replace the winners list for a FFA match. */
+  setFFAMatchWinners: (matchId: string, winners: FFAWinner[]) => Promise<void>;
 
   resetAll: () => Promise<void>;
 }
@@ -100,8 +102,6 @@ interface TourneyContext {
 const Ctx = createContext<TourneyContext | null>(null);
 
 // ─── shuffleState merge ───────────────────────────────────────────────────────
-// Keeps the local animation running while the admin's own client owns it.
-// Other clients (viewers) accept SSE immediately.
 function applyShuffleState(
   prev: import('@/lib/types').ShuffleState | null,
   next: import('@/lib/types').ShuffleState | null,
@@ -115,7 +115,7 @@ function applyShuffleState(
         localRef.current = null;
         return null;
       }
-      return prev; // keep running locally
+      return prev;
     }
     return null;
   }
@@ -125,20 +125,13 @@ function applyShuffleState(
 }
 
 // ─── SSE guard ────────────────────────────────────────────────────────────────
-// After any admin mutation we record a timestamp. SSE events that arrive
-// within GUARD_MS of that timestamp for the same field are skipped — the
-// local state from the API response is already correct and newer.
-// This replaces the fragile boolean-ref flags that could drop events.
 const GUARD_MS = 1500;
 
 function makeGuard() {
   const stamps: Record<string, number> = {};
   return {
-    /** Call before applying an admin mutation locally. */
     touch(field: string) { stamps[field] = Date.now(); },
-    /** Returns true if SSE should be skipped for this field. */
     guarded(field: string) { return Date.now() - (stamps[field] ?? 0) < GUARD_MS; },
-    /** Reset a specific field guard early (e.g. on confirmed server round-trip). */
     clear(field: string) { stamps[field] = 0; },
   };
 }
@@ -172,10 +165,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [loading, setLoading] = useState(true);
   const [tickerText, setTickerTextState] = useState('');
 
-  // Single guard instance shared across all mutations.
   const guard = useRef(makeGuard()).current;
-
-  // Holds the startTime of a shuffle triggered by THIS client.
   const localShuffleStartTimeRef = useRef<number | null>(null);
 
   const adminHeaders = useMemo(() => ({
@@ -208,16 +198,10 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     setIsSuperAdmin(info?.isSuperAdmin ?? false);
   };
 
-  // ── Hydrate all state from a server snapshot ──────────────────────────────
-  // Used by both initial fetch and SSE onmessage.
-  // Each field is gated by the guard so a recent local mutation is not
-  // immediately overwritten by a lagging SSE event.
   const applySnapshot = useCallback((data: Record<string, unknown>, fromSSE = false) => {
     if (!fromSSE || !guard.guarded('players'))   setPlayers(data.players as Player[] ?? []);
     if (!fromSSE || !guard.guarded('roster'))    setRosterState(data.roster as string[] ?? []);
     if (!fromSSE || !guard.guarded('teamMode'))  setTeamModeState((data.teamMode as 'leader' | 'random' | 'manual') ?? 'leader');
-    // stageFormats and elimMode are admin-only controls — never overwrite from SSE.
-    // They are seeded once on initial fetch (fromSSE=false) and owned locally after that.
     if (!fromSSE) setStageFormatsState((data.stageFormats as import('@/lib/types').StageFormats) ?? { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' });
     if (!fromSSE) setElimModeState((data.elimMode as 'single' | 'double') ?? 'single');
     if (!fromSSE || !guard.guarded('teams'))     setTeams(data.teams as Team[] ?? []);
@@ -235,10 +219,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('tickerText')) setTickerTextState(data.tickerText as string ?? '');
     if (!fromSSE || !guard.guarded('ffa'))       setFFA((data.ffa as FFAState) ?? { matches: [], players: [] });
 
-    // spinState: always accept (driven by server spin animation)
     setSpinState(data.spinState as import('@/lib/types').SpinState | null ?? null);
-
-    // shuffleState: custom merge to protect local animation
     setShuffleState(prev =>
       applyShuffleState(prev, data.shuffleState as import('@/lib/types').ShuffleState | null ?? null, localShuffleStartTimeRef)
     );
@@ -248,7 +229,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     try {
       const res = await fetch(`/api/state?t=${t}`);
       const data = await res.json();
-      applySnapshot(data, false); // full refresh ignores guards
+      applySnapshot(data, false);
     } catch {
       // keep existing state on network error
     } finally {
@@ -271,7 +252,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
-          applySnapshot(data, true); // SSE path — guards active
+          applySnapshot(data, true);
         } catch { /* ignore malformed frames */ }
         setLoading(false);
       };
@@ -298,7 +279,6 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
-    // Non-admin action — no guard needed, apply directly
     setPlayers(data.players);
     return {};
   };
@@ -387,7 +367,6 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   const sendChat = async (name: string, text: string) => {
-    // No guard — non-admin, apply immediately so sender sees their message
     const res = await fetch(`/api/chat?t=${t}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -434,7 +413,6 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       setTeams(data.teams);
       return {};
     } catch {
-      // Optimistic fallback on network failure
       setTeams(prevTeams =>
         prevTeams.map(t => t.name === teamId ? { ...t, leader: playerName } : t)
       );
@@ -451,7 +429,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const setTeamMode = async (mode: 'leader' | 'random' | 'manual') => {
     guard.touch('teamMode');
-    setTeamModeState(mode); // optimistic — instant UI feedback
+    setTeamModeState(mode);
     await fetch(`/api/teams?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
@@ -544,7 +522,6 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setBracket(data.bracket);
-    // Register this client as owner of the shuffle animation
     if (data.shuffleState?.startTime) {
       localShuffleStartTimeRef.current = data.shuffleState.startTime;
     }
@@ -627,7 +604,6 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   const appendSpinQueue = async (map: string) => {
-    // Optimistic — add immediately so the spinner feels instant
     guard.touch('spinQueue');
     setSpinQueue(prev => [...prev, map]);
     try {
@@ -638,11 +614,9 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       });
       if (res.ok) {
         const data = await res.json();
-        // Reconcile with server's authoritative list
         guard.touch('spinQueue');
         setSpinQueue(data.spinQueue);
       } else {
-        // Revert optimistic update
         setSpinQueue(prev => prev.slice(0, -1));
       }
     } catch {
@@ -718,7 +692,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const setTickerText = async (text: string) => {
     guard.touch('tickerText');
-    setTickerTextState(text); // optimistic
+    setTickerTextState(text);
     await fetch(`/api/ticker?t=${t}`, {
       method: 'PATCH',
       headers: adminHeaders,
@@ -787,8 +761,11 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     await ffaPatch({ action: 'setScoreImage', matchId, scoreImageUrl });
   };
 
+  const setFFAMatchWinners = async (matchId: string, winners: FFAWinner[]) => {
+    await ffaPatch({ action: 'setWinners', matchId, winners });
+  };
+
   const resetAll = async () => {
-    // Touch everything so SSE from the reset doesn't race with local clear
     ['players','roster','teams','bracket','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps','ffa'].forEach(f => guard.touch(f));
     await fetch(`/api/reset?t=${t}`, { method: 'DELETE', headers: adminHeaders });
     setPlayers([]);
@@ -824,6 +801,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       assignLeader,
       createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,
       deleteFFAMatch, lockFFAMatch, updateFFAMapInfo, setFFAMatchImage, setFFAMatchScoreImage,
+      setFFAMatchWinners,
       resetAll,
     }}>
       {children}

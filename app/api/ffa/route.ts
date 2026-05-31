@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateState } from '@/lib/kv';
 import { checkTournamentAccess } from '@/lib/tournamentAccess';
-import type { FFAMatch, FFAMapInfo, FFAPlayerScore } from '@/lib/types';
+import type { FFAMatch, FFAMapInfo, FFAPlayerScore, FFAWinner } from '@/lib/types';
 
 function makeId() {
   return `ffa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     mapInfo,
     scores: [],
     locked: false,
+    winners: [],
   };
 
   const next = await updateState(s => ({
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
 //   deleteMatch      { matchId }
 //   setMatchImage    { matchId, imageUrl }         — updates mapInfo.imageUrl (header banner)
 //   setScoreImage    { matchId, scoreImageUrl }    — updates match.scoreImageUrl (score tab screenshot)
+//   setWinners       { matchId, winners: FFAWinner[] } — set/replace all winners for a match
 export async function PATCH(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   const access = await checkTournamentAccess(req, tid);
@@ -185,6 +187,20 @@ export async function PATCH(req: NextRequest) {
       ffa: {
         ...s.ffa,
         matches: (s.ffa?.matches ?? []).filter(m => m.id !== matchId),
+      },
+    }), tid);
+    return NextResponse.json({ ffa: next.ffa });
+  }
+
+  if (action === 'setWinners') {
+    const { winners } = body as { winners: FFAWinner[] };
+    const next = await updateState(s => ({
+      ...s,
+      ffa: {
+        ...s.ffa,
+        matches: (s.ffa?.matches ?? []).map(m =>
+          m.id === matchId ? { ...m, winners } : m
+        ),
       },
     }), tid);
     return NextResponse.json({ ffa: next.ffa });

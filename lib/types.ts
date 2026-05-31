@@ -107,6 +107,12 @@ export interface FFAPlayerScore {
   imageUrl?: string; // optional score screenshot for this player
 }
 
+/** Winner entry for a FFA match. */
+export interface FFAWinner {
+  playerName: string;
+  prize: string; // e.g. "RP 50,000" or "Gold Medal"
+}
+
 /** A single FFA match/round. */
 export interface FFAMatch {
   id: string;
@@ -116,6 +122,8 @@ export interface FFAMatch {
   locked: boolean; // admin can lock to prevent further edits
   /** Single score-tab screenshot uploaded by admin after the round ends. */
   scoreImageUrl?: string;
+  /** Winner(s) declared by admin. */
+  winners?: FFAWinner[];
 }
 
 /** Full FFA state stored on server. */
