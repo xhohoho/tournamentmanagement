@@ -160,7 +160,7 @@ function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCoun
           <div
             key={slotIdx}
             className="flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors"
-            style={{ background: map ? 'rgba(58,107,255,0.04)' : undefined, color: map ? 'var(--accent)' : 'var(--text-dim)' }}
+            style={{ background: map ? 'rgba(58,107,255,0.04)' : undefined, color: map ? 'var(--accent)' : 'var(--text-muted)' }}
             onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
             onDrop={isAdmin ? async (e) => { e.preventDefault(); const m = e.dataTransfer.getData('text/plain'); if (m) await assignStage(matchKey, m, slotIdx); } : undefined}
           >
@@ -172,7 +172,7 @@ function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCoun
                 )}
               </>
             ) : (
-              <span className="opacity-40">{slotCount > 1 ? `Map ${slotIdx + 1}` : 'Drop Map'}</span>
+              <span>{slotCount > 1 ? `Map ${slotIdx + 1}` : 'Drop Map'}</span>
             )}
           </div>
         );
