@@ -26,9 +26,19 @@ export function TournamentPicker({ onSelect }: Props) {
   const [tournaments, setTournaments] = useState<TournamentMeta[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Admin state
-  const [adminToken, setAdminToken] = useState<string | null>(null);
-  const [adminInfo, setAdminInfo] = useState<{ adminId: string; name: string; isSuperAdmin: boolean } | null>(null);
+  // Admin state — initialize synchronously from sessionStorage so canManage()
+  // is correct on the very first render (avoids a flash of NO ACCESS overlays).
+  const [adminToken, setAdminToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return sessionStorage.getItem(ADMIN_TOKEN_KEY);
+  });
+  const [adminInfo, setAdminInfo] = useState<{ adminId: string; name: string; isSuperAdmin: boolean } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = sessionStorage.getItem(ADMIN_INFO_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
   const [showUnlock, setShowUnlock] = useState(false);
   const [adminNameInput, setAdminNameInput] = useState('');
   const [pw, setPw] = useState('');
@@ -93,13 +103,6 @@ export function TournamentPicker({ onSelect }: Props) {
     console.log('[uploadPoster] success', data.url);
     return data.url ?? null;
   };
-
-  useEffect(() => {
-    const stored = storage?.getItem(ADMIN_TOKEN_KEY);
-    const storedInfo = storage?.getItem(ADMIN_INFO_KEY);
-    if (stored) setAdminToken(stored);
-    if (storedInfo) { try { setAdminInfo(JSON.parse(storedInfo)); } catch { /* ignore */ } }
-  }, []);
 
   // ── SSE sync — replaces polling ──────────────────────────────────────────
   useEffect(() => {
@@ -909,6 +912,13 @@ export function TournamentPicker({ onSelect }: Props) {
         adminId={adminInfo?.adminId ?? null}
         adminName={adminInfo?.name ?? null}
         isSuperAdmin={adminInfo?.isSuperAdmin ?? false}
+        onTournamentsChanged={async () => {
+          try {
+            const res = await fetch('/api/tournaments');
+            const data = await res.json();
+            setTournaments(data.tournaments ?? []);
+          } catch { /* ignore */ }
+        }}
       />
     </div>
   );

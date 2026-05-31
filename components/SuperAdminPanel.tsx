@@ -23,9 +23,10 @@ interface Props {
   adminId: string | null;
   adminName: string | null;
   isSuperAdmin: boolean;
+  onTournamentsChanged?: () => void;
 }
 
-export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, adminName: myName, isSuperAdmin }: Props) {
+export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, adminName: myName, isSuperAdmin, onTournamentsChanged }: Props) {
 
   const [accounts, setAccounts] = useState<AdminAccount[]>([]);
   const [tournaments, setTournaments] = useState<TournamentMeta[]>([]);
@@ -181,6 +182,7 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
       setTournaments(data.tournaments ?? []);
       setAccessOk('Access updated!');
       setTimeout(() => setAccessOk(''), 1500);
+      onTournamentsChanged?.();
     } catch {
       setAccessErr('Network error.');
     } finally {
