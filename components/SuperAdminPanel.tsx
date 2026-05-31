@@ -54,8 +54,8 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState('');
 
-  // Access management
-  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null);
+  // Access management — admin-first view
+  const [selectedAccessAdminId, setSelectedAccessAdminId] = useState<string | null>(null);
   const [savingAccess, setSavingAccess] = useState(false);
   const [accessErr, setAccessErr] = useState('');
   const [accessOk, setAccessOk] = useState('');
@@ -153,23 +153,25 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
   };
 
   // ── Access management ─────────────────────────────────────────────────────
-  const selectedTournament = tournaments.find(t => t.id === selectedTournamentId);
+  const selectedAccessAdmin = accounts.find(a => a.adminId === selectedAccessAdminId);
 
-  const toggleCollaborator = async (adminId: string) => {
-    if (!selectedTournament) return;
-    const current = selectedTournament.collaborators ?? [];
-    const isOwner = selectedTournament.ownerAdminId === adminId;
-    if (isOwner) return; // can't toggle owner
+  const toggleTournamentAccess = async (tournamentId: string) => {
+    if (!selectedAccessAdminId) return;
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    if (!tournament) return;
+    const isOwner = tournament.ownerAdminId === selectedAccessAdminId;
+    if (isOwner) return; // owner access is permanent
 
-    const next = current.includes(adminId)
-      ? current.filter(id => id !== adminId)
-      : [...current, adminId];
+    const current = tournament.collaborators ?? [];
+    const next = current.includes(selectedAccessAdminId)
+      ? current.filter(id => id !== selectedAccessAdminId)
+      : [...current, selectedAccessAdminId];
 
     setSavingAccess(true);
     setAccessErr('');
     setAccessOk('');
     try {
-      const res = await fetch(`/api/tournaments?t=${selectedTournament.id}`, {
+      const res = await fetch(`/api/tournaments?t=${tournamentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken! },
         body: JSON.stringify({ collaborators: next }),
@@ -383,54 +385,62 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
           {/* ── ACCESS TAB ── */}
           {activeTab === 'access' && (
             <div className="space-y-4">
+              {/* Step 1: pick an admin */}
               <div>
-                <p className="font-['DM_Mono'] text-[10px] t-dim tracking-widest uppercase mb-3">Select Tournament</p>
-                {tournaments.length === 0 && !loading && (
-                  <p className="font-['DM_Mono'] text-xs t-muted">No tournaments found.</p>
+                <p className="font-['DM_Mono'] text-[10px] t-dim tracking-widest uppercase mb-3">1. Select Admin</p>
+                {accounts.filter(a => !a.isSuperAdmin).length === 0 && !loading && (
+                  <p className="font-['DM_Mono'] text-xs t-muted">No non-super admins found. Create one in the Accounts tab first.</p>
                 )}
                 <div className="space-y-1.5">
-                  {tournaments.map(t => (
+                  {accounts.filter(a => !a.isSuperAdmin).map(acc => (
                     <button
-                      key={t.id}
-                      onClick={() => { setSelectedTournamentId(t.id); setAccessErr(''); setAccessOk(''); }}
+                      key={acc.adminId}
+                      onClick={() => { setSelectedAccessAdminId(acc.adminId); setAccessErr(''); setAccessOk(''); }}
                       className={`w-full text-left px-3 py-2.5 rounded-xl border font-['DM_Mono'] text-xs transition-colors cursor-pointer ${
-                        selectedTournamentId === t.id
+                        selectedAccessAdminId === acc.adminId
                           ? 'border-[var(--accent-gold)] bg-[rgba(255,176,32,0.07)] text-[var(--accent-gold)]'
                           : 't-elevated t-border-mid t-muted hover:t-text hover:border-[var(--border)]'
                       }`}
                     >
-                      <span className="font-bold">{t.name}</span>
-                      <span className="t-dim ml-2">/{t.id}</span>
+                      <span className="font-bold">{acc.name}</span>
+                      <span className="t-dim ml-2 text-[9px]">{acc.adminId}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {selectedTournament && (
+              {/* Step 2: toggle tournaments for the selected admin */}
+              {selectedAccessAdmin && (
                 <div className="border-t t-border pt-4">
-                  <p className="font-['DM_Mono'] text-[10px] t-dim tracking-widest uppercase mb-3">
-                    Admin Access — <span style={{ color: 'var(--accent-gold)' }}>{selectedTournament.name}</span>
+                  <p className="font-['DM_Mono'] text-[10px] t-dim tracking-widest uppercase mb-1">
+                    2. Tournament Access for <span style={{ color: 'var(--accent-gold)' }}>{selectedAccessAdmin.name}</span>
                   </p>
-                  <p className="font-['DM_Mono'] text-[10px] t-dim mb-3">Toggle which admins can manage this tournament. Owner always has access.</p>
+                  <p className="font-['DM_Mono'] text-[10px] t-dim mb-3">Toggle on = this admin can manage the tournament. Owner badge = created by them (always on).</p>
+                  {tournaments.length === 0 && !loading && (
+                    <p className="font-['DM_Mono'] text-xs t-muted">No tournaments found.</p>
+                  )}
                   <div className="space-y-2">
-                    {accounts.filter(a => !a.isSuperAdmin).map(acc => {
-                      const isOwner = selectedTournament.ownerAdminId === acc.adminId;
-                      const isCollaborator = selectedTournament.collaborators?.includes(acc.adminId);
+                    {tournaments.map(t => {
+                      const isOwner = t.ownerAdminId === selectedAccessAdminId;
+                      const isCollaborator = t.collaborators?.includes(selectedAccessAdminId!);
                       const hasAccess = isOwner || isCollaborator;
                       return (
                         <div
-                          key={acc.adminId}
+                          key={t.id}
                           className="flex items-center justify-between t-elevated border t-border-mid rounded-xl px-3.5 py-2.5"
                         >
-                          <div>
-                            <span className="font-['DM_Mono'] text-sm t-text font-bold">{acc.name}</span>
-                            {isOwner && (
-                              <span className="ml-2 text-[9px] font-['DM_Mono'] px-1.5 py-0.5 rounded tracking-widest uppercase t-dim border t-border-mid">Owner</span>
-                            )}
+                          <div className="min-w-0 mr-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-['DM_Mono'] text-sm t-text font-bold truncate">{t.name}</span>
+                              {isOwner && (
+                                <span className="shrink-0 text-[9px] font-['DM_Mono'] px-1.5 py-0.5 rounded tracking-widest uppercase t-dim border t-border-mid">Owner</span>
+                              )}
+                            </div>
+                            <span className="font-['DM_Mono'] text-[9px] t-dim">/{t.id}</span>
                           </div>
                           <div
-                            onClick={() => !isOwner && !savingAccess && toggleCollaborator(acc.adminId)}
-                            className={`w-10 h-5 rounded-full border transition-all relative ${
+                            onClick={() => !isOwner && !savingAccess && toggleTournamentAccess(t.id)}
+                            className={`shrink-0 w-10 h-5 rounded-full border transition-all relative ${
                               isOwner
                                 ? 'opacity-40 cursor-not-allowed'
                                 : 'cursor-pointer'
@@ -441,17 +451,12 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
                             }`}
                           >
                             <div className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
-                              hasAccess
-                                ? 'left-5 bg-[var(--accent)]'
-                                : 'left-0.5 bg-[var(--text-dim)]'
+                              hasAccess ? 'left-5 bg-[var(--accent)]' : 'left-0.5 bg-[var(--text-dim)]'
                             }`} />
                           </div>
                         </div>
                       );
                     })}
-                    {accounts.filter(a => !a.isSuperAdmin).length === 0 && (
-                      <p className="font-['DM_Mono'] text-xs t-muted">No non-super admins to assign.</p>
-                    )}
                   </div>
                   {accessErr && <p className="font-['DM_Mono'] text-xs mt-3" style={{ color: 'var(--accent-red)' }}>{accessErr}</p>}
                   {accessOk && <p className="font-['DM_Mono'] text-xs mt-3" style={{ color: 'var(--accent-green)' }}>{accessOk}</p>}
