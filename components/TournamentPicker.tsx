@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { SuperAdminPanel } from '@/components/SuperAdminPanel';
 
 export interface TournamentMeta {
@@ -101,26 +101,58 @@ export function TournamentPicker({ onSelect }: Props) {
     if (storedInfo) { try { setAdminInfo(JSON.parse(storedInfo)); } catch { /* ignore */ } }
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/tournaments');
-      const data = await res.json();
-      setTournaments(data.tournaments ?? []);
-    } catch {
-      // silently fail
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Poll every 10 seconds so new tournaments created on other devices appear automatically
+  // ── SSE sync — replaces polling ──────────────────────────────────────────
   useEffect(() => {
-    const interval = setInterval(load, 10_000);
-    return () => clearInterval(interval);
-  }, [load]);
+    let es: EventSource | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    const applyData = (data: { tournaments: TournamentMeta[] }) => {
+      setTournaments(data.tournaments ?? []);
+      setLoading(false);
+    };
+
+    const fetchOnce = async () => {
+      try {
+        const res = await fetch('/api/tournaments');
+        const data = await res.json();
+        applyData(data);
+      } catch { /* silently ignore */ }
+    };
+
+    const connect = () => {
+      if (typeof EventSource === 'undefined') {
+        // No SSE support — fall back to polling
+        fetchOnce();
+        pollInterval = setInterval(fetchOnce, 10_000);
+        return;
+      }
+
+      es = new EventSource('/api/tournaments/stream');
+
+      es.onmessage = (e) => {
+        try {
+          applyData(JSON.parse(e.data));
+        } catch { /* ignore malformed frame */ }
+      };
+
+      es.onerror = () => {
+        // SSE connection dropped — close it and fall back to polling
+        es?.close();
+        es = null;
+        if (!pollInterval) {
+          fetchOnce();
+          pollInterval = setInterval(fetchOnce, 10_000);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      es?.close();
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, []);
 
   // ── Change password ──────────────────────────────────────────────────────
   const handleChangePw = async () => {
@@ -222,6 +254,7 @@ export function TournamentPicker({ onSelect }: Props) {
         else setCreateErr(data.error ?? 'Failed to create tournament.');
         return;
       }
+      // Apply immediately — SSE will also push the update shortly after
       setTournaments(data.tournaments ?? []);
       setCreating(false); setNewId(''); setNewName(''); setNewOrganizer(''); setNewTournamentDate(''); setNewPosterFile(null); setNewPosterPreview('');
       onSelect(data.id, adminToken ?? undefined, adminInfo ?? undefined);
@@ -276,6 +309,7 @@ export function TournamentPicker({ onSelect }: Props) {
         setEditErr(data.error ?? 'Failed to update tournament.');
         return;
       }
+      // Apply immediately — SSE will sync other clients
       setTournaments(data.tournaments ?? []);
       setEditingTournament(null);
     } catch {
@@ -324,6 +358,7 @@ export function TournamentPicker({ onSelect }: Props) {
         }
         return;
       }
+      // Apply immediately — SSE will sync other clients
       setTournaments(data.tournaments ?? []);
       setConfirmDeleteId(null);
     } catch {
