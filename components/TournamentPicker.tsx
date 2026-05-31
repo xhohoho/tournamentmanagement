@@ -368,6 +368,18 @@ export function TournamentPicker({ onSelect }: Props) {
     }
   };
 
+  // Helper: returns true if the current admin can manage this tournament.
+  // Mirrors server-side canAccessTournament but also handles legacy tournaments
+  // that have no ownerAdminId (they should be super-admin-only).
+  const canManage = (t: TournamentMeta): boolean => {
+    if (!adminInfo) return false;
+    if (adminInfo.isSuperAdmin) return true;
+    if (!t.ownerAdminId) return false;          // legacy / unowned — super admin only
+    if (t.ownerAdminId === adminInfo.adminId) return true;
+    if (t.collaborators?.includes(adminInfo.adminId)) return true;
+    return false;
+  };
+
   const isAdmin = !!adminToken;
 
   // Lightbox state
@@ -620,18 +632,18 @@ export function TournamentPicker({ onSelect }: Props) {
                   <div
                     key={t.id}
                     className={`group relative flex flex-col rounded-2xl border t-surface overflow-hidden shadow-lg transition-all ${
-                      isAdmin && adminInfo && t.ownerAdminId && !adminInfo.isSuperAdmin && t.ownerAdminId !== adminInfo.adminId && !t.collaborators?.includes(adminInfo.adminId)
+                      isAdmin && !canManage(t)
                         ? 'opacity-50 cursor-not-allowed border-[var(--border-mid)]'
                         : 'cursor-pointer t-border-mid hover:border-[var(--accent)] hover:shadow-[0_0_24px_rgba(77,124,255,0.12)]'
                     }`}
                     onClick={() => {
-                      if (isAdmin && adminInfo && t.ownerAdminId && !adminInfo.isSuperAdmin && t.ownerAdminId !== adminInfo.adminId && !t.collaborators?.includes(adminInfo.adminId)) return;
+                      if (isAdmin && !canManage(t)) return;
                       onSelect(t.id, adminToken ?? undefined, adminInfo ?? undefined);
                     }}
                   >
 
                     {/* Lock overlay for inaccessible tournaments */}
-                      {isAdmin && adminInfo && t.ownerAdminId && !adminInfo.isSuperAdmin && t.ownerAdminId !== adminInfo.adminId && !t.collaborators?.includes(adminInfo.adminId) && (
+                      {isAdmin && !canManage(t) && (
                         <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
                           <div className="bg-black/60 backdrop-blur-sm rounded-xl px-4 py-2 flex items-center gap-2">
                             <span className="text-lg">🔒</span>
@@ -663,7 +675,7 @@ export function TournamentPicker({ onSelect }: Props) {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none" />
 
                       {/* Admin: edit poster button */}
-                      {isAdmin && (
+                      {isAdmin && canManage(t) && (
                         <label
                           onClick={e => e.stopPropagation()}
                           className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 font-['DM_Mono'] text-[10px] text-white/80 hover:bg-black/80 hover:text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
@@ -686,7 +698,7 @@ export function TournamentPicker({ onSelect }: Props) {
                       )}
 
                       {/* Admin: delete + edit buttons (top-left) */}
-                      {isAdmin && (
+                      {isAdmin && canManage(t) && (
                         <div className="absolute top-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button
                             onClick={e => openEditTournament(t, e)}

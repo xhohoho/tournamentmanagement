@@ -18,8 +18,18 @@ export async function checkTournamentAccess(
   const tournament = tournaments.find(t => t.id === tid);
   const me = accounts.find(a => a.adminId === adminId);
 
-  if (tournament && !canAccessTournament(adminId, me?.isSuperAdmin ?? false, tournament)) {
-    return NextResponse.json({ error: 'You do not have access to this tournament' }, { status: 403 });
+  // If the tournament exists in the registry, always enforce the access check.
+  // Previously this was `if (tournament && ...)` which silently allowed any admin
+  // to edit tournaments that were missing from the registry (e.g. legacy entries).
+  if (tournament) {
+    if (!canAccessTournament(adminId, me?.isSuperAdmin ?? false, tournament)) {
+      return NextResponse.json({ error: 'You do not have access to this tournament' }, { status: 403 });
+    }
+  } else {
+    // Tournament not in registry — only super admins can touch it.
+    if (!me?.isSuperAdmin) {
+      return NextResponse.json({ error: 'You do not have access to this tournament' }, { status: 403 });
+    }
   }
 
   return { adminId };
