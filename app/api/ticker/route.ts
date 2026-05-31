@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { checkTournamentAccess } from '@/lib/tournamentAccess';
 
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
@@ -10,9 +10,8 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
   const { tickerText } = await req.json();
   if (typeof tickerText !== 'string') {
     return NextResponse.json({ error: 'tickerText must be a string' }, { status: 400 });

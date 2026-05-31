@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { parseStageMaps } from '@/lib/utils';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { checkTournamentAccess } from '@/lib/tournamentAccess';
 
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
@@ -17,9 +17,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
   const { name } = await req.json();
   const trimmed = name?.trim();
   if (!trimmed) return NextResponse.json({ error: 'Map name required' }, { status: 400 });
@@ -35,9 +34,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
   const { name } = await req.json();
   
   const next = await updateState(s => ({
@@ -50,9 +48,8 @@ export async function DELETE(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
   const body = await req.json();
   const { action, stageKey, mapName, slot, spinQueue } = body;
 

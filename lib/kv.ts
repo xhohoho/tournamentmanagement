@@ -46,7 +46,8 @@ export interface TournamentMeta {
   id: string;
   name: string;
   createdAt: number;
-  ownerAdminId: string;   // which admin account created this tournament
+  ownerAdminId: string;        // which admin account created this tournament
+  collaborators: string[];     // additional adminIds granted access by super admin
   posterUrl?: string;
   tournamentDate?: number;
   organizer?: string;
@@ -54,7 +55,9 @@ export interface TournamentMeta {
 
 export async function listTournaments(): Promise<TournamentMeta[]> {
   try {
-    return (await kv.get<TournamentMeta[]>(REGISTRY_KEY)) ?? [];
+    const list = (await kv.get<TournamentMeta[]>(REGISTRY_KEY)) ?? [];
+    // Backfill collaborators for legacy entries that predate this field
+    return list.map(t => ({ collaborators: [], ...t }));
   } catch {
     return [];
   }
@@ -70,7 +73,7 @@ export async function registerTournament(
 ): Promise<TournamentMeta[]> {
   const list = await listTournaments();
   if (list.find(t => t.id === id)) return list;
-  const entry: TournamentMeta = { id, name, ownerAdminId, createdAt: Date.now() };
+  const entry: TournamentMeta = { id, name, ownerAdminId, collaborators: [], createdAt: Date.now() };
   if (posterUrl) entry.posterUrl = posterUrl;
   if (tournamentDate) entry.tournamentDate = tournamentDate;
   if (organizer) entry.organizer = organizer;
@@ -85,6 +88,16 @@ export async function updateTournamentMeta(
 ): Promise<TournamentMeta[]> {
   const list = await listTournaments();
   const next = list.map(t => t.id === id ? { ...t, ...patch } : t);
+  await kv.set(REGISTRY_KEY, next);
+  return next;
+}
+
+export async function updateTournamentCollaborators(
+  id: string,
+  collaborators: string[],
+): Promise<TournamentMeta[]> {
+  const list = await listTournaments();
+  const next = list.map(t => t.id === id ? { ...t, collaborators } : t);
   await kv.set(REGISTRY_KEY, next);
   return next;
 }

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateState } from '@/lib/kv';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { checkTournamentAccess } from '@/lib/tournamentAccess';
 
 // DELETE /api/reset — wipe all tournament data except admin password, maps pool, default maps, ticker, and format preferences
 export async function DELETE(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
   const next = await updateState(s => ({
     ...s,
     players: [],

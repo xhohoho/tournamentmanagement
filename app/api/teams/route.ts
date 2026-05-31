@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { shuffle, TEAM_COLORS } from '@/lib/utils';
 import type { Team } from '@/lib/types';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { checkTournamentAccess } from '@/lib/tournamentAccess';
 
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
@@ -12,9 +12,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
 
   const body = await req.json();
   const state = await getState(tid);
@@ -38,7 +37,6 @@ export async function POST(req: NextRequest) {
   const teams: Team[] = [];
 
   if (teamMode === 'manual') {
-    // manualTeams: Array<{ index: number; members: string[]; leader: string | null }>
     if (!Array.isArray(manualTeams) || manualTeams.length !== n) {
       return NextResponse.json({ error: `Expected ${n} teams in manualTeams` }, { status: 400 });
     }
@@ -83,18 +81,16 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
   const next = await updateState(s => ({ ...s, teams: [], bracket: null }), tid);
   return NextResponse.json({ teams: next.teams });
 }
 
 export async function PATCH(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
   const body = await req.json();
 
   if (body.teamMode !== undefined && !body.action) {

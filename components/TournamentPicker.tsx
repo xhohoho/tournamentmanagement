@@ -6,6 +6,8 @@ export interface TournamentMeta {
   id: string;
   name: string;
   createdAt: number;
+  ownerAdminId?: string;
+  collaborators?: string[];
   posterUrl?: string;
   tournamentDate?: number;
   organizer?: string;
@@ -441,9 +443,26 @@ export function TournamentPicker({ onSelect }: Props) {
                 {tournaments.map(t => (
                   <div
                     key={t.id}
-                    className="group relative flex flex-col rounded-2xl border t-border-mid t-surface overflow-hidden shadow-lg transition-all hover:border-[var(--accent)] hover:shadow-[0_0_24px_rgba(77,124,255,0.12)] cursor-pointer"
-                    onClick={() => onSelect(t.id, adminToken ?? undefined, adminInfo ?? undefined)}
+                    className={`group relative flex flex-col rounded-2xl border t-surface overflow-hidden shadow-lg transition-all ${
+                      isAdmin && adminInfo && t.ownerAdminId && !adminInfo.isSuperAdmin && t.ownerAdminId !== adminInfo.adminId && !t.collaborators?.includes(adminInfo.adminId)
+                        ? 'opacity-50 cursor-not-allowed border-[var(--border-mid)]'
+                        : 'cursor-pointer t-border-mid hover:border-[var(--accent)] hover:shadow-[0_0_24px_rgba(77,124,255,0.12)]'
+                    }`}
+                    onClick={() => {
+                      if (isAdmin && adminInfo && t.ownerAdminId && !adminInfo.isSuperAdmin && t.ownerAdminId !== adminInfo.adminId && !t.collaborators?.includes(adminInfo.adminId)) return;
+                      onSelect(t.id, adminToken ?? undefined, adminInfo ?? undefined);
+                    }}
                   >
+
+                    {/* Lock overlay for inaccessible tournaments */}
+                      {isAdmin && adminInfo && t.ownerAdminId && !adminInfo.isSuperAdmin && t.ownerAdminId !== adminInfo.adminId && !t.collaborators?.includes(adminInfo.adminId) && (
+                        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                          <div className="bg-black/60 backdrop-blur-sm rounded-xl px-4 py-2 flex items-center gap-2">
+                            <span className="text-lg">🔒</span>
+                            <span className="font-['DM_Mono'] text-xs text-white/80 tracking-widest uppercase">No Access</span>
+                          </div>
+                        </div>
+                      )}
 
                     {/* Poster image */}
                     <div

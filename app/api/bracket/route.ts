@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
 import { shuffle, nextPow2 } from '@/lib/utils';
+import { checkTournamentAccess } from '@/lib/tournamentAccess';
 import { verifyAdminToken } from '@/app/api/admin/auth/route';
 import type { BracketMatch, GrandFinal, Bracket, ShuffleReveal, StageFormats } from '@/lib/types';
 
@@ -221,7 +222,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const _postAccess = await checkTournamentAccess(req, tid);
+  if (_postAccess instanceof NextResponse) return _postAccess;
   const body = await req.json();
   const { elimMode, matchFormat = 'bo1', action = 'generate', stageFormats: sfBody } = body;
   const fmt: 'bo1' | 'bo3' = matchFormat === 'bo3' ? 'bo3' : 'bo1';
@@ -327,7 +329,8 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const _patchAccess = await checkTournamentAccess(req, tid);
+  if (_patchAccess instanceof NextResponse) return _patchAccess;
   const body = await req.json();
   const { section, ri, mi, p1wins, p2wins, action, elimMode: newElimMode } = body;
 
@@ -516,7 +519,8 @@ export async function PATCH(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const _putAccess = await checkTournamentAccess(req, tid);
+  if (_putAccess instanceof NextResponse) return _putAccess;
   const { p1wins, p2wins } = await req.json();
   const state = await getState(tid);
   const B = state.bracket;
@@ -533,7 +537,8 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const _deleteAccess = await checkTournamentAccess(req, tid);
+  if (_deleteAccess instanceof NextResponse) return _deleteAccess;
   const next = await updateState(s => ({ ...s, bracket: null, stageMaps: {} }), tid);
   return NextResponse.json({ bracket: next.bracket });
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { checkTournamentAccess } from '@/lib/tournamentAccess';
 
 const ADMIN_ACTIONS = new Set(['addToRoster', 'removeFromRoster', 'setRoster', 'clearQueue', 'clearRoster']);
 
@@ -41,9 +41,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  if (!await verifyAdminToken(req)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
   const { name } = await req.json();
   const next = await updateState(s => ({
     ...s,
@@ -59,9 +58,8 @@ export async function PATCH(req: NextRequest) {
   const { action, name, roster } = body;
 
   if (ADMIN_ACTIONS.has(action)) {
-    if (!await verifyAdminToken(req)) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const access = await checkTournamentAccess(req, tid);
+    if (access instanceof NextResponse) return access;
   }
 
   if (action === 'setRoster' && Array.isArray(roster)) {
