@@ -22,6 +22,9 @@ interface TourneyContext {
   isAdmin: boolean;
   previewAsUser: boolean;
   adminToken: string | null;
+  adminId: string | null;
+  adminName: string | null;
+  isSuperAdmin: boolean;
   loading: boolean;
   tickerText: string;
 
@@ -32,6 +35,7 @@ interface TourneyContext {
   setIsAdmin: (v: boolean) => void;
   setPreviewAsUser: (v: boolean) => void;
   setAdminToken: (token: string | null) => void;
+  setAdminInfo: (info: { adminId: string; name: string; isSuperAdmin: boolean } | null) => void;
   setStageFormats: (sf: import('@/lib/types').StageFormats) => Promise<void>;
   refresh: () => Promise<void>;
   setTickerText: (text: string) => Promise<void>;
@@ -125,7 +129,7 @@ function makeGuard() {
   };
 }
 
-export function TourneyProvider({ children, tournamentId = 'default', initialAdminToken }: { children: React.ReactNode; tournamentId?: string; initialAdminToken?: string }) {
+export function TourneyProvider({ children, tournamentId = 'default', initialAdminToken, initialAdminInfo }: { children: React.ReactNode; tournamentId?: string; initialAdminToken?: string; initialAdminInfo?: { adminId: string; name: string; isSuperAdmin: boolean } | null }) {
   const t = encodeURIComponent(tournamentId);
   const [players, setPlayers] = useState<Player[]>([]);
   const [roster, setRosterState] = useState<string[]>([]);
@@ -147,6 +151,9 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [isAdmin, setIsAdminState] = useState(!!initialAdminToken);
   const [previewAsUser, setPreviewAsUserState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(initialAdminToken ?? null);
+  const [adminId, setAdminId] = useState<string | null>(initialAdminInfo?.adminId ?? null);
+  const [adminName, setAdminName] = useState<string | null>(initialAdminInfo?.name ?? null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(initialAdminInfo?.isSuperAdmin ?? false);
   const [loading, setLoading] = useState(true);
   const [tickerText, setTickerTextState] = useState('');
 
@@ -172,10 +179,19 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
         }).catch(() => {});
       }
       setAdminToken(null);
+      setAdminId(null);
+      setAdminName(null);
+      setIsSuperAdmin(false);
     }
   };
 
   const setAdminTokenPublic = (token: string | null) => setAdminToken(token);
+
+  const setAdminInfo = (info: { adminId: string; name: string; isSuperAdmin: boolean } | null) => {
+    setAdminId(info?.adminId ?? null);
+    setAdminName(info?.name ?? null);
+    setIsSuperAdmin(info?.isSuperAdmin ?? false);
+  };
 
   // ── Hydrate all state from a server snapshot ──────────────────────────────
   // Used by both initial fetch and SSE onmessage.
@@ -718,8 +734,8 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       spinCategories, spinItemCategory, defaultMaps, stageFormats,
       tournamentId,
       joinKey, chatMessages,
-      isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, loading, tickerText,
-      setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, refresh, setTickerText, setStageFormats,
+      isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, adminId, adminName, isSuperAdmin, loading, tickerText,
+      setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, setAdminInfo, refresh, setTickerText, setStageFormats,
       submitPlayer, removePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       setJoinKey,

@@ -22,7 +22,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
-  const { isAdmin, previewAsUser, setPreviewAsUser, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
+  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
@@ -143,7 +143,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                 }`}
               >
                 <span>{isAdmin ? (previewAsUser ? '👁' : '🔓') : '🔒'}</span>
-                <span>{isAdmin ? (previewAsUser ? 'Preview' : 'Admin ✓') : 'Admin'}</span>
+                <span>{isAdmin ? (previewAsUser ? 'Preview' : `${adminName ?? 'Admin'} ✓`) : 'Admin'}</span>
               </button>
             </div>
           </div>
@@ -229,6 +229,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
 export default function Home() {
   const [tournamentId, setTournamentId] = useState<string | null>(null);
   const [pickerAdminToken, setPickerAdminToken] = useState<string | undefined>(undefined);
+  const [pickerAdminInfo, setPickerAdminInfo] = useState<{ adminId: string; name: string; isSuperAdmin: boolean } | null>(null);
 
   // Persist last-used tournament in localStorage so returning users skip the picker
   useEffect(() => {
@@ -236,15 +237,17 @@ export default function Home() {
     if (saved) setTournamentId(saved);
   }, []);
 
-  const handleSelect = (id: string, adminToken?: string) => {
+  const handleSelect = (id: string, adminToken?: string, adminInfo?: { adminId: string; name: string; isSuperAdmin: boolean }) => {
     localStorage.setItem('lastTournamentId', id);
     setPickerAdminToken(adminToken);
+    setPickerAdminInfo(adminInfo ?? null);
     setTournamentId(id);
   };
 
   const handleChangeTournament = () => {
     localStorage.removeItem('lastTournamentId');
     setPickerAdminToken(undefined);
+    setPickerAdminInfo(null);
     setTournamentId(null);
   };
 
@@ -253,7 +256,7 @@ export default function Home() {
   }
 
   return (
-    <TourneyProvider tournamentId={tournamentId} initialAdminToken={pickerAdminToken}>
+    <TourneyProvider tournamentId={tournamentId} initialAdminToken={pickerAdminToken} initialAdminInfo={pickerAdminInfo}>
       <MainApp tournamentId={tournamentId} onChangeTournament={handleChangeTournament} />
     </TourneyProvider>
   );

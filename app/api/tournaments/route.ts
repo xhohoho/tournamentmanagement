@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listTournaments, registerTournament, deleteTournamentState, updateTournamentMeta } from '@/lib/kv';
+import { listTournaments, registerTournament, deleteTournamentState, updateTournamentMeta, listAdminAccounts } from '@/lib/kv';
 import { verifyAdminToken } from '@/app/api/admin/auth/route';
 
 // GET /api/tournaments — list all tournaments (public)
@@ -10,7 +10,8 @@ export async function GET() {
 
 // POST /api/tournaments — create a new tournament (admin only)
 export async function POST(req: NextRequest) {
-  if (!await verifyAdminToken(req)) {
+  const adminId = await verifyAdminToken(req);
+  if (!adminId) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   }
   const { id, name, posterUrl, tournamentDate, organizer } = await req.json();
@@ -22,16 +23,24 @@ export async function POST(req: NextRequest) {
   if (!safeId || !safeName) {
     return NextResponse.json({ error: 'id and name required' }, { status: 400 });
   }
-  const list = await registerTournament(safeId, safeName, safePoster || undefined, safeTournamentDate, safeOrganizer || undefined);
+  const list = await registerTournament(safeId, safeName, adminId, safePoster || undefined, safeTournamentDate, safeOrganizer || undefined);
   return NextResponse.json({ tournaments: list, id: safeId });
 }
 
-// PATCH /api/tournaments?t=slug — update poster/name (admin only)
+// PATCH /api/tournaments?t=slug — update poster/name (admin only, owner or super admin)
 export async function PATCH(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t');
   if (!tid) return NextResponse.json({ error: 'Tournament id required' }, { status: 400 });
-  if (!await verifyAdminToken(req)) {
+  const adminId = await verifyAdminToken(req);
+  if (!adminId) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
+  // Check ownership
+  const [tournaments, accounts] = await Promise.all([listTournaments(), listAdminAccounts()]);
+  const tournament = tournaments.find(t => t.id === tid);
+  const me = accounts.find(a => a.adminId === adminId);
+  if (tournament && tournament.ownerAdminId !== adminId && !me?.isSuperAdmin) {
+    return NextResponse.json({ error: 'You can only edit tournaments you created' }, { status: 403 });
   }
   const body = await req.json();
   const patch: Partial<Record<string, string | number>> = {};
@@ -43,12 +52,20 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ tournaments: list });
 }
 
-// DELETE /api/tournaments?t=slug — delete a tournament (admin only)
+// DELETE /api/tournaments?t=slug — delete a tournament (owner or super admin)
 export async function DELETE(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t');
   if (!tid) return NextResponse.json({ error: 'Tournament id required' }, { status: 400 });
-  if (!await verifyAdminToken(req)) {
+  const adminId = await verifyAdminToken(req);
+  if (!adminId) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
+  // Check ownership
+  const [tournaments, accounts] = await Promise.all([listTournaments(), listAdminAccounts()]);
+  const tournament = tournaments.find(t => t.id === tid);
+  const me = accounts.find(a => a.adminId === adminId);
+  if (tournament && tournament.ownerAdminId !== adminId && !me?.isSuperAdmin) {
+    return NextResponse.json({ error: 'You can only delete tournaments you created' }, { status: 403 });
   }
   await deleteTournamentState(tid);
   const list = await listTournaments();

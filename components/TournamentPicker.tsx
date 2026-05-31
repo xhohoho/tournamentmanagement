@@ -12,10 +12,11 @@ export interface TournamentMeta {
 }
 
 const ADMIN_TOKEN_KEY = 'adminToken';
+const ADMIN_INFO_KEY = 'adminInfo';
 const storage = typeof window !== 'undefined' ? sessionStorage : null;
 
 interface Props {
-  onSelect: (id: string, adminToken?: string) => void;
+  onSelect: (id: string, adminToken?: string, adminInfo?: { adminId: string; name: string; isSuperAdmin: boolean }) => void;
 }
 
 export function TournamentPicker({ onSelect }: Props) {
@@ -24,7 +25,9 @@ export function TournamentPicker({ onSelect }: Props) {
 
   // Admin state
   const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [adminInfo, setAdminInfo] = useState<{ adminId: string; name: string; isSuperAdmin: boolean } | null>(null);
   const [showUnlock, setShowUnlock] = useState(false);
+  const [adminNameInput, setAdminNameInput] = useState('');
   const [pw, setPw] = useState('');
   const [pwErr, setPwErr] = useState('');
   const [unlocking, setUnlocking] = useState(false);
@@ -70,7 +73,9 @@ export function TournamentPicker({ onSelect }: Props) {
 
   useEffect(() => {
     const stored = storage?.getItem(ADMIN_TOKEN_KEY);
+    const storedInfo = storage?.getItem(ADMIN_INFO_KEY);
     if (stored) setAdminToken(stored);
+    if (storedInfo) { try { setAdminInfo(JSON.parse(storedInfo)); } catch { /* ignore */ } }
   }, []);
 
   const load = useCallback(async () => {
@@ -97,20 +102,23 @@ export function TournamentPicker({ onSelect }: Props) {
   // ── Admin unlock ──────────────────────────────────────────────────────────
   const handleUnlock = async () => {
     setPwErr('');
+    if (!adminNameInput.trim()) { setPwErr('Enter your admin name.'); return; }
     if (!pw.trim()) { setPwErr('Enter a password.'); return; }
     setUnlocking(true);
     try {
-      const tid = tournaments[0]?.id ?? 'default';
-      const res = await fetch(`/api/admin/auth?t=${tid}`, {
+      const res = await fetch('/api/admin/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw }),
+        body: JSON.stringify({ name: adminNameInput.trim(), password: pw }),
       });
       const data = await res.json();
-      if (!res.ok) { setPwErr(data.error ?? 'Wrong password.'); return; }
+      if (!res.ok) { setPwErr(data.error ?? 'Wrong name or password.'); return; }
+      const info = { adminId: data.adminId, name: data.name, isSuperAdmin: data.isSuperAdmin };
       storage?.setItem(ADMIN_TOKEN_KEY, data.token);
+      storage?.setItem(ADMIN_INFO_KEY, JSON.stringify(info));
       setAdminToken(data.token);
-      setPw('');
+      setAdminInfo(info);
+      setAdminNameInput(''); setPw('');
       setShowUnlock(false);
     } catch {
       setPwErr('Network error. Try again.');
@@ -124,7 +132,9 @@ export function TournamentPicker({ onSelect }: Props) {
       fetch('/api/admin/auth', { method: 'DELETE', headers: { 'X-Admin-Token': adminToken } }).catch(() => {});
     }
     storage?.removeItem(ADMIN_TOKEN_KEY);
+    storage?.removeItem(ADMIN_INFO_KEY);
     setAdminToken(null);
+    setAdminInfo(null);
     setCreating(false);
   };
 
@@ -168,7 +178,7 @@ export function TournamentPicker({ onSelect }: Props) {
       }
       setTournaments(data.tournaments ?? []);
       setCreating(false); setNewId(''); setNewName(''); setNewOrganizer(''); setNewTournamentDate(''); setNewPosterFile(null); setNewPosterPreview('');
-      onSelect(data.id, adminToken ?? undefined);
+      onSelect(data.id, adminToken ?? undefined, adminInfo ?? undefined);
     } catch {
       setCreateErr('Network error. Please try again.');
     } finally {
@@ -257,7 +267,7 @@ export function TournamentPicker({ onSelect }: Props) {
                 : 't-border-mid t-muted t-elevated hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)]'
             }`}
           >
-            {isAdmin ? '🔓 Admin (click to logout)' : '🔒 Admin Login'}
+            {isAdmin ? `🔓 ${adminInfo?.name ?? 'Admin'} (logout)` : '🔒 Admin Login'}
           </button>
           {isAdmin && (
             <button
@@ -280,28 +290,38 @@ export function TournamentPicker({ onSelect }: Props) {
         {!loading && showUnlock && (
           <div className="max-w-sm mx-auto t-surface border t-border rounded-2xl p-6 shadow-xl">
             <h3 className="font-['Bebas_Neue'] text-2xl tracking-widest t-text mb-1">🔐 ADMIN UNLOCK</h3>
-            <p className="font-['DM_Mono'] text-xs t-muted mb-4">Enter the admin password to manage tournaments.</p>
+            <p className="font-['DM_Mono'] text-xs t-muted mb-4">Enter your admin name and password to manage tournaments.</p>
+            <input
+              type="text"
+              className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent-gold)] transition-colors mb-2"
+              placeholder="Admin name…"
+              value={adminNameInput}
+              onChange={e => setAdminNameInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && pw && handleUnlock()}
+              autoFocus
+              autoComplete="username"
+            />
             <input
               type="password"
               className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent-gold)] transition-colors mb-3"
               placeholder="Password…"
               value={pw}
               onChange={e => setPw(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleUnlock()}
-              autoFocus
+              onKeyDown={e => e.key === 'Enter' && adminNameInput.trim() && handleUnlock()}
+              autoComplete="current-password"
             />
             {pwErr && <p className="font-['DM_Mono'] text-xs text-[var(--accent-red)] mb-3">{pwErr}</p>}
             <div className="flex gap-3">
               <button
                 className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
-                onClick={() => { setShowUnlock(false); setPw(''); setPwErr(''); }}
+                onClick={() => { setShowUnlock(false); setAdminNameInput(''); setPw(''); setPwErr(''); }}
                 disabled={unlocking}
               >Cancel</button>
               <button
                 className="flex-1 py-2.5 rounded-xl font-['DM_Mono'] text-sm font-bold disabled:opacity-40 cursor-pointer"
                 style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
                 onClick={handleUnlock}
-                disabled={unlocking || !pw.trim()}
+                disabled={unlocking || !adminNameInput.trim() || !pw.trim()}
               >{unlocking ? 'Checking…' : 'Unlock'}</button>
             </div>
           </div>
@@ -422,7 +442,7 @@ export function TournamentPicker({ onSelect }: Props) {
                   <div
                     key={t.id}
                     className="group relative flex flex-col rounded-2xl border t-border-mid t-surface overflow-hidden shadow-lg transition-all hover:border-[var(--accent)] hover:shadow-[0_0_24px_rgba(77,124,255,0.12)] cursor-pointer"
-                    onClick={() => onSelect(t.id, adminToken ?? undefined)}
+                    onClick={() => onSelect(t.id, adminToken ?? undefined, adminInfo ?? undefined)}
                   >
 
                     {/* Poster image */}

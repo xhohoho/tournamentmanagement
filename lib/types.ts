@@ -1,3 +1,12 @@
+// ─── Admin accounts ───────────────────────────────────────────────────────────
+export interface AdminAccount {
+  adminId: string;       // e.g. "admin_abc123"
+  name: string;          // display name, e.g. "Alice"
+  pwHash: string;        // scrypt hash
+  isSuperAdmin?: boolean; // can edit any tournament regardless of ownership
+  createdAt: number;
+}
+
 export interface Player {
   name: string;
   addedAt: number;
@@ -78,7 +87,10 @@ export interface SpinState {
 
 /** Full state stored in KV — never sent to the client as-is. */
 export interface ServerState {
-  adminPwHash: string;
+  /** @deprecated Per-tournament passwords removed. Use admin accounts instead. */
+  adminPwHash?: string;
+  /** The adminId of whoever created this tournament. */
+  ownerAdminId?: string;
   players: Player[];
   roster: string[];
   teamMode: 'leader' | 'random' | 'manual';
@@ -103,7 +115,7 @@ export interface ServerState {
  * Public state returned from /api/state — identical to ServerState
  * but with sensitive server-only fields omitted.
  */
-export type ClientState = Omit<ServerState, 'adminPwHash'>;
+export type ClientState = Omit<ServerState, 'adminPwHash' | 'ownerAdminId'>;
 
 /**
  * @deprecated Use ServerState instead. Kept as an alias so existing

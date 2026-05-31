@@ -1,17 +1,55 @@
 import { kv } from '@vercel/kv';
-import type { TournamentState } from './types';
+import type { TournamentState, AdminAccount } from './types';
+
+// ─── Admin accounts ───────────────────────────────────────────────────────────
+const ADMIN_ACCOUNTS_KEY = 'admin:accounts';
+
+export async function listAdminAccounts(): Promise<AdminAccount[]> {
+  try {
+    return (await kv.get<AdminAccount[]>(ADMIN_ACCOUNTS_KEY)) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getAdminAccount(adminId: string): Promise<AdminAccount | null> {
+  const list = await listAdminAccounts();
+  return list.find(a => a.adminId === adminId) ?? null;
+}
+
+export async function getAdminAccountByName(name: string): Promise<AdminAccount | null> {
+  const list = await listAdminAccounts();
+  return list.find(a => a.name.toLowerCase() === name.toLowerCase()) ?? null;
+}
+
+export async function saveAdminAccount(account: AdminAccount): Promise<AdminAccount[]> {
+  const list = await listAdminAccounts();
+  const existing = list.findIndex(a => a.adminId === account.adminId);
+  const next = existing >= 0
+    ? list.map(a => a.adminId === account.adminId ? account : a)
+    : [...list, account];
+  await kv.set(ADMIN_ACCOUNTS_KEY, next);
+  return next;
+}
+
+export async function deleteAdminAccount(adminId: string): Promise<AdminAccount[]> {
+  const list = await listAdminAccounts();
+  const next = list.filter(a => a.adminId !== adminId);
+  await kv.set(ADMIN_ACCOUNTS_KEY, next);
+  return next;
+}
 
 // ─── Tournament registry ───────────────────────────────────────────────────────
-// Separate KV key storing the list of all known tournaments.
 const REGISTRY_KEY = 'tournament:registry';
 
 export interface TournamentMeta {
-  id: string;       // slug, e.g. "kabut"
-  name: string;     // display name, e.g. "Kabut Tournament"
+  id: string;
+  name: string;
   createdAt: number;
-  posterUrl?: string;   // optional poster/banner image URL
-  tournamentDate?: number; // unix ms — when the tournament takes place
-  organizer?: string;      // organizer name / team / discord
+  ownerAdminId: string;   // which admin account created this tournament
+  posterUrl?: string;
+  tournamentDate?: number;
+  organizer?: string;
 }
 
 export async function listTournaments(): Promise<TournamentMeta[]> {
@@ -25,13 +63,14 @@ export async function listTournaments(): Promise<TournamentMeta[]> {
 export async function registerTournament(
   id: string,
   name: string,
+  ownerAdminId: string,
   posterUrl?: string,
   tournamentDate?: number,
   organizer?: string,
 ): Promise<TournamentMeta[]> {
   const list = await listTournaments();
-  if (list.find(t => t.id === id)) return list; // already exists
-  const entry: TournamentMeta = { id, name, createdAt: Date.now() };
+  if (list.find(t => t.id === id)) return list;
+  const entry: TournamentMeta = { id, name, ownerAdminId, createdAt: Date.now() };
   if (posterUrl) entry.posterUrl = posterUrl;
   if (tournamentDate) entry.tournamentDate = tournamentDate;
   if (organizer) entry.organizer = organizer;
@@ -57,17 +96,15 @@ export async function deleteTournamentFromRegistry(id: string): Promise<Tourname
   return next;
 }
 
-// ─── Per-tournament KV key ────────────────────────────────────────────────────
+// ─── Per-tournament KV key ─────────────────────────────────────────────────────
 function kvKey(tournamentId: string) {
-  // Sanitise to prevent key injection — only allow alphanumeric + hyphens
   const safe = tournamentId.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64);
   return `tournament:state:${safe || 'default'}`;
 }
 
-// ─── Default state ────────────────────────────────────────────────────────────
+// ─── Default state ─────────────────────────────────────────────────────────────
 export function defaultState(): TournamentState {
   return {
-    adminPwHash: 'c4fbc127ee7664d0d392c796504b255b:4f7a69bcceab7a62f082ca3e039803f0e80adf19819e83650ea5e0e7c179614de28e452ee8d32966f1c117c9fee7f1f1532e9e932806c6d73c0d7931d6b4b067',
     players: [],
     roster: [],
     teamMode: 'leader',
@@ -89,7 +126,7 @@ export function defaultState(): TournamentState {
   };
 }
 
-// ─── Read / write ─────────────────────────────────────────────────────────────
+// ─── Read / write ──────────────────────────────────────────────────────────────
 export async function getState(tournamentId = 'default'): Promise<TournamentState> {
   try {
     const data = await kv.get<TournamentState>(kvKey(tournamentId));
@@ -140,14 +177,13 @@ export async function updateState(
     await new Promise(r => setTimeout(r, 10 + Math.random() * 40 * (attempt + 1)));
   }
 
-  // Fallback
   const current = await getState(tournamentId);
   const next = updater(current);
   await setState(next, tournamentId);
   return next;
 }
 
-// ─── Delete a tournament's state entirely ─────────────────────────────────────
+// ─── Delete a tournament's state entirely ──────────────────────────────────────
 export async function deleteTournamentState(tournamentId: string): Promise<void> {
   await kv.del(kvKey(tournamentId));
   await deleteTournamentFromRegistry(tournamentId);
