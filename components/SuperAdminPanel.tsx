@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useTourney } from '@/lib/context';
 
 interface AdminAccount {
   adminId: string;
@@ -20,10 +19,13 @@ interface TournamentMeta {
 interface Props {
   open: boolean;
   onClose: () => void;
+  adminToken: string | null;
+  adminId: string | null;
+  adminName: string | null;
+  isSuperAdmin: boolean;
 }
 
-export function SuperAdminPanel({ open, onClose }: Props) {
-  const { adminToken, adminId: myId, adminName: myName, isSuperAdmin } = useTourney();
+export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, adminName: myName, isSuperAdmin }: Props) {
 
   const [accounts, setAccounts] = useState<AdminAccount[]>([]);
   const [tournaments, setTournaments] = useState<TournamentMeta[]>([]);

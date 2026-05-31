@@ -8,14 +8,11 @@ interface Props {
   onClose: () => void;
 }
 
-export function AdminModal({ open, onClose, onOpenSuperAdmin }: Props & { onOpenSuperAdmin?: () => void }) {
-  const { setIsAdmin, setAdminToken, setAdminInfo, adminToken, adminId, adminName, isSuperAdmin } = useTourney();
+export function AdminModal({ open, onClose }: Props) {
+  const { setIsAdmin, setAdminToken, setAdminInfo } = useTourney();
   const [name, setName] = useState('');
   const [pw, setPw] = useState('');
-  const [newPw, setNewPw] = useState('');
   const [err, setErr] = useState('');
-  const [pwErr, setPwErr] = useState('');
-  const [pwOk, setPwOk] = useState('');
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -38,21 +35,6 @@ export function AdminModal({ open, onClose, onOpenSuperAdmin }: Props & { onOpen
       const data = await res.json();
       setErr(data.error ?? 'Wrong name or password.');
     }
-  };
-
-  const changePw = async () => {
-    setPwErr('');
-    setPwOk('');
-    if (!adminToken || !adminId) { setPwErr('Unlock admin first.'); return; }
-    if (!newPw.trim()) { setPwErr('Enter a new password.'); return; }
-    const res = await fetch('/api/admin/auth', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
-      body: JSON.stringify({ action: 'changePassword', adminId, newPassword: newPw }),
-    });
-    if (!res.ok) { setPwErr('Failed to update password.'); return; }
-    setNewPw('');
-    setPwOk('Password updated!');
   };
 
   if (!open) return null;
@@ -102,39 +84,6 @@ export function AdminModal({ open, onClose, onOpenSuperAdmin }: Props & { onOpen
             {loading ? 'Checking…' : 'Unlock'}
           </button>
         </div>
-
-        {adminToken && adminId && (
-          <div className="mt-5 border-t t-border pt-4">
-            <p className="font-['DM_Mono'] text-[10px] t-dim mb-2 tracking-widest">CHANGE YOUR PASSWORD</p>
-            {adminName && <p className="font-['DM_Mono'] text-xs t-muted mb-2">Logged in as: <span className="t-text">{adminName}</span></p>}
-            <div className="flex gap-2">
-              <input
-                type="password"
-                className="flex-1 t-elevated border t-border-mid rounded-xl px-3 py-2 t-text font-['DM_Mono'] text-xs outline-none focus:border-[var(--accent)] transition-colors"
-                placeholder="New password…"
-                value={newPw}
-                onChange={e => setNewPw(e.target.value)}
-              />
-              <button
-                className="px-3 py-2 rounded-xl t-elevated border t-border-mid t-text font-bold text-xs hover:border-[var(--accent)] hover:t-accent transition-colors cursor-pointer"
-                onClick={changePw}
-              >
-                Set
-              </button>
-            </div>
-            {pwErr && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-red)' }}>{pwErr}</p>}
-            {pwOk && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-green)' }}>{pwOk}</p>}
-            {isSuperAdmin && onOpenSuperAdmin && (
-              <button
-                onClick={() => { onClose(); onOpenSuperAdmin(); }}
-                className="mt-4 w-full py-2 rounded-xl border font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer"
-                style={{ borderColor: 'var(--accent-gold)', color: 'var(--accent-gold)', background: 'rgba(255,176,32,0.07)' }}
-              >
-                ★ Manage Admin Accounts
-              </button>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

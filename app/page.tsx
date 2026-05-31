@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { TourneyProvider } from '@/lib/context';
 import { TournamentPicker } from '@/components/TournamentPicker';
 import { AdminModal } from '@/components/AdminModal';
-import { SuperAdminPanel } from '@/components/SuperAdminPanel';
 import { PlayersTab } from '@/components/PlayersTab';
 import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
@@ -23,7 +22,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
-  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, isSuperAdmin, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
+  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
@@ -32,7 +31,6 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
 
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
-  const [superAdminOpen, setSuperAdminOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -127,19 +125,6 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   >
                     {resetConfirm ? '⚠ Confirm Reset?' : '🔄 Reset All'}
                   </button>
-                  {isSuperAdmin && (
-                    <button
-                      onClick={() => setSuperAdminOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer"
-                      style={{
-                        borderColor: 'var(--accent-gold)',
-                        color: 'var(--accent-gold)',
-                        background: 'rgba(255,176,32,0.07)',
-                      }}
-                    >
-                      ★ Admins
-                    </button>
-                  )}
                 </>
               )}
               {/* Admin status indicator — login is managed at the picker */}
@@ -206,8 +191,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
         <BottomTicker text={tickerText} />
       </div>
 
-      <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} onOpenSuperAdmin={() => setSuperAdminOpen(true)} />
-      <SuperAdminPanel open={superAdminOpen} onClose={() => setSuperAdminOpen(false)} />
+      <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
       <ChatPanel open={chatOpen} onToggle={() => setChatOpen(o => !o)} />
 
       {/* Ticker edit modal */}

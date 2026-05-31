@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { SuperAdminPanel } from '@/components/SuperAdminPanel';
 
 export interface TournamentMeta {
   id: string;
@@ -64,6 +65,16 @@ export function TournamentPicker({ onSelect }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState('');
 
+  // SuperAdmin panel
+  const [superAdminOpen, setSuperAdminOpen] = useState(false);
+
+  // Password change (for logged-in admin)
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [newPwVal, setNewPwVal] = useState('');
+  const [changePwErr, setChangePwErr] = useState('');
+  const [changePwOk, setChangePwOk] = useState('');
+  const [savingPw, setSavingPw] = useState(false);
+
   // Shared upload helper — sends a file to /api/upload, returns the blob URL
   const uploadPoster = async (file: File): Promise<string | null> => {
     const fd = new FormData();
@@ -110,6 +121,29 @@ export function TournamentPicker({ onSelect }: Props) {
     const interval = setInterval(load, 10_000);
     return () => clearInterval(interval);
   }, [load]);
+
+  // ── Change password ──────────────────────────────────────────────────────
+  const handleChangePw = async () => {
+    setChangePwErr(''); setChangePwOk('');
+    if (!adminToken || !adminInfo?.adminId) { setChangePwErr('Not logged in.'); return; }
+    if (!newPwVal.trim()) { setChangePwErr('Enter a new password.'); return; }
+    setSavingPw(true);
+    try {
+      const res = await fetch('/api/admin/auth', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+        body: JSON.stringify({ action: 'changePassword', adminId: adminInfo.adminId, newPassword: newPwVal.trim() }),
+      });
+      if (!res.ok) { setChangePwErr('Failed to update password.'); return; }
+      setChangePwOk('Password updated!');
+      setNewPwVal('');
+      setTimeout(() => { setShowChangePw(false); setChangePwOk(''); }, 1500);
+    } catch {
+      setChangePwErr('Network error.');
+    } finally {
+      setSavingPw(false);
+    }
+  };
 
   // ── Admin unlock ──────────────────────────────────────────────────────────
   const handleUnlock = async () => {
@@ -335,14 +369,58 @@ export function TournamentPicker({ onSelect }: Props) {
             {isAdmin ? `🔓 ${adminInfo?.name ?? 'Admin'} (logout)` : '🔒 Admin Login'}
           </button>
           {isAdmin && (
-            <button
-              onClick={() => { setCreating(true); setCreateErr(''); }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-dashed t-border-mid t-muted hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer"
-            >
-              + New Tournament
-            </button>
+            <>
+              <button
+                onClick={() => { setCreating(true); setCreateErr(''); }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-dashed t-border-mid t-muted hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer"
+              >
+                + New Tournament
+              </button>
+              {adminInfo?.isSuperAdmin && (
+                <button
+                  onClick={() => setSuperAdminOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl border font-['DM_Mono'] text-xs transition-all cursor-pointer"
+                  style={{ borderColor: 'var(--accent-gold)', color: 'var(--accent-gold)', background: 'rgba(255,176,32,0.07)' }}
+                >
+                  ★ Manage Admins
+                </button>
+              )}
+              <button
+                onClick={() => { setShowChangePw(v => !v); setChangePwErr(''); setChangePwOk(''); setNewPwVal(''); }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border t-border-mid t-muted t-elevated hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer"
+              >
+                🔑 Change Password
+              </button>
+            </>
           )}
         </div>
+
+        {/* ── Change password inline ────────────────────────────────────── */}
+        {isAdmin && showChangePw && (
+          <div className="max-w-sm mx-auto t-surface border t-border rounded-2xl p-5 shadow-xl mb-2">
+            <h3 className="font-['Bebas_Neue'] text-lg tracking-widest t-text mb-1">🔑 CHANGE PASSWORD</h3>
+            <p className="font-['DM_Mono'] text-[10px] t-muted mb-3">Logged in as <span style={{ color: 'var(--accent-gold)' }}>{adminInfo?.name}</span></p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                className="flex-1 t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+                placeholder="New password…"
+                value={newPwVal}
+                onChange={e => { setNewPwVal(e.target.value); setChangePwErr(''); setChangePwOk(''); }}
+                onKeyDown={e => e.key === 'Enter' && handleChangePw()}
+                autoFocus
+              />
+              <button
+                onClick={handleChangePw}
+                disabled={savingPw || !newPwVal.trim()}
+                className="px-4 py-2.5 rounded-xl font-['DM_Mono'] text-sm font-bold text-white disabled:opacity-40 hover:opacity-90 transition-opacity cursor-pointer"
+                style={{ background: 'var(--accent)' }}
+              >{savingPw ? '…' : 'Save'}</button>
+            </div>
+            {changePwErr && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-red)' }}>{changePwErr}</p>}
+            {changePwOk && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-green)' }}>{changePwOk}</p>}
+          </div>
+        )}
 
         {/* ── Loading ─────────────────────────────────────────── */}
         {loading && (
@@ -776,6 +854,15 @@ export function TournamentPicker({ onSelect }: Props) {
           </div>
         </div>
       )}
+      {/* ── Super Admin Panel ─────────────────────────────────────────────── */}
+      <SuperAdminPanel
+        open={superAdminOpen}
+        onClose={() => setSuperAdminOpen(false)}
+        adminToken={adminToken}
+        adminId={adminInfo?.adminId ?? null}
+        adminName={adminInfo?.name ?? null}
+        isSuperAdmin={adminInfo?.isSuperAdmin ?? false}
+      />
     </div>
   );
 }
