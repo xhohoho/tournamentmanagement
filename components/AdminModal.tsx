@@ -8,8 +8,8 @@ interface Props {
   onClose: () => void;
 }
 
-export function AdminModal({ open, onClose }: Props) {
-  const { setIsAdmin, setAdminToken, setAdminInfo, adminToken, adminId, adminName } = useTourney();
+export function AdminModal({ open, onClose, onOpenSuperAdmin }: Props & { onOpenSuperAdmin?: () => void }) {
+  const { setIsAdmin, setAdminToken, setAdminInfo, adminToken, adminId, adminName, isSuperAdmin } = useTourney();
   const [name, setName] = useState('');
   const [pw, setPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -124,6 +124,15 @@ export function AdminModal({ open, onClose }: Props) {
             </div>
             {pwErr && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-red)' }}>{pwErr}</p>}
             {pwOk && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-green)' }}>{pwOk}</p>}
+            {isSuperAdmin && onOpenSuperAdmin && (
+              <button
+                onClick={() => { onClose(); onOpenSuperAdmin(); }}
+                className="mt-4 w-full py-2 rounded-xl border font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer"
+                style={{ borderColor: 'var(--accent-gold)', color: 'var(--accent-gold)', background: 'rgba(255,176,32,0.07)' }}
+              >
+                ★ Manage Admin Accounts
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { TourneyProvider } from '@/lib/context';
 import { TournamentPicker } from '@/components/TournamentPicker';
 import { AdminModal } from '@/components/AdminModal';
+import { SuperAdminPanel } from '@/components/SuperAdminPanel';
 import { PlayersTab } from '@/components/PlayersTab';
 import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
@@ -31,6 +32,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
 
   const [activeTab, setActiveTab] = useState<TabId>('players');
   const [adminOpen, setAdminOpen] = useState(false);
+  const [superAdminOpen, setSuperAdminOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -186,7 +188,8 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
         <BottomTicker text={tickerText} />
       </div>
 
-      <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
+      <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} onOpenSuperAdmin={() => setSuperAdminOpen(true)} />
+      <SuperAdminPanel open={superAdminOpen} onClose={() => setSuperAdminOpen(false)} />
       <ChatPanel open={chatOpen} onToggle={() => setChatOpen(o => !o)} />
 
       {/* Ticker edit modal */}
