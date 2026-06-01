@@ -1,218 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
-import { shuffle, nextPow2 } from '@/lib/utils';
+import { shuffle } from '@/lib/utils';
 import { checkTournamentAccess } from '@/lib/tournamentAccess';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
-import type { BracketMatch, GrandFinal, Bracket, ShuffleReveal, StageFormats } from '@/lib/types';
+import {
+  emptyMatch,
+  cloneBracket,
+  resolveWinner,
+  sweepBracket,
+  buildSE,
+  buildDE,
+  buildEmptySE,
+  buildEmptyDE,
+  seedLBDropIn,
+} from '@/lib/bracket';
+import type { BracketMatch, Bracket, ShuffleReveal, StageFormats } from '@/lib/types';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function emptyMatch(format: 'bo1' | 'bo3' | 'bo5' = 'bo1'): BracketMatch {
-  return { p1: null, p2: null, winner: null, score1: 0, score2: 0, format };
-}
-
-function resolveWinner(match: BracketMatch | GrandFinal): string | null {
-  const target = match.format === 'bo5' ? 3 : match.format === 'bo3' ? 2 : 1;
-  if (match.score1 >= target && match.score2 < target && match.p1) return match.p1;
-  if (match.score2 >= target && match.score1 < target && match.p2) return match.p2;
-  return null;
-}
-
-// Check if the feeder matches for a specific slot are finished so byes can safely advance
-function isFeederResolved(bracket: Bracket, section: 'upper' | 'lower', ri: number, mi: number, slot: 0 | 1): boolean {
-  if (section === 'upper') {
-    if (ri === 0) return true;
-    const f = bracket.upper[ri - 1][mi * 2 + slot];
-    return f ? !!f.winner : true;
-  } else {
-    if (ri === 0) {
-      // Fed by UB R0
-      const f = bracket.upper[0][mi * 2 + slot];
-      return f ? !!f.winner : true;
-    } else if (ri % 2 === 1) {
-      // Odd round (Drop-in): slot 0 is from LB[ri-1], slot 1 is from UB[(ri+1)/2]
-      if (slot === 0) {
-        const f = bracket.lower![ri - 1][mi];
-        return f ? !!f.winner : true;
-      } else {
-        const ubRi = (ri + 1) / 2;
-        const f = bracket.upper[ubRi]?.[mi];
-        return f ? !!f.winner : true;
-      }
-    } else {
-      // Even round > 0 (Consolidation): halves the field from LB[ri-1]
-      const f = bracket.lower![ri - 1][mi * 2 + slot];
-      return f ? !!f.winner : true;
-    }
-  }
-}
-
-/** Recursively advance teams that have no opponent (Byes) */
-function sweepBracket(bracket: Bracket): Bracket {
-  let sweepAgain = true;
-  while (sweepAgain) {
-    sweepAgain = false;
-    const sections: ('upper' | 'lower')[] = bracket.type === 'double' ? ['upper', 'lower'] : ['upper'];
-
-    for (const section of sections) {
-      const rounds = section === 'upper' ? bracket.upper : bracket.lower!;
-      for (let ri = 0; ri < rounds.length; ri++) {
-        for (let mi = 0; mi < rounds[ri].length; mi++) {
-          const m = rounds[ri][mi];
-          if (m.winner) continue;
-
-          const f1Resolved = isFeederResolved(bracket, section, ri, mi, 0);
-          const f2Resolved = isFeederResolved(bracket, section, ri, mi, 1);
-
-          if (f1Resolved && f2Resolved && ((m.p1 && !m.p2) || (!m.p1 && m.p2))) {
-            m.winner = m.p1 || m.p2;
-            sweepAgain = true;
-
-            const isLast = ri === rounds.length - 1;
-            if (!isLast) {
-              if (section === 'upper') {
-                const slot = Math.floor(mi / 2);
-                if (mi % 2 === 0) rounds[ri + 1][slot].p1 = m.winner;
-                else rounds[ri + 1][slot].p2 = m.winner;
-              } else {
-                if (ri % 2 === 0) {
-                  rounds[ri + 1][mi].p1 = m.winner;
-                } else {
-                  const slot = Math.floor(mi / 2);
-                  if (mi % 2 === 0) rounds[ri + 1][slot].p1 = m.winner;
-                  else rounds[ri + 1][slot].p2 = m.winner;
-                }
-              }
-            } else {
-              if (section === 'upper') {
-                if (bracket.type === 'single') bracket.champion = m.winner;
-                else if (bracket.grandFinal) bracket.grandFinal.p1 = m.winner;
-              } else if (section === 'lower' && bracket.grandFinal) {
-                bracket.grandFinal.p2 = m.winner;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  return bracket;
-}
-
-// ─── Stage format resolver ────────────────────────────────────────────────────
-/**
- * Maps a round index to the correct match format for each bracket section.
- *
- * Naming convention (12-team DE example, nextPow2=16, 4 UB rounds, 6 LB rounds):
- *
- *  UB (upper_de):  R0 R1 R2  R3(UF)              → BO1 BO1 BO1 BO3
- *  LB (lower):     R0 R1 R2 R3  R4(SF) R5(LBF)    → BO1 BO1 BO1 BO1 BO3 BO5
- *  GF:             always grandFinal               → BO5
- *  SE (upper):     R0…Rn-2(SF) Rn-1(F)            → BO1…BO3 BO5
- *
- * Rules:
- *  upper_de  last only       → semiFinal   (Upper Final seeds GF p1)
- *  lower     last two        → semiFinal   (LB Semi + LB Final; LB Final loser = 3rd place)
- *  upper/SE  last → grandFinal, second-to-last → semiFinal, rest → groupStage
- *  gf        always          → grandFinal
- */
-function stageFormat(
-  sf: StageFormats,
-  totalRounds: number,
-  roundIdx: number,
-  section: 'upper' | 'upper_de' | 'lower' | 'gf' = 'upper',
-): 'bo1' | 'bo3' | 'bo5' {
-  if (section === 'gf') return sf.grandFinal;
-
-  if (section === 'upper_de') {
-    // Only the Upper Final (last UB round) is elevated to semiFinal.
-    // Everything before it is group-stage — even with 12 teams R2 is QF, not SF.
-    if (roundIdx === totalRounds - 1) return sf.semiFinal;  // Upper Final → BO3
-    return sf.groupStage;                                   // All other UB rounds → BO1
-  }
-
-  if (section === 'lower') {
-    // LB Semi + LB Final are both semiFinal level.
-    // The LB Final loser finishes 3rd — it determines 3rd/4th, not the championship.
-    // Only the Grand Final node is grandFinal format.
-    if (roundIdx >= totalRounds - 2) return sf.semiFinal;  // LB Semi + LB Final → BO3
-    return sf.groupStage;                                  // Early LB rounds → BO1
-  }
-
-  // SE upper bracket: last round IS the Grand Final, second-to-last is Semi Final.
-  if (roundIdx === totalRounds - 1) return sf.grandFinal;
-  if (roundIdx === totalRounds - 2) return sf.semiFinal;
-  return sf.groupStage;
-}
-
-// ─── Single Elimination ───────────────────────────────────────────────────────
-
-function buildSE(names: string[], sf: StageFormats, isDE = false): BracketMatch[][] {
-  const size = nextPow2(names.length);
-  const roundCount = Math.log2(size);
-  // Use 'upper_de' when this SE structure is the upper half of a DE bracket so
-  // the Upper Final gets semiFinal format instead of grandFinal format.
-  const sec = isDE ? 'upper_de' : 'upper';
-
-  const r0: BracketMatch[] = Array.from({ length: size / 2 }, () => emptyMatch(stageFormat(sf, roundCount, 0, sec)));
-
-  // Distribute players optimally to avoid dead branches (null v null matches)
-  for (let i = 0; i < size / 2; i++) {
-    if (i < names.length) r0[i].p1 = names[i];
-  }
-  let nIdx = size / 2;
-  let mIdx = 0;
-  while (nIdx < names.length) {
-    r0[mIdx].p2 = names[nIdx++];
-    mIdx += 2; // skip every other match to spread byes
-    if (mIdx >= size / 2) mIdx = 1;
-  }
-
-  const rounds: BracketMatch[][] = [r0];
-  let prev = r0;
-  let ri = 1;
-  while (prev.length > 1) {
-    const next: BracketMatch[] = [];
-    for (let i = 0; i < prev.length; i += 2) next.push(emptyMatch(stageFormat(sf, roundCount, ri, sec)));
-    rounds.push(next);
-    prev = next;
-    ri++;
-  }
-  return rounds;
-}
-
-// ─── Double Elimination ───────────────────────────────────────────────────────
-
-function buildDE(names: string[], sf: StageFormats): { upper: BracketMatch[][]; lower: BracketMatch[][] } {
-  const upper = buildSE(names, sf, true); // isDE=true → UB Final gets semiFinal format, not grandFinal
-  const ubRounds = upper.length;
-  const lower: BracketMatch[][] = [];
-  const lbRoundCount = 2 * (ubRounds - 1);
-
-  let lbSize = Math.max(1, Math.floor(upper[0].length / 2));
-  for (let lri = 0; lri < lbRoundCount; lri++) {
-    lower.push(Array.from({ length: lbSize }, () => emptyMatch(stageFormat(sf, lbRoundCount, lri, 'lower'))));
-    if (lri % 2 === 1) lbSize = Math.max(1, Math.floor(lbSize / 2));
-  }
-
-  return { upper, lower };
-}
-
-function seedLBDropIn(lower: BracketMatch[][], ubRi: number, loser: string, slotHint: number): void {
-  if (ubRi === 0) {
-    const m = lower[0]?.[Math.floor(slotHint / 2)];
-    if (m) {
-      if (!m.p1) m.p1 = loser;
-      else m.p2 = loser;
-    }
-  } else {
-    const lbRi = ubRi * 2 - 1;
-    const m = lower[lbRi]?.[slotHint];
-    if (m) m.p2 = loser;
-  }
-}
-
-// ─── Route handlers ───────────────────────────────────────────────────────────
+// ─── GET /api/bracket ─────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
@@ -220,64 +23,50 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ bracket: state.bracket, elimMode: state.elimMode });
 }
 
+// ─── POST /api/bracket ────────────────────────────────────────────────────────
+// actions: 'saveFormats' | 'generate' | 'seed'
+
 export async function POST(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  const _postAccess = await checkTournamentAccess(req, tid);
-  if (_postAccess instanceof NextResponse) return _postAccess;
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
+
   const body = await req.json();
-  const { elimMode, matchFormat = 'bo1', action = 'generate', stageFormats: sfBody } = body;
-  const fmt: 'bo1' | 'bo3' = matchFormat === 'bo3' ? 'bo3' : 'bo1';
+  const { elimMode, action = 'generate', stageFormats: sfBody } = body;
+
   const state = await getState(tid);
-  // Merge incoming stageFormats with stored ones (admin may send partial or full)
-  const storedSF = state.stageFormats ?? { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' };
-  const sf: import('@/lib/types').StageFormats = sfBody ? { ...storedSF, ...sfBody } : storedSF;
-  // Persist the stageFormats so future seeds/views stay in sync
+  const storedSF: StageFormats = state.stageFormats ?? { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' };
+  const sf: StageFormats = sfBody ? { ...storedSF, ...sfBody } : storedSF;
+
   if (sfBody) await updateState(s => ({ ...s, stageFormats: sf }), tid);
 
-  if (state.teams.length < 2) return NextResponse.json({ error: 'Need at least 2 teams' }, { status: 400 });
-
-  // ── action: 'saveFormats' — persist stageFormats without regenerating ─────
+  // ── saveFormats ────────────────────────────────────────────────────────────
   if (action === 'saveFormats') {
     await updateState(s => ({ ...s, stageFormats: sf }), tid);
     return NextResponse.json({ stageFormats: sf });
   }
 
-  // ── action: 'generate' — build empty skeleton, no teams placed ──────────────
-  if (action === 'generate') {
-    const teamCount = state.teams.length;
-    let bracket: Bracket;
+  if (state.teams.length < 2) {
+    return NextResponse.json({ error: 'Need at least 2 teams' }, { status: 400 });
+  }
 
-    if (elimMode === 'single') {
-      const size = nextPow2(teamCount);
-      const roundCount = Math.log2(size);
-      const r0: BracketMatch[] = Array.from({ length: size / 2 }, () => emptyMatch(stageFormat(sf, roundCount, 0, 'upper')));
-      const rounds: BracketMatch[][] = [r0];
-      let prev = r0; let genRi = 1;
-      while (prev.length > 1) {
-        const next: BracketMatch[] = [];
-        for (let i = 0; i < prev.length; i += 2) next.push(emptyMatch(stageFormat(sf, roundCount, genRi, 'upper')));
-        rounds.push(next); prev = next; genRi++;
-      }
-      const thirdPlace = teamCount >= 4 ? emptyMatch(sf.semiFinal) : undefined;
-      bracket = { type: 'single', upper: rounds, thirdPlace, champion: null };
-    } else {
-      const { upper: upperRaw, lower: lowerRaw } = buildDE(Array(state.teams.length).fill(''), sf);
-      upperRaw.forEach(r => r.forEach(m => { m.p1 = null; m.p2 = null; }));
-      lowerRaw.forEach(r => r.forEach(m => { m.p1 = null; m.p2 = null; }));
-      bracket = { type: 'double', upper: upperRaw, lower: lowerRaw, grandFinal: emptyMatch(sf.grandFinal), champion: null };
-    }
+  // ── generate — empty skeleton, no teams placed ─────────────────────────────
+  if (action === 'generate') {
+    const bracket: Bracket = elimMode === 'single'
+      ? buildEmptySE(state.teams.length, sf)
+      : buildEmptyDE(state.teams.length, sf);
 
     const next = await updateState(s => ({ ...s, bracket, elimMode, shuffleState: null }), tid);
     return NextResponse.json({ bracket: next.bracket });
   }
 
-  // ── action: 'seed' — shuffle teams into bracket + broadcast animation ───────
+  // ── seed — shuffle teams into bracket + broadcast animation ────────────────
   if (action === 'seed') {
-    const state2 = await getState(tid);
-    const B = state2.bracket;
+    const fresh = await getState(tid);
+    const B = fresh.bracket;
     if (!B) return NextResponse.json({ error: 'Generate bracket structure first' }, { status: 400 });
 
-    const names = shuffle(state2.teams.map(t => t.customName || t.name));
+    const names = shuffle(fresh.teams.map(t => t.customName || t.name));
     let seeded: Bracket;
 
     if (B.type === 'single') {
@@ -285,38 +74,32 @@ export async function POST(req: NextRequest) {
       const thirdPlace = names.length >= 4 ? emptyMatch(sf.semiFinal) : undefined;
       seeded = sweepBracket({ type: 'single', upper: upperRaw, thirdPlace, champion: null });
     } else {
-      const { upper: upperRaw, lower: lowerRaw } = buildDE(names, sf);
-      seeded = sweepBracket({ type: 'double', upper: upperRaw, lower: lowerRaw, grandFinal: emptyMatch(sf.grandFinal), champion: null });
+      const { upper, lower } = buildDE(names, sf);
+      seeded = sweepBracket({ type: 'double', upper, lower, grandFinal: emptyMatch(sf.grandFinal), champion: null });
     }
 
-    // Build reveal sequence: collect all p1/p2 slots that have a team name
+    // Build reveal sequence from all filled p1/p2 slots
     const reveals: ShuffleReveal[] = [];
     seeded.upper.forEach((round, ri) =>
       round.forEach((m, mi) => {
         if (m.p1) reveals.push({ slotKey: `m_upper_${ri}_${mi}_p1`, team: m.p1 });
         if (m.p2) reveals.push({ slotKey: `m_upper_${ri}_${mi}_p2`, team: m.p2 });
-      })
+      }),
     );
-    if (seeded.lower) {
-      seeded.lower.forEach((round, ri) =>
-        round.forEach((m, mi) => {
-          if (m.p1) reveals.push({ slotKey: `m_lower_${ri}_${mi}_p1`, team: m.p1 });
-          if (m.p2) reveals.push({ slotKey: `m_lower_${ri}_${mi}_p2`, team: m.p2 });
-        })
-      );
-    }
-    // Shuffle the reveal order for drama
+    seeded.lower?.forEach((round, ri) =>
+      round.forEach((m, mi) => {
+        if (m.p1) reveals.push({ slotKey: `m_lower_${ri}_${mi}_p1`, team: m.p1 });
+        if (m.p2) reveals.push({ slotKey: `m_lower_${ri}_${mi}_p2`, team: m.p2 });
+      }),
+    );
+
     const shuffledReveals = shuffle(reveals);
     const DELAY_MS = 180;
     const totalDuration = shuffledReveals.length * DELAY_MS + 800;
-    const startTime = Date.now();
+    const shuffleState = { startTime: Date.now(), delayMs: DELAY_MS, reveals: shuffledReveals };
 
-    const shuffleState = { startTime, delayMs: DELAY_MS, reveals: shuffledReveals };
-
-    // Write seeded bracket + shuffleState together
     const next = await updateState(s => ({ ...s, bracket: seeded, shuffleState }), tid);
 
-    // Schedule clearing shuffleState after animation completes
     setTimeout(async () => {
       await updateState(s => ({ ...s, shuffleState: null }), tid);
     }, totalDuration);
@@ -327,19 +110,30 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
 
+// ─── PATCH /api/bracket ───────────────────────────────────────────────────────
+// actions: 'undoMatch' | 'setElimMode' | (score update — no action field)
+
 export async function PATCH(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  const _patchAccess = await checkTournamentAccess(req, tid);
-  if (_patchAccess instanceof NextResponse) return _patchAccess;
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
+
   const body = await req.json();
   const { section, ri, mi, p1wins, p2wins, action, elimMode: newElimMode } = body;
 
-  if (action === 'undoMatch') {
-    const state = await getState(tid);
-    const B = state.bracket;
-    if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });
-    const bracket: Bracket = JSON.parse(JSON.stringify(B));
+  // ── setElimMode ────────────────────────────────────────────────────────────
+  if (action === 'setElimMode') {
+    const next = await updateState(s => ({ ...s, elimMode: newElimMode }), tid);
+    return NextResponse.json({ elimMode: next.elimMode });
+  }
 
+  const state = await getState(tid);
+  const B = state.bracket;
+  if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });
+  const bracket = cloneBracket(B);
+
+  // ── undoMatch ──────────────────────────────────────────────────────────────
+  if (action === 'undoMatch') {
     if (section === 'gf') {
       const gf = bracket.grandFinal;
       if (!gf) return NextResponse.json({ error: 'No grand final' }, { status: 400 });
@@ -354,17 +148,15 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ bracket: next.bracket });
     }
 
-    let rounds: BracketMatch[][] | undefined;
-    if (section === 'upper') rounds = bracket.upper;
-    else if (section === 'lower') rounds = bracket.lower;
+    const rounds: BracketMatch[][] | undefined =
+      section === 'upper' ? bracket.upper : section === 'lower' ? bracket.lower : undefined;
     if (!rounds) return NextResponse.json({ error: 'Invalid section' }, { status: 400 });
 
     const match = rounds[ri]?.[mi];
-    if (!match || !match.winner) return NextResponse.json({ error: 'Match not complete' }, { status: 400 });
+    if (!match?.winner) return NextResponse.json({ error: 'Match not complete' }, { status: 400 });
 
     const prevWinner = match.winner;
     const prevLoser = prevWinner === match.p1 ? match.p2 : match.p1;
-
     match.winner = null; match.score1 = 0; match.score2 = 0;
 
     const isLastRound = ri === rounds.length - 1;
@@ -391,18 +183,22 @@ export async function PATCH(req: NextRequest) {
     } else {
       if (section === 'upper') {
         if (bracket.type === 'single') bracket.champion = null;
-        else if (bracket.grandFinal) { bracket.grandFinal.p1 = null; bracket.grandFinal.winner = null; bracket.champion = null; }
+        else if (bracket.grandFinal) {
+          bracket.grandFinal.p1 = null; bracket.grandFinal.winner = null; bracket.champion = null;
+        }
       } else if (section === 'lower' && bracket.grandFinal) {
         bracket.grandFinal.p2 = null; bracket.grandFinal.winner = null; bracket.champion = null;
       }
     }
 
+    // Undo third-place seeding (SE only)
     if (bracket.type === 'single' && ri === rounds.length - 2 && bracket.thirdPlace) {
       if (mi % 2 === 0 && bracket.thirdPlace.p1 === prevLoser) bracket.thirdPlace.p1 = null;
       if (mi % 2 === 1 && bracket.thirdPlace.p2 === prevLoser) bracket.thirdPlace.p2 = null;
       bracket.thirdPlace.winner = null; bracket.thirdPlace.score1 = 0; bracket.thirdPlace.score2 = 0;
     }
 
+    // Undo LB drop-in (DE only)
     if (bracket.type === 'double' && section === 'upper' && prevLoser && bracket.lower) {
       if (ri === 0) {
         const m = bracket.lower[0]?.[Math.floor(mi / 2)];
@@ -420,17 +216,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ bracket: next.bracket });
   }
 
-  if (action === 'setElimMode') {
-    const next = await updateState(s => ({ ...s, elimMode: newElimMode }), tid);
-    return NextResponse.json({ elimMode: next.elimMode });
-  }
-
-  const state = await getState(tid);
-  const B = state.bracket;
-  if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });
-
-  const bracket: Bracket = JSON.parse(JSON.stringify(B));
-
+  // ── Score update ───────────────────────────────────────────────────────────
   if (section === 'gf') {
     const gf = bracket.grandFinal;
     if (!gf) return NextResponse.json({ error: 'No grand final' }, { status: 400 });
@@ -450,13 +236,13 @@ export async function PATCH(req: NextRequest) {
         else { gf.isReset = true; gf.resetScore1 = 0; gf.resetScore2 = 0; }
       }
     }
+
     const next = await updateState(s => ({ ...s, bracket }), tid);
     return NextResponse.json({ bracket: next.bracket });
   }
 
-  let rounds: BracketMatch[][] | undefined;
-  if (section === 'upper') rounds = bracket.upper;
-  else if (section === 'lower') rounds = bracket.lower;
+  const rounds: BracketMatch[][] | undefined =
+    section === 'upper' ? bracket.upper : section === 'lower' ? bracket.lower : undefined;
   if (!rounds) return NextResponse.json({ error: 'Invalid section' }, { status: 400 });
 
   const match = rounds[ri]?.[mi];
@@ -467,7 +253,7 @@ export async function PATCH(req: NextRequest) {
 
   const winner = resolveWinner(match);
   if (!winner || match.winner === winner) {
-    const next = await updateState(s => ({ ...s, bracket }));
+    const next = await updateState(s => ({ ...s, bracket }), tid);
     return NextResponse.json({ bracket: next.bracket });
   }
 
@@ -498,14 +284,13 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  if (bracket.type === 'single') {
-    const isSemiFinal = ri === rounds.length - 2;
-    if (isSemiFinal && loser && bracket.thirdPlace) {
-      if (mi % 2 === 0) bracket.thirdPlace.p1 = loser;
-      else bracket.thirdPlace.p2 = loser;
-    }
+  // Seed third place (SE semi-final losers)
+  if (bracket.type === 'single' && ri === rounds.length - 2 && loser && bracket.thirdPlace) {
+    if (mi % 2 === 0) bracket.thirdPlace.p1 = loser;
+    else bracket.thirdPlace.p2 = loser;
   }
 
+  // Seed LB drop-in (DE upper bracket losers)
   if (bracket.type === 'double' && section === 'upper' && loser && bracket.lower) {
     seedLBDropIn(bracket.lower, ri, loser, mi);
   }
@@ -517,28 +302,35 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ bracket: next.bracket });
 }
 
+// ─── PUT /api/bracket — third place match ─────────────────────────────────────
+
 export async function PUT(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  const _putAccess = await checkTournamentAccess(req, tid);
-  if (_putAccess instanceof NextResponse) return _putAccess;
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
+
   const { p1wins, p2wins } = await req.json();
   const state = await getState(tid);
-  const B = state.bracket;
-  if (!B || !B.thirdPlace) return NextResponse.json({ error: 'No 3rd place match' }, { status: 400 });
-  const bracket: Bracket = JSON.parse(JSON.stringify(B));
+  if (!state.bracket?.thirdPlace) return NextResponse.json({ error: 'No 3rd place match' }, { status: 400 });
+
+  const bracket = cloneBracket(state.bracket);
   const tp = bracket.thirdPlace!;
   tp.score1 = p1wins ?? tp.score1;
   tp.score2 = p2wins ?? tp.score2;
   const winner = resolveWinner(tp);
   if (winner) { tp.winner = winner; bracket.third = winner; }
+
   const next = await updateState(s => ({ ...s, bracket }), tid);
   return NextResponse.json({ bracket: next.bracket });
 }
 
+// ─── DELETE /api/bracket ──────────────────────────────────────────────────────
+
 export async function DELETE(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
-  const _deleteAccess = await checkTournamentAccess(req, tid);
-  if (_deleteAccess instanceof NextResponse) return _deleteAccess;
+  const access = await checkTournamentAccess(req, tid);
+  if (access instanceof NextResponse) return access;
+
   const next = await updateState(s => ({ ...s, bracket: null, stageMaps: {} }), tid);
   return NextResponse.json({ bracket: next.bracket });
 }

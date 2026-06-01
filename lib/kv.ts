@@ -1,5 +1,5 @@
 import { kv } from '@vercel/kv';
-import type { TournamentState, AdminAccount } from './types';
+import type { ServerState, AdminAccount, ClientState } from './types';
 
 // ─── Admin accounts ───────────────────────────────────────────────────────────
 const ADMIN_ACCOUNTS_KEY = 'admin:accounts';
@@ -7,7 +7,8 @@ const ADMIN_ACCOUNTS_KEY = 'admin:accounts';
 export async function listAdminAccounts(): Promise<AdminAccount[]> {
   try {
     return (await kv.get<AdminAccount[]>(ADMIN_ACCOUNTS_KEY)) ?? [];
-  } catch {
+  } catch (err) {
+    console.error('[kv] listAdminAccounts error:', err);
     return [];
   }
 }
@@ -70,7 +71,8 @@ export async function listTournaments(): Promise<TournamentMeta[]> {
     // Persist the backfill so this only runs once.
     await kv.set(REGISTRY_KEY, backfilled);
     return backfilled;
-  } catch {
+  } catch (err) {
+    console.error('[kv] listTournaments error:', err);
     return [];
   }
 }
@@ -128,7 +130,7 @@ function kvKey(tournamentId: string) {
 }
 
 // ─── Default state ─────────────────────────────────────────────────────────────
-export function defaultState(): TournamentState {
+export function defaultState(): ServerState {
   return {
     players: [],
     roster: [],
@@ -152,31 +154,42 @@ export function defaultState(): TournamentState {
   };
 }
 
+/**
+ * Strip server-only fields before sending state to any client.
+ * Use this in every GET/SSE handler instead of destructuring adminPwHash manually.
+ */
+export function safeState(s: ServerState): ClientState {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { adminPwHash: _pwHash, ownerAdminId: _ownerId, ...safe } = s;
+  return safe;
+}
+
 // ─── Read / write ──────────────────────────────────────────────────────────────
-export async function getState(tournamentId = 'default'): Promise<TournamentState> {
+export async function getState(tournamentId = 'default'): Promise<ServerState> {
   try {
-    const data = await kv.get<TournamentState>(kvKey(tournamentId));
+    const data = await kv.get<ServerState>(kvKey(tournamentId));
     if (!data) return defaultState();
     return { ...defaultState(), ...data };
-  } catch {
+  } catch (err) {
+    console.error('[kv] getState error:', err);
     return defaultState();
   }
 }
 
-export async function setState(state: TournamentState, tournamentId = 'default'): Promise<void> {
+export async function setState(state: ServerState, tournamentId = 'default'): Promise<void> {
   await kv.set(kvKey(tournamentId), state);
 }
 
 export async function updateState(
-  updater: (s: TournamentState) => TournamentState,
+  updater: (s: ServerState) => ServerState,
   tournamentId = 'default',
-): Promise<TournamentState> {
+): Promise<ServerState> {
   const KEY = kvKey(tournamentId);
   const MAX_RETRIES = 5;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const raw = await kv.get<TournamentState & { _v?: number }>(KEY);
-    const current: TournamentState = raw ? { ...defaultState(), ...raw } : defaultState();
+    const raw = await kv.get<ServerState & { _v?: number }>(KEY);
+    const current: ServerState = raw ? { ...defaultState(), ...raw } : defaultState();
     const version = raw?._v ?? 0;
     const next = { ...updater(current), _v: version + 1 };
 
@@ -200,9 +213,11 @@ export async function updateState(
 
     const result = await kv.eval(luaScript, [KEY], [JSON.stringify(next), String(version)]);
     if (result === 1) return next;
+    console.warn('[kv] updateState retry', attempt + 1, 'for', tournamentId);
     await new Promise(r => setTimeout(r, 10 + Math.random() * 40 * (attempt + 1)));
   }
 
+  console.error('[kv] updateState fallback after 5 retries for', tournamentId);
   const current = await getState(tournamentId);
   const next = updater(current);
   await setState(next, tournamentId);

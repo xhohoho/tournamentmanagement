@@ -1,10 +1,15 @@
 import { NextRequest } from 'next/server';
-import { getState } from '@/lib/kv';
+import { getState, safeState } from '@/lib/kv';
+import { createHash } from 'crypto';
 
 export const runtime = 'nodejs';
 
 const PUSH_INTERVAL_MS = 1500;
 const KEEPALIVE_MS = 25_000;
+
+function hashState(s: ReturnType<typeof safeState>): string {
+  return createHash('md5').update(JSON.stringify(s)).digest('hex');
+}
 
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
@@ -13,6 +18,7 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder();
+      let lastHash = '';
 
       const send = (data: string) => {
         if (closed) return;
@@ -24,19 +30,25 @@ export async function GET(req: NextRequest) {
         controller.enqueue(enc.encode(': keepalive\n\n'));
       };
 
-      try {
-        const state = await getState(tid);
-        const { adminPwHash: _, ...safe } = state;
-        send(JSON.stringify(safe));
-      } catch { /* ignore */ }
+      const pushIfChanged = async () => {
+        if (closed) return;
+        try {
+          const state = await getState(tid);
+          const safe = safeState(state);
+          const hash = hashState(safe);
+          if (hash !== lastHash) {
+            lastHash = hash;
+            send(JSON.stringify(safe));
+          }
+        } catch { /* ignore */ }
+      };
+
+      // Send initial state immediately.
+      await pushIfChanged();
 
       const pushInterval = setInterval(async () => {
         if (closed) { clearInterval(pushInterval); return; }
-        try {
-          const state = await getState(tid);
-          const { adminPwHash: _, ...safe } = state;
-          send(JSON.stringify(safe));
-        } catch { /* ignore */ }
+        await pushIfChanged();
       }, PUSH_INTERVAL_MS);
 
       const kaInterval = setInterval(keepalive, KEEPALIVE_MS);

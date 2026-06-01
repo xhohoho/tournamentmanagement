@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getState, updateState } from '@/lib/kv';
+import { getState, updateState, safeState } from '@/lib/kv';
 import { parseStageMaps } from '@/lib/utils';
 import { checkTournamentAccess } from '@/lib/tournamentAccess';
 
@@ -38,10 +38,19 @@ export async function DELETE(req: NextRequest) {
   if (access instanceof NextResponse) return access;
   const { name } = await req.json();
   
-  const next = await updateState(s => ({
-    ...s,
-    maps: s.maps.filter(m => m !== name),
-  }), tid);
+  const next = await updateState(s => {
+    // Also clean up any stageMaps entries that reference the deleted map.
+    const stageMaps: Record<string, string[]> = {};
+    for (const [key, val] of Object.entries(s.stageMaps)) {
+      const filtered = (val as string[]).filter(m => m !== name);
+      if (filtered.length > 0) stageMaps[key] = filtered;
+    }
+    return {
+      ...s,
+      maps: s.maps.filter(m => m !== name),
+      stageMaps,
+    };
+  }, tid);
   
   return NextResponse.json({ maps: next.maps, stageMaps: next.stageMaps });
 }

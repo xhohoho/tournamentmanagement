@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { updateState } from '@/lib/kv';
 import { randomBytes } from 'crypto';
 import type { ChatMessage } from '@/lib/types';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { verifyAdminToken } from '@/lib/auth';
 
 const MAX_MESSAGES = 200;
 const MAX_TEXT_LEN = 300;

@@ -1,78 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
-import { listAdminAccounts, saveAdminAccount } from '@/lib/kv';
+import { listAdminAccounts, saveAdminAccount, deleteAdminAccount } from '@/lib/kv';
 import type { AdminAccount } from '@/lib/types';
-import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
-import { promisify } from 'util';
+import { randomBytes } from 'crypto';
+import {
+  hashPassword,
+  verifyPassword,
+  verifyAdminToken,
+  createAdminToken,
+  revokeAdminToken,
+} from '@/lib/auth';
 
-const scryptAsync = promisify(scrypt);
-
-// ── Token TTL: 8 hours in seconds ─────────────────────────────────────────
-const TOKEN_TTL = 60 * 60 * 8;
-const TOKEN_PREFIX = 'admin:token:';
-
-// ── Password helpers ──────────────────────────────────────────────────────
-
-export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16).toString('hex');
-  const hash = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${salt}:${hash.toString('hex')}`;
-}
-
-export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  if (!stored.includes(':')) return password === stored; // legacy plaintext
-  const [salt, hashHex] = stored.split(':');
-  const storedHash = Buffer.from(hashHex, 'hex');
-  const derived = (await scryptAsync(password, salt, 64)) as Buffer;
-  return storedHash.length === derived.length && timingSafeEqual(storedHash, derived);
-}
-
-// ── Token helpers ─────────────────────────────────────────────────────────
-// Tokens now carry the adminId so any route can identify who is acting.
-// KV key: admin:token:<token>  value: <adminId>
-
-export async function verifyAdminToken(req: NextRequest): Promise<string | null> {
-  // Returns the adminId if valid, null otherwise.
-  const token = req.headers.get('X-Admin-Token');
-  if (!token) return null;
-  try {
-    const adminId = await kv.get<string>(`${TOKEN_PREFIX}${token}`);
-    return adminId ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Convenience — returns true/false for routes that only need auth check. */
-export async function isAdminTokenValid(req: NextRequest): Promise<boolean> {
-  return (await verifyAdminToken(req)) !== null;
-}
-
-// Reverse mapping: admin:currenttoken:<adminId> → <token>
-// Lets us revoke the previous token when the same admin logs in again.
-const CURRENT_TOKEN_PREFIX = 'admin:currenttoken:';
-
-async function createToken(adminId: string): Promise<string> {
-  // Revoke any existing token for this admin before issuing a new one.
-  const reverseKey = `${CURRENT_TOKEN_PREFIX}${adminId}`;
-  const oldToken = await kv.get<string>(reverseKey);
-  if (oldToken) await kv.del(`${TOKEN_PREFIX}${oldToken}`);
-
-  const token = randomBytes(32).toString('hex');
-  await kv.set(`${TOKEN_PREFIX}${token}`, adminId, { ex: TOKEN_TTL });
-  await kv.set(reverseKey, token, { ex: TOKEN_TTL });
-  return token;
-}
-
-async function revokeToken(token: string): Promise<void> {
-  // Also clean up the reverse mapping on explicit logout.
-  const adminId = await kv.get<string>(`${TOKEN_PREFIX}${token}`);
-  await kv.del(`${TOKEN_PREFIX}${token}`);
-  if (adminId) await kv.del(`${CURRENT_TOKEN_PREFIX}${adminId}`);
-}
-
-// ── Seed default admin if none exist ─────────────────────────────────────
-// On a fresh deploy with no accounts, we bootstrap one from env vars so the
+// ── Seed default admin if none exist ─────────────────────────────────────────
+// On a fresh deploy with no accounts, bootstrap one from env vars so the
 // operator isn't locked out. Set ADMIN_NAME and ADMIN_PASSWORD in Vercel.
 async function ensureDefaultAdmin(): Promise<void> {
   const existing = await listAdminAccounts();
@@ -90,7 +29,7 @@ async function ensureDefaultAdmin(): Promise<void> {
   await saveAdminAccount(account);
 }
 
-// ── Route handlers ────────────────────────────────────────────────────────
+// ── Route handlers ────────────────────────────────────────────────────────────
 
 /**
  * POST /api/admin/auth
@@ -117,7 +56,7 @@ export async function POST(req: NextRequest) {
   if (!account.pwHash.includes(':')) {
     await saveAdminAccount({ ...account, pwHash: await hashPassword(password) });
   }
-  const token = await createToken(account.adminId);
+  const token = await createAdminToken(account.adminId);
   return NextResponse.json({
     ok: true,
     token,
@@ -128,8 +67,7 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * GET /api/admin/auth/accounts — list all admin accounts (super admin only)
- * We handle this on the same route via GET for simplicity.
+ * GET /api/admin/auth — list all admin accounts (super admin only)
  */
 export async function GET(req: NextRequest) {
   const adminId = await verifyAdminToken(req);
@@ -137,7 +75,6 @@ export async function GET(req: NextRequest) {
   const accounts = await listAdminAccounts();
   const me = accounts.find(a => a.adminId === adminId);
   if (!me?.isSuperAdmin) return NextResponse.json({ ok: false, error: 'Super admin required' }, { status: 403 });
-  // Never return pwHash to client
   return NextResponse.json({ ok: true, accounts: accounts.map(({ pwHash: _, ...rest }) => rest) });
 }
 
@@ -158,7 +95,6 @@ export async function PATCH(req: NextRequest) {
   const { action } = body as { action: string };
 
   if (action === 'create') {
-    // Only super admins can create new accounts
     if (!caller?.isSuperAdmin) return NextResponse.json({ ok: false, error: 'Super admin required' }, { status: 403 });
     const { name, password, isSuperAdmin } = body as { name: string; password: string; isSuperAdmin?: boolean };
     if (!name?.trim() || !password?.trim()) {
@@ -181,14 +117,12 @@ export async function PATCH(req: NextRequest) {
     if (!caller?.isSuperAdmin) return NextResponse.json({ ok: false, error: 'Super admin required' }, { status: 403 });
     const { adminId: targetId } = body as { adminId: string };
     if (targetId === callerId) return NextResponse.json({ ok: false, error: 'Cannot delete yourself' }, { status: 400 });
-    const { deleteAdminAccount } = await import('@/lib/kv');
     const next = await deleteAdminAccount(targetId);
     return NextResponse.json({ ok: true, accounts: next.map(({ pwHash: _, ...rest }) => rest) });
   }
 
   if (action === 'changePassword') {
     const { adminId: targetId, newPassword } = body as { adminId: string; newPassword: string };
-    // Admins can only change their own password, super admins can change anyone's
     if (targetId !== callerId && !caller?.isSuperAdmin) {
       return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 });
     }
@@ -202,9 +136,11 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: false, error: 'Unknown action' }, { status: 400 });
 }
 
-// DELETE /api/admin/auth — logout (revoke current token)
+/**
+ * DELETE /api/admin/auth — logout (revoke current token)
+ */
 export async function DELETE(req: NextRequest) {
   const token = req.headers.get('X-Admin-Token');
-  if (token) await revokeToken(token);
+  if (token) await revokeAdminToken(token);
   return NextResponse.json({ ok: true });
 }

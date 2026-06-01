@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, updateState } from '@/lib/kv';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { verifyAdminToken } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';

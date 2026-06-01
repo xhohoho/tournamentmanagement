@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateState } from '@/lib/kv';
+import { getState, updateState } from '@/lib/kv';
 import { checkTournamentAccess } from '@/lib/tournamentAccess';
 import type { FFAMatch, FFAMapInfo, FFAPlayerScore, FFAWinner } from '@/lib/types';
 
@@ -9,7 +9,6 @@ function makeId() {
 
 // GET /api/ffa?t=xxx — returns ffa state
 export async function GET(req: NextRequest) {
-  const { getState } = await import('@/lib/kv');
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   const state = await getState(tid);
   return NextResponse.json({ ffa: state.ffa });

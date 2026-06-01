@@ -12,6 +12,7 @@ import { FFATab } from '@/components/FFATab';
 import { ChatPanel } from '@/components/ChatPanel';
 import BottomTicker from '@/components/BottomTicker';
 import { useTourney } from '@/lib/context';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import type { TabId } from '@/lib/types';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
@@ -21,6 +22,61 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'maps',    icon: '🗺',  label: 'Maps'     },
   { id: 'ffa',     icon: '🎮', label: 'FFA'      },
 ];
+
+// ─── TickerEditModal ──────────────────────────────────────────────────────────
+function TickerEditModal({ open, tickerText, onClose, onSave }: {
+  open: boolean;
+  tickerText: string;
+  onClose: () => void;
+  onSave: (text: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(tickerText);
+  const [saving, setSaving] = useState(false);
+
+  // Sync draft when modal opens with fresh tickerText.
+  useEffect(() => { if (open) setDraft(tickerText); }, [open, tickerText]);
+
+  if (!open) return null;
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave(draft);
+    setSaving(false);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="t-surface border t-border rounded-2xl p-7 w-[460px] max-w-[95vw] animate-scale-in shadow-xl">
+        <h2 className="font-['Bebas_Neue'] text-3xl tracking-widest mb-1 t-text">📢 TICKER TEXT</h2>
+        <p className="t-muted text-sm mb-5">Edit the scrolling message shown at the bottom of the page.</p>
+        <textarea
+          className="w-full t-elevated border t-border-mid rounded-xl px-4 py-3 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors resize-none"
+          rows={3}
+          placeholder="Enter ticker text…"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave(); }}
+        />
+        <div className="flex gap-3 mt-4">
+          <button
+            className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-bold text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+            onClick={onClose}
+          >Cancel</button>
+          <button
+            className="flex-1 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer"
+            style={{ background: 'var(--accent)' }}
+            onClick={handleSave}
+            disabled={saving || !draft.trim()}
+          >{saving ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+TickerEditModal.displayName = 'TickerEditModal';
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
@@ -36,10 +92,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
   const [dark, setDark] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
-
   const [tickerEditOpen, setTickerEditOpen] = useState(false);
-  const [tickerDraft, setTickerDraft] = useState('');
-  const [tickerSaving, setTickerSaving] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
@@ -55,15 +108,6 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
     if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
     await resetAll();
     setResetConfirm(false);
-  };
-
-  const openTickerEdit = () => { setTickerDraft(tickerText); setTickerEditOpen(true); };
-
-  const saveTickerText = async () => {
-    setTickerSaving(true);
-    await setTickerText(tickerDraft);
-    setTickerSaving(false);
-    setTickerEditOpen(false);
   };
 
   // isAdmin from context is already (rawAdmin && !previewAsUser) — false during preview.
@@ -118,7 +162,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
               {isAdmin && (
                 <>
                   <button
-                    onClick={openTickerEdit}
+                    onClick={() => setTickerEditOpen(true)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer"
                   >
                     📢 Ticker
@@ -208,74 +252,41 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
       <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
       <ChatPanel open={chatOpen} onToggle={() => setChatOpen(o => !o)} />
 
-      {/* Ticker edit modal */}
-      {tickerEditOpen && (
-        <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50"
-          onClick={(e) => { if (e.target === e.currentTarget) setTickerEditOpen(false); }}
-        >
-          <div className="t-surface border t-border rounded-2xl p-7 w-[460px] max-w-[95vw] animate-scale-in shadow-xl">
-            <h2 className="font-['Bebas_Neue'] text-3xl tracking-widest mb-1 t-text">📢 TICKER TEXT</h2>
-            <p className="t-muted text-sm mb-5">Edit the scrolling message shown at the bottom of the page.</p>
-            <textarea
-              className="w-full t-elevated border t-border-mid rounded-xl px-4 py-3 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors resize-none"
-              rows={3}
-              placeholder="Enter ticker text…"
-              value={tickerDraft}
-              onChange={e => setTickerDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveTickerText(); }}
-            />
-            <div className="flex gap-3 mt-4">
-              <button
-                className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-bold text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
-                onClick={() => setTickerEditOpen(false)}
-              >Cancel</button>
-              <button
-                className="flex-1 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer"
-                style={{ background: 'var(--accent)' }}
-                onClick={saveTickerText}
-                disabled={tickerSaving || !tickerDraft.trim()}
-              >{tickerSaving ? 'Saving…' : 'Save'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TickerEditModal
+        open={tickerEditOpen}
+        tickerText={tickerText}
+        onClose={() => setTickerEditOpen(false)}
+        onSave={async (text) => { await setTickerText(text); setTickerEditOpen(false); }}
+      />
     </div>
   );
 }
+MainApp.displayName = 'MainApp';
 
 // ─── Root page — manages picker → provider → app ──────────────────────────────
 export default function Home() {
   const [tournamentId, setTournamentId] = useState<string | null>(null);
-  const [pickerAdminToken, setPickerAdminToken] = useState<string | undefined>(undefined);
-  const [pickerAdminInfo, setPickerAdminInfo] = useState<{ adminId: string; name: string; isSuperAdmin: boolean } | null>(null);
+
+  // Single source of truth for admin session — useAdminSession reads from localStorage on init.
+  const session = useAdminSession();
 
   useEffect(() => {
     const saved = localStorage.getItem('lastTournamentId');
     if (saved) setTournamentId(saved);
-
-    // Restore admin session from localStorage on page load.
-    try {
-      const token = localStorage.getItem('adminToken');
-      const raw   = localStorage.getItem('adminInfo');
-      if (token && raw) {
-        setPickerAdminToken(token);
-        setPickerAdminInfo(JSON.parse(raw));
-      }
-    } catch { /* ignore malformed data */ }
   }, []);
 
   const handleSelect = (id: string, adminToken?: string, adminInfo?: { adminId: string; name: string; isSuperAdmin: boolean }) => {
     localStorage.setItem('lastTournamentId', id);
-    setPickerAdminToken(adminToken);
-    setPickerAdminInfo(adminInfo ?? null);
+    // If the picker logged in (e.g. via SuperAdminPanel), sync to session hook.
+    if (adminToken && adminInfo) {
+      localStorage.setItem('adminToken', adminToken);
+      localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
+    }
     setTournamentId(id);
   };
 
   const handleChangeTournament = () => {
     localStorage.removeItem('lastTournamentId');
-    setPickerAdminToken(undefined);
-    setPickerAdminInfo(null);
     setTournamentId(null);
   };
 
@@ -284,7 +295,11 @@ export default function Home() {
   }
 
   return (
-    <TourneyProvider tournamentId={tournamentId} initialAdminToken={pickerAdminToken} initialAdminInfo={pickerAdminInfo}>
+    <TourneyProvider
+      tournamentId={tournamentId}
+      initialAdminToken={session.adminToken ?? undefined}
+      initialAdminInfo={session.adminInfo}
+    >
       <MainApp tournamentId={tournamentId} onChangeTournament={handleChangeTournament} />
     </TourneyProvider>
   );

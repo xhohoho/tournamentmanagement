@@ -13,18 +13,10 @@ const COL_W = CARD_W + COL_GAP;
 const ROW_GAP = 28;   // vertical gap between cards in round 0
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
-/**
- * Vertical spacing between card tops for a given bracket column.
- * Column 0 has base spacing; each subsequent column doubles it.
- */
 function colSpacing(colIdx: number): number {
   return (CARD_H + ROW_GAP) * Math.pow(2, colIdx);
 }
 
-/**
- * Top-Y of a card in the UPPER bracket grid (both SE and the upper half of DE).
- * All cards share the same coordinate system — callers add an offsetY later.
- */
 function ubCardTop(colIdx: number, mi: number): number {
   if (colIdx === 0) return mi * colSpacing(0);
   const aTop = ubCardTop(colIdx - 1, mi * 2);
@@ -32,23 +24,15 @@ function ubCardTop(colIdx: number, mi: number): number {
   return (aTop + bTop) / 2;
 }
 
-/**
- * Top-Y of a card in the LOWER bracket grid (independent origin).
- * Lower bracket columns alternate: even = consolidation (halves), odd = drop-in (same count).
- */
 function lbCardTop(colIdx: number, mi: number): number {
   if (colIdx === 0) return mi * colSpacing(0);
-  if (colIdx % 2 === 1) {
-    // Drop-in round: same match count as previous LB round — Y is the same
-    return lbCardTop(colIdx - 1, mi);
-  }
-  // Consolidation round: halves count — centre between the two feeders
+  if (colIdx % 2 === 1) return lbCardTop(colIdx - 1, mi);
   const aTop = lbCardTop(colIdx - 1, mi * 2);
   const bTop = lbCardTop(colIdx - 1, mi * 2 + 1);
   return (aTop + bTop) / 2;
 }
 
-// ─── Trophy sparkle (injected once) ──────────────────────────────────────────
+// ─── Trophy + ghost shimmer animation (injected once) ────────────────────────
 if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-style')) {
   const s = document.createElement('style');
   s.id = 'trophy-anim-style';
@@ -56,11 +40,39 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
     @keyframes trophy-spin { from { transform: rotate(-12deg); } to { transform: rotate(12deg); } }
     @keyframes sparkle { 0%,100% { opacity:0; transform:scale(0.4); } 50% { opacity:1; transform:scale(1); } }
     @keyframes slot-pop { 0% { opacity:0; transform:scale(0.7) translateY(4px); } 60% { transform:scale(1.08) translateY(-1px); } 100% { opacity:1; transform:scale(1) translateY(0); } }
+    @keyframes ghost-pulse { 0%,100% { opacity:0.45; } 50% { opacity:0.7; } }
     .trophy-spin { display:inline-block; animation: trophy-spin 0.7s ease-in-out infinite alternate; }
     .sparkle { position:absolute; font-size:10px; animation: sparkle 1.2s ease-in-out infinite; }
     .slot-pop { animation: slot-pop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+    .ghost-card { animation: ghost-pulse 2s ease-in-out infinite; }
   `;
   document.head.appendChild(s);
+}
+
+// ─── GhostMatchCard — shown when bracket exists but teams not yet shuffled in ─
+function GhostMatchCard({ slotIdx }: { slotIdx: number }) {
+  return (
+    <div
+      className="ghost-card border border-dashed rounded-xl overflow-hidden flex flex-col"
+      style={{ width: CARD_W, height: CARD_H, borderColor: 'var(--border-mid)', background: 'var(--bg-elevated)', opacity: 0.55 }}
+    >
+      {[0, 1].map(row => (
+        <div
+          key={row}
+          className="flex items-center px-3 border-b"
+          style={{ height: 36, borderColor: 'var(--border)', borderBottomStyle: row === 0 ? 'solid' : 'none' }}
+        >
+          <div className="h-2.5 rounded-full" style={{ width: row === 0 ? 80 : 64, background: 'var(--border-mid)' }} />
+        </div>
+      ))}
+      <div
+        className="flex items-center justify-center h-7 border-t"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+      >
+        <span className="font-['DM_Mono'] text-[9px]" style={{ color: 'var(--text-dim)' }}>Match {slotIdx + 1}</span>
+      </div>
+    </div>
+  );
 }
 
 // ─── PlayerRow ────────────────────────────────────────────────────────────────
@@ -236,6 +248,79 @@ function MatchCard({
   );
 }
 
+// ─── StepIndicator — shows Generate → Shuffle progress bar ──────────────────
+function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
+  const steps = [
+    { n: 1, label: 'Format' },
+    { n: 2, label: 'Generate' },
+    { n: 3, label: 'Shuffle' },
+  ];
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      {steps.map((s, i) => {
+        const done = step > s.n;
+        const active = step === s.n;
+        return (
+          <div key={s.n} className="flex items-center gap-1">
+            <div className="flex items-center gap-1">
+              <div
+                className="w-4 h-4 rounded-full flex items-center justify-center font-['DM_Mono'] text-[9px] font-bold shrink-0"
+                style={{
+                  background: done ? 'var(--accent-green)' : active ? 'var(--accent)' : 'var(--bg-elevated)',
+                  color: done || active ? '#fff' : 'var(--text-dim)',
+                  border: done || active ? 'none' : '1px solid var(--border-mid)',
+                }}
+              >
+                {done ? '✓' : s.n}
+              </div>
+              <span
+                className="font-['DM_Mono'] text-[10px]"
+                style={{ color: active ? 'var(--text)' : done ? 'var(--accent-green)' : 'var(--text-dim)' }}
+              >{s.label}</span>
+            </div>
+            {i < steps.length - 1 && (
+              <div className="w-5 h-px mx-1" style={{ background: step > s.n ? 'var(--accent-green)' : 'var(--border-mid)' }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── GhostBracketOverlay — shown over the canvas when not yet seeded ─────────
+function GhostBracketOverlay({ onShuffle, seeding, isAdmin }: {
+  onShuffle: () => void; seeding: boolean; isAdmin: boolean;
+}) {
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-xl z-10"
+      style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
+    >
+      <div className="flex flex-col items-center gap-2 text-center px-6">
+        <div className="font-['Bebas_Neue'] text-2xl tracking-widest" style={{ color: 'var(--accent-green)' }}>
+          🏗️ Structure Ready
+        </div>
+        <p className="font-['DM_Mono'] text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
+          {isAdmin
+            ? 'Bracket skeleton is set. Shuffle teams in to start the draw.'
+            : 'Bracket structure is ready. Waiting for admin to shuffle teams in.'}
+        </p>
+      </div>
+      {isAdmin && (
+        <button
+          onClick={onShuffle}
+          disabled={seeding}
+          className="px-6 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm text-white transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          style={{ background: 'var(--accent-green)', boxShadow: '0 0 24px rgba(34,184,98,0.35)' }}
+        >
+          {seeding ? '🎲 Shuffling…' : '🎲 Shuffle Teams In'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── BracketTab ────────────────────────────────────────────────────────────────
 export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
@@ -243,10 +328,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [generating, setGenerating] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
-  // localSF and localElim are seeded once from context when loading finishes,
-  // then owned entirely by this component. SSE never pushes stageFormats or
-  // elimMode (context.tsx guards them with `if (!fromSSE)`), so no echo-guard
-  // refs are needed.
   const [localSF, setLocalSF] = useState(stageFormats);
   const [localElim, setLocalElim] = useState<'single' | 'double'>(elimMode);
   const seeded = useRef(false);
@@ -273,8 +354,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   }, [bracket, localElim, setElimMode]);
 
   // ── Shuffle reveal animation ──────────────────────────────────────────────
-  // revealedSlots: set of slotKeys currently visible. '__all__' = show everything.
-  // Driven purely from the seedBracket() API response — never touched by SSE.
   const [revealedSlots, setRevealedSlots] = useState<Set<string>>(() => new Set(['__all__']));
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -296,6 +375,16 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const isSlotRevealed = (slotKey: string) =>
     revealedSlots.has('__all__') || revealedSlots.has(slotKey);
 
+  const handleShuffle = async () => {
+    if (!isAdmin || seeding) return;
+    setErr('');
+    setSeeding(true);
+    const r = await seedBracket(localSF);
+    setSeeding(false);
+    if (r?.error) setErr(r.error);
+    else if (r?.shuffleState) runRevealAnimation(r.shuffleState.reveals, r.shuffleState.delayMs);
+  };
+
   if (loading) return (
     <div className="flex flex-col gap-4 py-4">
       <div className="h-10 w-36 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
@@ -308,11 +397,19 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const hasBracket = !!bracket;
   const isSeeded = hasBracket && !!bracket?.upper[0]?.some(m => m.p1 || m.p2);
 
+  // Step: 1 = choose format, 2 = generated (not seeded), 3 = seeded
+  const currentStep: 1 | 2 | 3 = !hasBracket ? 1 : !isSeeded ? 2 : 3;
+
   return (
     <div className="flex-1 flex flex-col w-full py-4 gap-4 min-h-0 relative">
-      <div>
-        <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Bracket</h1>
-        <p className="font-['DM_Mono'] text-xs t-muted">{isAdmin ? 'Pick a format · Generate structure · Shuffle teams in · Click score numbers to edit' : 'View only — admin required to edit'}</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Bracket</h1>
+          <p className="font-['DM_Mono'] text-xs t-muted">
+            {isAdmin ? 'Pick a format · Generate structure · Shuffle teams in · Click scores to edit' : 'View only — admin required to edit'}
+          </p>
+        </div>
+        {isAdmin && <StepIndicator step={currentStep} />}
       </div>
 
       {isAdmin && (
@@ -330,7 +427,9 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
                 </div>
               ))}
             </div>
-            <div className="h-8 w-px" style={{ background: 'var(--border-mid)' }} />
+
+            <div className="h-8 w-px shrink-0" style={{ background: 'var(--border-mid)' }} />
+
             {/* Per-stage format picker */}
             <div className="flex flex-col gap-1.5">
               <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim mb-0.5">Match Format</div>
@@ -360,33 +459,97 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
                 </div>
               ))}
             </div>
-            <div className="flex items-center gap-2 ml-auto shrink-0">
+
+            <div className="flex items-center gap-2 ml-auto shrink-0 flex-wrap">
               {!hasBracket ? (
-                <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-red)' }} onClick={async () => { if (!isAdmin || generating) return; setErr(''); setGenerating(true); const r = await generateBracket(localSF); setGenerating(false); if (r?.error) setErr(r.error); }} disabled={!hasTeams || generating}>{generating ? '⏳ Generating…' : '⚡ Generate Bracket'}</button>
+                <button
+                  className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+                  style={{ background: 'var(--accent-red)' }}
+                  onClick={async () => {
+                    if (!isAdmin || generating) return;
+                    setErr('');
+                    setGenerating(true);
+                    const r = await generateBracket(localSF);
+                    setGenerating(false);
+                    if (r?.error) setErr(r.error);
+                  }}
+                  disabled={!hasTeams || generating}
+                >
+                  {generating ? '⏳ Generating…' : '⚡ Generate Bracket'}
+                </button>
               ) : (
                 <>
-                  <button className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap" style={{ background: 'var(--accent-green)' }} onClick={async () => { if (!isAdmin || seeding) return; setErr(''); setSeeding(true); const r = await seedBracket(localSF); setSeeding(false); if (r?.error) setErr(r.error); else if (r?.shuffleState) runRevealAnimation(r.shuffleState.reveals, r.shuffleState.delayMs); }} disabled={seeding}>{seeding ? '🎲 Shuffling…' : '🎲 Shuffle Teams'}</button>
-                  <button className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap" onClick={resetBracket}>Reset Bracket</button>
+                  {/* Shuffle button — primary CTA when structure exists but not seeded */}
+                  <button
+                    className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+                    style={{
+                      background: isSeeded ? 'var(--bg-elevated)' : 'var(--accent-green)',
+                      color: isSeeded ? 'var(--text)' : '#fff',
+                      border: isSeeded ? '1px solid var(--border-mid)' : 'none',
+                      boxShadow: !isSeeded ? '0 0 16px rgba(34,184,98,0.3)' : 'none',
+                    }}
+                    onClick={handleShuffle}
+                    disabled={seeding}
+                  >
+                    {seeding ? '🎲 Shuffling…' : isSeeded ? '🔀 Re-Shuffle' : '🎲 Shuffle Teams'}
+                  </button>
+                  <button
+                    className="px-4 py-2 font-['DM_Mono'] text-xs border t-border-mid t-muted t-elevated rounded-xl transition-colors cursor-pointer hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] whitespace-nowrap"
+                    onClick={resetBracket}
+                  >Reset Bracket</button>
                 </>
               )}
             </div>
           </div>
+
           {!hasTeams && <p className="font-['DM_Mono'] text-[11px] mt-2" style={{ color: 'var(--accent-red)' }}>⚠ Form teams first.</p>}
-          {hasBracket && <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">Shuffle to randomise teams · Reset to clear the bracket.</p>}
+          {hasBracket && !isSeeded && isAdmin && (
+            <p className="font-['DM_Mono'] text-[10px] mt-2" style={{ color: 'var(--accent-green)' }}>
+              ✓ Structure generated — click Shuffle Teams to draw matchups.
+            </p>
+          )}
+          {hasBracket && isSeeded && (
+            <p className="font-['DM_Mono'] text-[10px] t-dim mt-2">Re-Shuffle to re-randomise teams · Reset to clear the bracket.</p>
+          )}
           {err && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-red)' }}>{err}</p>}
         </div>
       )}
 
+      {/* ── Bracket display ──────────────────────────────────────────────── */}
       {bracket ? (
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          <BracketDisplay bracket={bracket} isAdmin={isAdmin} onScore={updateScore} onThirdPlace={updateThirdPlace} onUndo={undoMatch} isSlotRevealed={isSlotRevealed} />
+          <BracketDisplay
+            bracket={bracket}
+            isAdmin={isAdmin}
+            isSeeded={isSeeded}
+            onScore={updateScore}
+            onThirdPlace={updateThirdPlace}
+            onUndo={undoMatch}
+            isSlotRevealed={isSlotRevealed}
+            onShuffle={handleShuffle}
+            seeding={seeding}
+          />
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="font-['DM_Mono'] text-sm t-dim">{isAdmin ? 'Pick a format and click Generate.' : 'Waiting for admin to generate the bracket.'}</p>
+        /* ── No bracket yet — pre-generate placeholder ──────────────── */
+        <div className="flex-1 flex flex-col items-center justify-center gap-5">
+          {/* Ghost skeleton preview */}
+          <div className="flex gap-4 opacity-30 pointer-events-none select-none">
+            {[4, 2, 1].map((count, colIdx) => (
+              <div key={colIdx} className="flex flex-col" style={{ gap: colSpacing(colIdx) - CARD_H }}>
+                {Array.from({ length: count }).map((_, mi) => (
+                  <GhostMatchCard key={mi} slotIdx={mi} />
+                ))}
+              </div>
+            ))}
+          </div>
+          <p className="font-['DM_Mono'] text-sm t-dim">
+            {isAdmin ? 'Configure format above and click Generate.' : 'Waiting for admin to generate the bracket.'}
+          </p>
         </div>
       )}
 
+      {/* ── Spin results panel ──────────────────────────────────────────── */}
       {hasBracket && spinResults.length > 0 && (
         <div className="absolute bottom-6 right-6 t-surface border t-border rounded-xl shadow-2xl w-56 z-50 flex flex-col max-h-[50vh]">
           <div className="p-3 border-b t-border font-['Bebas_Neue'] text-lg tracking-widest bg-[var(--bg-elevated)] rounded-t-xl text-[var(--accent-gold)]">🎯 Spin Queue</div>
@@ -406,34 +569,54 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
 }
 
 // ─── BracketDisplay — top-level router ───────────────────────────────────────
-function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo, isSlotRevealed }: {
-  bracket: Bracket; isAdmin: boolean;
+function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onUndo, isSlotRevealed, onShuffle, seeding }: {
+  bracket: Bracket; isAdmin: boolean; isSeeded: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isSlotRevealed: (slotKey: string) => boolean;
+  onShuffle: () => void;
+  seeding: boolean;
 }) {
   const typeLabel = bracket.type === 'single' ? 'Single Elim' : 'Double Elim';
 
   return (
     <>
-      <div className="t-surface border t-border rounded-xl p-5 shrink-0">
+      <div className="t-surface border t-border rounded-xl p-5 shrink-0" style={{ position: 'relative' }}>
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
           {bracket.type === 'single' ? 'Bracket' : 'Tournament Bracket'}
           <div className="flex gap-2">
             <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${bracket.type === 'single' ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>{typeLabel}</span>
+            {!isSeeded && (
+              <span className="text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase bg-[rgba(34,184,98,0.1)] text-[var(--accent-green)] border-[rgba(34,184,98,0.3)]">
+                PENDING DRAW
+              </span>
+            )}
           </div>
         </div>
-        <div className="overflow-x-auto overflow-y-visible pb-4">
+
+        {/* Ghost overlay when bracket exists but teams not yet drawn */}
+        {!isSeeded && (
+          <GhostBracketOverlay
+            onShuffle={onShuffle}
+            seeding={seeding}
+            isAdmin={isAdmin}
+          />
+        )}
+
+        <div
+          className="overflow-x-auto overflow-y-visible pb-4"
+          style={{ filter: isSeeded ? 'none' : 'blur(1px)', transition: 'filter 0.3s', pointerEvents: isSeeded ? 'auto' : 'none' }}
+        >
           {bracket.type === 'single'
-            ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
-            : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
+            ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin && isSeeded} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
+            : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin && isSeeded} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
           }
         </div>
       </div>
 
       {/* 3rd place — single elim only */}
-      {bracket.type === 'single' && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (() => {
+      {isSeeded && bracket.type === 'single' && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (() => {
         const tp = bracket.thirdPlace!;
         const third = tp.winner;
         const fourth = third ? (third === tp.p1 ? tp.p2 : tp.p1) : null;
@@ -461,8 +644,6 @@ function BracketDisplay({ bracket, isAdmin, onScore, onThirdPlace, onUndo, isSlo
           </div>
         );
       })()}
-
-
     </>
   );
 }
@@ -477,7 +658,7 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
   const rounds = bracket.upper.filter(r => r.length > 0);
   if (rounds.length === 0) return null;
 
-  const OFFSET_Y = 40; // room for round header above first card
+  const OFFSET_Y = 40;
   const totalH = rounds[0].length * colSpacing(0) + CARD_H + OFFSET_Y + 20;
   const totalW = rounds.length * COL_W - COL_GAP + 40;
   const stroke = 'var(--border-mid)';
@@ -539,7 +720,7 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
   );
 }
 
-// ─── DoubleElimCanvas — UB + LB + GF on ONE canvas with connecting lines ─────
+// ─── DoubleElimCanvas ─────────────────────────────────────────────────────────
 function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }: {
   bracket: Bracket; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
@@ -551,38 +732,27 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
   const gf = bracket.grandFinal ?? null;
   if (ubRounds.length === 0) return null;
 
-  // ── Layout: UB sits at top, LB below, GF column at the far right ──────────
-  const HEADER_H = 40;     // vertical room for round headers
-  const SECTION_GAP = 48; // gap between UB bottom and LB top
-  const GF_EXTRA_H = gf?.isReset ? 220 : 120; // extra height reserved for GF (GF2 needs more)
+  const HEADER_H = 40;
+  const SECTION_GAP = 48;
 
-  // UB height
   const ubH = ubRounds[0].length * colSpacing(0) + CARD_H;
-
-  // LB height
   const lbH = lbRounds.length > 0 ? lbRounds[0].length * colSpacing(0) + CARD_H : 0;
-
-  // Total canvas height
   const canvasH = HEADER_H + ubH + (lbH > 0 ? SECTION_GAP + HEADER_H + lbH : 0) + 40;
 
-  // UB columns width (all UB rounds + GF column)
   const ubCols = ubRounds.length;
   const lbCols = lbRounds.length;
-  const gfColX = ubCols * COL_W; // X start of GF card
+  const gfColX = ubCols * COL_W;
   const canvasW = Math.max(
     ubCols * COL_W - COL_GAP + (gf ? COL_GAP + CARD_W + 60 : 40),
     lbCols * COL_W - COL_GAP + 40,
   );
 
-  // Vertical origins
   const ubOriginY = HEADER_H;
   const lbOriginY = ubOriginY + ubH + SECTION_GAP + HEADER_H;
 
-  // Card centre Y helpers
   const ubCY = (colIdx: number, mi: number) => ubOriginY + ubCardTop(colIdx, mi) + CARD_H / 2;
   const lbCY = (colIdx: number, mi: number) => lbOriginY + lbCardTop(colIdx, mi) + CARD_H / 2;
 
-  // GF card vertical centre — aligned to UB final card centre
   const gfCenterY = ubCY(ubCols - 1, 0);
   const gfTopGF1 = gfCenterY - CARD_H / 2;
 
@@ -591,10 +761,9 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
   return (
     <div style={{ position: 'relative', width: canvasW, height: canvasH, minWidth: canvasW }}>
       <svg style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}>
-
-        {/* ── UB connectors ──────────────────────────────────────────── */}
+        {/* UB connectors */}
         {ubRounds.map((round, colIdx) => {
-          if (colIdx === ubRounds.length - 1) return null; // last UB col connects to GF below
+          if (colIdx === ubRounds.length - 1) return null;
           return round.map((_, mi) => {
             if (mi % 2 !== 0) return null;
             const x1 = colIdx * COL_W + CARD_W;
@@ -614,20 +783,18 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
           });
         })}
 
-        {/* ── UB Final → GF connector ────────────────────────────────── */}
+        {/* UB Final → GF */}
         {gf && (() => {
           const x1 = (ubCols - 1) * COL_W + CARD_W;
           const y = ubCY(ubCols - 1, 0);
           return <line x1={x1} y1={y} x2={gfColX} y2={y} stroke={stroke} strokeWidth={1.5} />;
         })()}
 
-        {/* ── LB connectors ──────────────────────────────────────────── */}
+        {/* LB connectors */}
         {lbRounds.map((round, colIdx) => {
-          if (colIdx === lbRounds.length - 1) return null; // LB Final connects to GF below
+          if (colIdx === lbRounds.length - 1) return null;
           const nextColIdx = colIdx + 1;
-
           if (colIdx % 2 === 0) {
-            // Consolidation → Drop-in: same-Y straight line (same count)
             return round.map((_, mi) => {
               const x1 = colIdx * COL_W + CARD_W;
               const x2 = nextColIdx * COL_W;
@@ -635,7 +802,6 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
               return <line key={`lb-${colIdx}-${mi}`} x1={x1} y1={y} x2={x2} y2={y} stroke={stroke} strokeWidth={1.5} />;
             });
           } else {
-            // Drop-in → Consolidation: bracket merge (pair of same-Y cards → one)
             return round.map((_, mi) => {
               if (mi % 2 !== 0) return null;
               const x1 = colIdx * COL_W + CARD_W;
@@ -656,37 +822,23 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
           }
         })}
 
-        {/* ── LB Final → GF connector ────────────────────────────────── */}
+        {/* LB Final → GF */}
         {gf && lbRounds.length > 0 && (() => {
           const lbFinalColIdx = lbRounds.length - 1;
           const lbFinalX = lbFinalColIdx * COL_W + CARD_W;
           const lbFinalCY = lbCY(lbFinalColIdx, 0);
-          const gfP2Y = gfTopGF1 + CARD_H / 2 + 18; // centre of GF p2 row
-          // Same solid grey style as all other connectors: right → up/down → into GF p2 slot
+          const gfP2Y = gfTopGF1 + CARD_H / 2 + 18;
           const midX = lbFinalX + COL_GAP / 2;
           return (
-            <path
-              d={`M ${lbFinalX} ${lbFinalCY} H ${midX} V ${gfP2Y} H ${gfColX}`}
-              stroke={stroke}
-              strokeWidth={1.5}
-              fill="none"
-            />
+            <path d={`M ${lbFinalX} ${lbFinalCY} H ${midX} V ${gfP2Y} H ${gfColX}`} stroke={stroke} strokeWidth={1.5} fill="none" />
           );
         })()}
-
-
-
       </svg>
 
-      {/* ── UB Section Label ──────────────────────────────────────────── */}
-      <div
-        className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold absolute"
-        style={{ top: 0, left: 0, color: 'var(--accent)', opacity: 0.7 }}
-      >
-        Upper Bracket
-      </div>
+      {/* UB label */}
+      <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold absolute" style={{ top: 0, left: 0, color: 'var(--accent)', opacity: 0.7 }}>Upper Bracket</div>
 
-      {/* ── UB Cards ──────────────────────────────────────────────────── */}
+      {/* UB cards */}
       {ubRounds.map((round, colIdx) => {
         const isBo3 = round[0]?.format === 'bo3';
         const isBo5ub = round[0]?.format === 'bo5';
@@ -714,34 +866,24 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
         ));
       })}
 
-      {/* ── Grand Final Column ─────────────────────────────────────────── */}
+      {/* Grand Final column */}
       {gf && (() => {
-        // LBF loser = 3rd place in double elim
         const lbFinal = lbRounds.length > 0 ? lbRounds[lbRounds.length - 1][0] : null;
-        const lbFinalLoser = lbFinal?.winner
-          ? (lbFinal.winner === lbFinal.p1 ? lbFinal.p2 : lbFinal.p1)
-          : null;
+        const lbFinalLoser = lbFinal?.winner ? (lbFinal.winner === lbFinal.p1 ? lbFinal.p2 : lbFinal.p1) : null;
         return (
           <div style={{ position: 'absolute', top: gfTopGF1 - HEADER_H, left: gfColX }}>
-            <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold mb-1.5" style={{ color: 'var(--accent)' }}>
-              Grand Final
-            </div>
+            <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold mb-1.5" style={{ color: 'var(--accent)' }}>Grand Final</div>
             <GrandFinalCards gf={gf} lbFinalLoser={lbFinalLoser} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
           </div>
         );
       })()}
 
-      {/* ── LB Section Label ──────────────────────────────────────────── */}
+      {/* LB label */}
       {lbRounds.length > 0 && (
-        <div
-          className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold absolute"
-          style={{ top: lbOriginY - HEADER_H, left: 0, color: 'var(--accent)', opacity: 0.7 }}
-        >
-          Lower Bracket
-        </div>
+        <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold absolute" style={{ top: lbOriginY - HEADER_H, left: 0, color: 'var(--accent)', opacity: 0.7 }}>Lower Bracket</div>
       )}
 
-      {/* ── LB Cards ──────────────────────────────────────────────────── */}
+      {/* LB cards */}
       {lbRounds.map((round, colIdx) => {
         const isBo3lb = round[0]?.format === 'bo3';
         const isBo5lb = round[0]?.format === 'bo5';
@@ -774,14 +916,12 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed }:
 }
 
 // ─── GrandFinalCards ─────────────────────────────────────────────────────────
-// Renders GF1 (and optionally GF2) as stacked cards; called from DoubleElimCanvas.
 function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRevealed }: {
   gf: GrandFinal; lbFinalLoser: string | null; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isSlotRevealed: (slotKey: string) => boolean;
 }) {
-  // Build pseudo BracketMatch objects so we can reuse MatchCard
   const gf1: BracketMatch = {
     p1: gf.p1, p2: gf.p2, format: gf.format,
     score1: gf.score1, score2: gf.score2,
@@ -795,14 +935,11 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
 
   const gf1Done = !!(gf.winner || gf.isReset);
   const canUndo = isAdmin && gf1Done;
-  // The winning team — either from GF1 (UB winner) or GF2 (reset winner)
   const champion = gf.winner ?? null;
-  // GF loser = 2nd place (only known once GF is fully done)
   const gfLoser = champion ? (champion === gf.p1 ? gf.p2 : gf.p1) : null;
 
   return (
     <div className="flex flex-col gap-3">
-      {/* GF1 */}
       <div>
         <div className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-widest mb-1">GF1</div>
         <MatchCard
@@ -822,7 +959,6 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
         )}
       </div>
 
-      {/* GF2 — only after reset triggered */}
       {gf.isReset && (
         <div>
           <div className="font-['DM_Mono'] text-[9px] uppercase tracking-widest mb-1 font-bold" style={{ color: 'var(--accent)' }}>GF2 — Reset</div>
@@ -847,12 +983,8 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
         >↩ undo last GF result</button>
       )}
 
-      {/* Champion inline — spinning trophy with sparkles, right below the GF card */}
       {champion && (
-        <div
-          className="rounded-xl px-4 py-3 text-center border"
-          style={{ background: 'rgba(224,144,16,0.06)', borderColor: 'rgba(224,144,16,0.35)', width: CARD_W }}
-        >
+        <div className="rounded-xl px-4 py-3 text-center border" style={{ background: 'rgba(224,144,16,0.06)', borderColor: 'rgba(224,144,16,0.35)', width: CARD_W }}>
           <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginBottom: 4 }}>
             <span className="trophy-spin" style={{ fontSize: 22 }}>🏆</span>
             <span className="sparkle" style={{ top: -8, left: 14, animationDelay: '0s' }}>✦</span>
@@ -864,23 +996,15 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
         </div>
       )}
 
-      {/* 2nd place — GF loser */}
       {gfLoser && (
-        <div
-          className="rounded-xl px-4 py-2 text-center border"
-          style={{ background: 'rgba(180,180,180,0.04)', borderColor: 'rgba(180,180,180,0.2)', width: CARD_W }}
-        >
+        <div className="rounded-xl px-4 py-2 text-center border" style={{ background: 'rgba(180,180,180,0.04)', borderColor: 'rgba(180,180,180,0.2)', width: CARD_W }}>
           <div className="font-['Bebas_Neue'] text-base tracking-widest" style={{ color: 'var(--text)' }}>{gfLoser}</div>
           <div className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-widest">🥈 2nd Place</div>
         </div>
       )}
 
-      {/* 3rd place — LBF loser */}
       {lbFinalLoser && (
-        <div
-          className="rounded-xl px-4 py-2 text-center border"
-          style={{ background: 'rgba(180,130,60,0.04)', borderColor: 'rgba(180,130,60,0.2)', width: CARD_W }}
-        >
+        <div className="rounded-xl px-4 py-2 text-center border" style={{ background: 'rgba(180,130,60,0.04)', borderColor: 'rgba(180,130,60,0.2)', width: CARD_W }}>
           <div className="font-['Bebas_Neue'] text-base tracking-widest" style={{ color: 'var(--accent-gold)', opacity: 0.75 }}>{lbFinalLoser}</div>
           <div className="font-['DM_Mono'] text-[9px] t-dim uppercase tracking-widest">🥉 3rd Place</div>
         </div>

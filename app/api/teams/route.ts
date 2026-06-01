@@ -4,6 +4,17 @@ import { shuffle, TEAM_COLORS } from '@/lib/utils';
 import type { Team } from '@/lib/types';
 import { checkTournamentAccess } from '@/lib/tournamentAccess';
 
+/**
+ * Returns a color for team index i out of n total teams.
+ * Uses the fixed TEAM_COLORS palette for up to 8 teams;
+ * generates evenly-spaced HSL hues for larger rosters.
+ */
+function teamColor(i: number, n: number): string {
+  if (n <= TEAM_COLORS.length) return TEAM_COLORS[i % TEAM_COLORS.length];
+  const hue = Math.round((i * 360) / n) % 360;
+  return `hsl(${hue}, 70%, 55%)`;
+}
+
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   const state = await getState(tid);
@@ -50,7 +61,7 @@ export async function POST(req: NextRequest) {
       const slot = manualTeams.find((t: { index: number }) => t.index === i) ?? manualTeams[i];
       teams.push({
         name: 'Team ' + (i + 1),
-        color: TEAM_COLORS[i % TEAM_COLORS.length],
+        color: teamColor(i, n),
         leader: slot.leader ?? null,
         members: slot.members,
       });
@@ -58,7 +69,7 @@ export async function POST(req: NextRequest) {
   } else if (teamMode === 'random') {
     const pool = shuffle(roster);
     for (let i = 0; i < n; i++) {
-      teams.push({ name: 'Team ' + (i + 1), color: TEAM_COLORS[i % TEAM_COLORS.length], leader: null, members: pool.slice(i * 5, i * 5 + 5) });
+      teams.push({ name: 'Team ' + (i + 1), color: teamColor(i, n), leader: null, members: pool.slice(i * 5, i * 5 + 5) });
     }
   } else {
     if (!leaders || leaders.length !== n || new Set(leaders).size !== n) {
@@ -71,7 +82,7 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < n; i++) {
       const members = [leaders[i]];
       for (let j = 0; j < 4; j++) members.push(pool[pi++]);
-      teams.push({ name: 'Team ' + (i + 1), color: TEAM_COLORS[i % TEAM_COLORS.length], leader: leaders[i], members });
+      teams.push({ name: 'Team ' + (i + 1), color: teamColor(i, n), leader: leaders[i], members });
     }
   }
 
@@ -134,6 +145,27 @@ export async function PATCH(req: NextRequest) {
         const replacements = { ...(t.replacements ?? {}) };
         delete replacements[originalName];
         return { ...t, replacements };
+      }),
+    }), tid);
+    return NextResponse.json({ teams: next.teams });
+  }
+  if (body.action === 'swapPlayer') {
+    const { playerName, fromTeamId, toTeamId } = body as { playerName: string; fromTeamId: string; toTeamId: string };
+    if (!playerName || !fromTeamId || !toTeamId) return NextResponse.json({ error: 'playerName, fromTeamId, toTeamId required' }, { status: 400 });
+    const next = await updateState(s => ({
+      ...s,
+      teams: s.teams.map(t => {
+        if (t.name === fromTeamId) {
+          return {
+            ...t,
+            members: t.members.filter(m => m !== playerName),
+            leader: t.leader === playerName ? null : t.leader,
+          };
+        }
+        if (t.name === toTeamId) {
+          return { ...t, members: [...t.members, playerName] };
+        }
+        return t;
       }),
     }), tid);
     return NextResponse.json({ teams: next.teams });

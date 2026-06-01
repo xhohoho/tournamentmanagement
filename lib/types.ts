@@ -165,12 +165,6 @@ export interface ServerState {
  */
 export type ClientState = Omit<ServerState, 'adminPwHash' | 'ownerAdminId'>;
 
-/**
- * @deprecated Use ServerState instead. Kept as an alias so existing
- * server-side code that imports TournamentState continues to compile.
- */
-export type TournamentState = ServerState;
-
 /** Per-team manual assignment used when teamMode === 'manual'. */
 export interface ManualTeamAssignment {
   /** Slot index 0-based — determines team color/name. */

@@ -43,6 +43,7 @@ interface TourneyContext {
 
   submitPlayer: (name: string, joinKey?: string) => Promise<{ error?: string }>;
   removePlayer: (name: string) => Promise<void>;
+  renamePlayer: (oldName: string, newName: string) => Promise<{ error?: string }>;
   addToRoster: (name: string) => Promise<void>;
   removeFromRoster: (name: string) => Promise<void>;
   setRoster: (names: string[]) => Promise<void>;
@@ -61,6 +62,7 @@ interface TourneyContext {
   setTeamNameFromLeader: (teamId: string) => Promise<{ error?: string }>;
   addReplacement: (teamId: string, originalName: string, replacementName: string) => Promise<{ error?: string }>;
   removeReplacement: (teamId: string, originalName: string) => Promise<{ error?: string }>;
+  swapPlayer: (playerName: string, fromTeamId: string, toTeamId: string) => Promise<{ error?: string }>;
 
   generateBracket: (sf?: import('@/lib/types').StageFormats) => Promise<{ error?: string }>;
   seedBracket: (sf?: import('@/lib/types').StageFormats) => Promise<{ error?: string; shuffleState?: import('@/lib/types').ShuffleState | null }>;
@@ -295,6 +297,21 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     setRosterState(data.roster);
   };
 
+  const renamePlayer = async (oldName: string, newName: string) => {
+    guard.touch('players'); guard.touch('roster'); guard.touch('teams');
+    const res = await fetch(`/api/players?t=${t}`, {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'renamePlayer', oldName, newName }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setPlayers(data.players);
+    setRosterState(data.roster);
+    if (data.teams) setTeams(data.teams);
+    return {};
+  };
+
   const addToRoster = async (name: string) => {
     guard.touch('roster');
     const res = await fetch(`/api/players?t=${t}`, {
@@ -482,6 +499,19 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       method: 'PATCH',
       headers: adminHeaders,
       body: JSON.stringify({ action: 'removeReplacement', teamId, originalName }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setTeams(data.teams);
+    return {};
+  };
+
+  const swapPlayer = async (playerName: string, fromTeamId: string, toTeamId: string) => {
+    guard.touch('teams');
+    const res = await fetch(`/api/teams?t=${t}`, {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'swapPlayer', playerName, fromTeamId, toTeamId }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
@@ -766,12 +796,14 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   const resetAll = async () => {
-    ['players','roster','teams','bracket','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps','ffa'].forEach(f => guard.touch(f));
+    ['players','roster','teams','bracket','maps','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps','ffa'].forEach(f => guard.touch(f));
     await fetch(`/api/reset?t=${t}`, { method: 'DELETE', headers: adminHeaders });
     setPlayers([]);
     setRosterState([]);
     setTeams([]);
     setBracket(null);
+    // Maps are intentionally preserved across reset (they are tournament-level config).
+    // setStageMaps resets assignment but keeps the map pool.
     setStageMaps({});
     setJoinKeyState('');
     setChatMessages([]);
@@ -791,11 +823,11 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       joinKey, chatMessages,
       isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, adminId, adminName, isSuperAdmin, loading, tickerText,
       setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, setAdminInfo, refresh, setTickerText, setStageFormats,
-      submitPlayer, removePlayer, addToRoster, removeFromRoster,
+      submitPlayer, removePlayer, renamePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
       setJoinKey,
       sendChat, clearChat,
-      formTeams, resetTeams, setTeamMode, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement,
+      formTeams, resetTeams, setTeamMode, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement, swapPlayer,
       generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       assignLeader,

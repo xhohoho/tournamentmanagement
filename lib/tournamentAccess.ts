@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listTournaments, listAdminAccounts } from '@/lib/kv';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
-import { canAccessTournament } from '@/lib/auth';
+import { verifyAdminToken, canAccessTournament } from '@/lib/auth';
 
 /**
  * Verifies admin token AND checks tournament access.
@@ -18,9 +17,6 @@ export async function checkTournamentAccess(
   const tournament = tournaments.find(t => t.id === tid);
   const me = accounts.find(a => a.adminId === adminId);
 
-  // If the tournament exists in the registry, always enforce the access check.
-  // Previously this was `if (tournament && ...)` which silently allowed any admin
-  // to edit tournaments that were missing from the registry (e.g. legacy entries).
   if (tournament) {
     if (!canAccessTournament(adminId, me?.isSuperAdmin ?? false, tournament)) {
       return NextResponse.json({ error: 'You do not have access to this tournament' }, { status: 403 });

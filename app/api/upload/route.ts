@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { verifyAdminToken } from '@/lib/auth';
 
 // POST /api/upload — upload a poster image to Vercel Blob (admin only)
 // Expects multipart/form-data with a single field named "file"

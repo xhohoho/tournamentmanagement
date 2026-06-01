@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
 import { listAdminAccounts } from '@/lib/kv';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
+import { verifyAdminToken } from '@/lib/auth';
 
 const PICKER_TICKER_KEY = 'global:picker-ticker';
 

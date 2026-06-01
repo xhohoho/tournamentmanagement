@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listTournaments, registerTournament, deleteTournamentState, updateTournamentMeta, updateTournamentCollaborators, listAdminAccounts } from '@/lib/kv';
-import { verifyAdminToken } from '@/app/api/admin/auth/route';
-import { canAccessTournament } from '@/lib/auth';
+import { verifyAdminToken, canAccessTournament } from '@/lib/auth';
 
 // GET /api/tournaments — list all tournaments (public)
 export async function GET() {
@@ -40,8 +39,9 @@ export async function PATCH(req: NextRequest) {
   const tournament = tournaments.find(t => t.id === tid);
   const me = accounts.find(a => a.adminId === adminId);
 
-  // Handle collaborator update (super admin only)
   const body = await req.json();
+
+  // Handle collaborator update (super admin only)
   if (body.collaborators !== undefined) {
     if (!me?.isSuperAdmin) return NextResponse.json({ error: 'Super admin required' }, { status: 403 });
     const list = await updateTournamentCollaborators(tid, body.collaborators);
