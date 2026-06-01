@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function AdminModal({ open, onClose }: Props) {
-  const { setIsAdmin, setAdminToken, setAdminInfo } = useTourney();
+  const { setIsAdmin, setAdminToken, setAdminInfo, tournamentId } = useTourney();
   const [name, setName] = useState('');
   const [pw, setPw] = useState('');
   const [err, setErr] = useState('');
@@ -18,22 +18,48 @@ export function AdminModal({ open, onClose }: Props) {
   const submit = async () => {
     setLoading(true);
     setErr('');
-    const res = await fetch('/api/admin/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), password: pw }),
-    });
-    setLoading(false);
-    if (res.ok) {
+    try {
+      const res = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), password: pw }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setErr(data.error ?? 'Wrong name or password.');
+        return;
+      }
       const data = await res.json();
+
+      // ── Access check ─────────────────────────────────────────────────────────
+      // Super admins always have access. For regular admins, verify they are the
+      // owner or a collaborator of this specific tournament before granting
+      // isAdmin: true. This prevents any-admin-can-edit-any-tournament.
+      if (!data.isSuperAdmin) {
+        const tRes = await fetch('/api/tournaments');
+        const tData = await tRes.json();
+        const tournament = (tData.tournaments ?? []).find(
+          (t: { id: string; ownerAdminId?: string; collaborators?: string[] }) => t.id === tournamentId
+        );
+        const hasAccess =
+          tournament &&
+          (tournament.ownerAdminId === data.adminId ||
+           (tournament.collaborators ?? []).includes(data.adminId));
+        if (!hasAccess) {
+          setErr('You do not have access to manage this tournament.');
+          return;
+        }
+      }
+
       setAdminToken(data.token ?? null);
       setAdminInfo({ adminId: data.adminId, name: data.name, isSuperAdmin: data.isSuperAdmin });
       setIsAdmin(true);
       setName(''); setPw('');
       onClose();
-    } else {
-      const data = await res.json();
-      setErr(data.error ?? 'Wrong name or password.');
+    } catch {
+      setErr('Network error. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
