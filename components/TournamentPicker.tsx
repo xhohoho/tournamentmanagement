@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import { useAdminSession }  from '@/hooks/useAdminSession';
 import { useTournaments }   from '@/hooks/useTournaments';
 import { usePosterUpload }  from '@/hooks/usePosterUpload';
+import { usePickerTicker }  from '@/hooks/usePickerTicker';
 
 import { AdminToolbar }        from '@/components/picker/AdminToolbar';
 import { TournamentCard }      from '@/components/picker/TournamentCard';
@@ -18,8 +19,6 @@ import BottomTicker            from '@/components/BottomTicker';
 // Re-export so existing callers that import TournamentMeta from here still work
 export type { TournamentMeta } from '@/hooks/useTournaments';
 
-const SHOP_TICKER_TEXT =
-  '⚡ SUDDEN ATTACK SHOP NOW OPEN — Grab your gear at suddenattack.safie.cc — Exclusive deals on weapons, skins & more! 🛒 Click here to visit the shop!';
 
 interface Props {
   onSelect: (
@@ -34,6 +33,7 @@ export function TournamentPicker({ onSelect }: Props) {
   const { adminToken, adminInfo, isAdmin, login, logout, changePassword, expireSession } = useAdminSession();
   const { tournaments, setTournaments, loading, refresh } = useTournaments();
   const { uploadPoster } = usePosterUpload(adminToken);
+  const { tickerText, saveTickerText } = usePickerTicker(adminToken);
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [showUnlock, setShowUnlock]     = useState(false);
@@ -262,6 +262,8 @@ export function TournamentPicker({ onSelect }: Props) {
           onNewTournament={() => { setShowCreate(true); setCreateErr(''); }}
           onManageAdmins={() => setSuperAdminOpen(true)}
           onChangePw={changePassword}
+          tickerText={tickerText}
+          onSaveTicker={saveTickerText}
         />
 
         {/* Loading */}
@@ -341,7 +343,7 @@ export function TournamentPicker({ onSelect }: Props) {
 
       {/* Bottom ticker */}
       <div className="relative z-10 w-full sticky bottom-0">
-        <BottomTicker text={SHOP_TICKER_TEXT} />
+        <BottomTicker text={tickerText} />
       </div>
 
       {/* Edit modal */}
