@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useTourney } from '@/lib/context';
+import { useAdminSession } from '@/hooks/useAdminSession';
 
 interface Props {
   open: boolean;
@@ -10,6 +11,7 @@ interface Props {
 
 export function AdminModal({ open, onClose }: Props) {
   const { setIsAdmin, setAdminToken, setAdminInfo, tournamentId } = useTourney();
+  const { login } = useAdminSession();
   const [name, setName] = useState('');
   const [pw, setPw] = useState('');
   const [err, setErr] = useState('');
@@ -19,23 +21,19 @@ export function AdminModal({ open, onClose }: Props) {
     setLoading(true);
     setErr('');
     try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), password: pw }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setErr(data.error ?? 'Wrong name or password.');
+      const result = await login(name, pw);
+      if (result.error) {
+        setErr(result.error);
         return;
       }
-      const data = await res.json();
+
+      const { token, info } = result;
 
       // ── Access check ─────────────────────────────────────────────────────────
       // Super admins always have access. For regular admins, verify they are the
       // owner or a collaborator of this specific tournament before granting
       // isAdmin: true. This prevents any-admin-can-edit-any-tournament.
-      if (!data.isSuperAdmin) {
+      if (info && !info.isSuperAdmin) {
         const tRes = await fetch('/api/tournaments');
         const tData = await tRes.json();
         const tournament = (tData.tournaments ?? []).find(
@@ -43,16 +41,16 @@ export function AdminModal({ open, onClose }: Props) {
         );
         const hasAccess =
           tournament &&
-          (tournament.ownerAdminId === data.adminId ||
-           (tournament.collaborators ?? []).includes(data.adminId));
+          (tournament.ownerAdminId === info.adminId ||
+           (tournament.collaborators ?? []).includes(info.adminId));
         if (!hasAccess) {
           setErr('You do not have access to manage this tournament.');
           return;
         }
       }
 
-      setAdminToken(data.token ?? null);
-      setAdminInfo({ adminId: data.adminId, name: data.name, isSuperAdmin: data.isSuperAdmin });
+      setAdminToken(token ?? null);
+      setAdminInfo(info ?? null);
       setIsAdmin(true);
       setName(''); setPw('');
       onClose();

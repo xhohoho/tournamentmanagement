@@ -253,6 +253,16 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem('lastTournamentId');
     if (saved) setTournamentId(saved);
+
+    // Restore admin session from localStorage on page load.
+    try {
+      const token = localStorage.getItem('adminToken');
+      const raw   = localStorage.getItem('adminInfo');
+      if (token && raw) {
+        setPickerAdminToken(token);
+        setPickerAdminInfo(JSON.parse(raw));
+      }
+    } catch { /* ignore malformed data */ }
   }, []);
 
   const handleSelect = (id: string, adminToken?: string, adminInfo?: { adminId: string; name: string; isSuperAdmin: boolean }) => {

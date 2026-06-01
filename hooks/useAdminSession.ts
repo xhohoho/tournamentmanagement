@@ -33,7 +33,7 @@ export function useAdminSession() {
   const login = async (
     name: string,
     password: string,
-  ): Promise<{ error?: string }> => {
+  ): Promise<{ error?: string; token?: string; info?: AdminInfo }> => {
     const res  = await fetch('/api/admin/auth', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -51,7 +51,7 @@ export function useAdminSession() {
     getStorage()?.setItem(ADMIN_INFO_KEY,  JSON.stringify(info));
     setAdminToken(data.token);
     setAdminInfo(info);
-    return {};
+    return { token: data.token, info };
   };
 
   // ── Logout ───────────────────────────────────────────────────────────────
