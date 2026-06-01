@@ -24,6 +24,10 @@ export async function getAdminAccountByName(name: string): Promise<AdminAccount 
 }
 
 export async function saveAdminAccount(account: AdminAccount): Promise<AdminAccount[]> {
+  // Guard: scrypt hashes always contain ':' — a bare string means something went wrong
+  if (!account.pwHash.includes(':')) {
+    throw new Error(`[kv] saveAdminAccount: pwHash for "${account.name}" is not a valid scrypt hash (missing ':' separator)`);
+  }
   const list = await listAdminAccounts();
   const existing = list.findIndex(a => a.adminId === account.adminId);
   const next = existing >= 0
@@ -139,6 +143,7 @@ export function defaultState(): ServerState {
     elimMode: 'single',
     bracket: null,
     maps: [],
+    usedMaps: [],
     stageMaps: {},
     joinKey: '',
     chatMessages: [],

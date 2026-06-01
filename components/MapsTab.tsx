@@ -7,8 +7,8 @@ import type { SpinState } from '@/lib/types';
 
 export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory: string | null; setActiveCategory: (cat: string | null) => void }) {
   const {
-    maps, isAdmin, loading,
-    addMap, removeMap, appendSpinQueue, clearSpinQueue,
+    maps, usedMaps, isAdmin, loading,
+    addMap, removeMap, moveMapToUsed, restoreUsedMap, appendSpinQueue, clearSpinQueue,
     adminToken, spinState: liveSpin,
     spinQueue, removeSpinQueueItem,
     spinCategories: serverCategories,
@@ -16,6 +16,9 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
     saveSpinCategories,
     defaultMaps, saveDefaultMaps,
   } = useTourney();
+
+  // Active wheel maps = master pool minus used maps
+  const wheelMaps = maps.filter(m => !usedMaps.includes(m));
 
   const [mapInput, setMapInput] = useState('');
   const [mapErr, setMapErr] = useState('');
@@ -149,7 +152,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
   };
 
   // ─── Restore helpers ──────────────────────────────────────────────────────────
-  // All unique maps that appear in the spin queue but are no longer in the wheel pool
+  // Maps in the queue that are fully deleted (not in master maps list at all)
   const getMissingFromPool = () =>
     [...new Set(spinQueue)].filter(m => !maps.includes(m));
 
@@ -226,8 +229,11 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
   const rafRef = useRef<number | null>(null);
   const [spunMap, setSpunMap] = useState('');
 
-  const mapsRef = useRef(maps);
-  useEffect(() => { mapsRef.current = maps; }, [maps]);
+  const wheelMapsRef = useRef(wheelMaps);
+  useEffect(() => { wheelMapsRef.current = wheelMaps; }, [wheelMaps]);
+
+  // keep old mapsRef alias so spin closure can still reference it
+  const mapsRef = wheelMapsRef;
 
   const appendSpinQueueRef = useRef(appendSpinQueue);
   useEffect(() => { appendSpinQueueRef.current = appendSpinQueue; }, [appendSpinQueue]);
@@ -240,40 +246,52 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
     saveDefaultMaps(next);
   };
 
+  // Move the spun map to the used pool (hides from wheel, keeps in master list)
+  const handleUseMap = async (mapName: string) => {
+    if (busy) return;
+    setBusy(true);
+    try { await moveMapToUsed(mapName); } finally { setBusy(false); }
+  };
+
   const handleRemoveMap = async (mapToRemove: string) => {
     if (busy) return;
     setBusy(true);
     try { await removeMap(mapToRemove); } finally { setBusy(false); }
   };
 
-  const handleRestoreMap = async (mapToRestore: string) => {
+  // ↩ restore a single used map back to the wheel
+  const handleRestoreUsedMap = async (mapName: string) => {
     if (busy) return;
-    if (maps.includes(mapToRestore)) return;
     setBusy(true);
-    try { await addMap(mapToRestore); } finally { setBusy(false); }
+    try { await restoreUsedMap(mapName); } finally { setBusy(false); }
   };
 
-  // ↩ restore pool — add back every map that's in the queue but missing from the wheel, keep results
+  // ↩ restore pool — restore all used maps AND add back any deleted maps still in queue
   const handleRestoreMapPool = async () => {
     if (busy) return;
     setBusy(true);
     try {
+      // Restore used maps back to wheel
+      if (usedMaps.length > 0) await restoreUsedMap();
+      // Also add back any maps that were fully deleted but are still in the queue
       const missing = getMissingFromPool();
       if (missing.length > 0) await Promise.all(missing.map(m => addMap(m)));
     } finally { setBusy(false); }
   };
 
-  // clear all — restore only starred maps to wheel, remove non-starred, wipe spin queue
+  // clear all — restore used maps, restore starred deleted maps, wipe spin queue
   const handleClearAll = async () => {
-    if (busy || spinQueue.length === 0) return;
+    if (busy || (spinQueue.length === 0 && usedMaps.length === 0)) return;
     setBusy(true);
     try {
-      // Remove non-starred maps from pool
-      const toRemove = maps.filter(m => !defaultMaps.includes(m));
-      if (toRemove.length > 0) await Promise.all(toRemove.map(m => removeMap(m)));
-      // Restore starred maps that were removed from pool
-      const toRestore = defaultMaps.filter(m => !maps.includes(m));
+      // Restore all used maps back to the wheel
+      if (usedMaps.length > 0) await restoreUsedMap();
+      // Restore starred maps that were fully deleted
+      const toRestore = defaultMaps.filter(m => !maps.includes(m) && !usedMaps.includes(m));
       if (toRestore.length > 0) await Promise.all(toRestore.map(m => addMap(m)));
+      // Remove non-starred maps from pool that aren't starred
+      const toRemove = maps.filter(m => !defaultMaps.includes(m) && !usedMaps.includes(m));
+      if (toRemove.length > 0) await Promise.all(toRemove.map(m => removeMap(m)));
       await clearSpinQueue();
       saveSpinCategories(categoriesRef.current, {});
       setItemCategoryState({});
@@ -302,18 +320,24 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
     const W = canvas.width;
     if (W < 32) return; // canvas too small to draw safely — skip
     const cx = W / 2, r = W / 2 - 8;
+    // Resolve CSS vars to real colours (canvas fillStyle ignores CSS vars)
+    const cs = getComputedStyle(canvas);
+    const colBgElevated = cs.getPropertyValue('--bg-elevated').trim() || '#2a2a2a';
+    const colBgSurface  = cs.getPropertyValue('--bg-surface').trim()  || '#1a1a1a';
+    const colBorderMid  = cs.getPropertyValue('--border-mid').trim()  || '#444';
+    const colTextDim    = cs.getPropertyValue('--text-dim').trim()    || '#888';
     ctx.clearRect(0, 0, W, W);
-    if (!maps.length) {
-      ctx.fillStyle = 'var(--bg-elevated)';
+    if (!wheelMaps.length) {
+      ctx.fillStyle = colBgElevated;
       ctx.beginPath(); ctx.arc(cx, cx, r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'var(--text-dim)';
+      ctx.fillStyle = colTextDim;
       ctx.font = '14px DM Mono, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('Add maps', cx, cx + 5);
+      ctx.fillText(maps.length > 0 ? 'All maps used' : 'Add maps', cx, cx + 5);
       return;
     }
-    const slice = (Math.PI * 2) / maps.length;
-    maps.forEach((m, i) => {
+    const slice = (Math.PI * 2) / wheelMaps.length;
+    wheelMaps.forEach((m, i) => {
       const start = angle + i * slice, end = start + slice;
       ctx.beginPath(); ctx.moveTo(cx, cx); ctx.arc(cx, cx, r, start, end); ctx.closePath();
       ctx.fillStyle = WHEEL_COLORS[i % WHEEL_COLORS.length]; ctx.fill();
@@ -328,11 +352,11 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
       ctx.restore();
     });
     ctx.beginPath(); ctx.arc(cx, cx, 16, 0, Math.PI * 2);
-    ctx.fillStyle = 'var(--bg-surface)'; ctx.fill();
-    ctx.strokeStyle = 'var(--border-mid)'; ctx.lineWidth = 2; ctx.stroke();
-  }, [maps]);
+    ctx.fillStyle = colBgSurface; ctx.fill();
+    ctx.strokeStyle = colBorderMid; ctx.lineWidth = 2; ctx.stroke();
+  }, [wheelMaps, maps.length]);
 
-  useEffect(() => { drawWheel(angleRef.current); }, [maps, drawWheel, wheelSize]);
+  useEffect(() => { drawWheel(angleRef.current); }, [wheelMaps, drawWheel, wheelSize]);
 
   const broadcastSpinState = useCallback(async (state: SpinState | null) => {
     await fetch('/api/maps', {
@@ -358,7 +382,8 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
       drawWheel(angleRef.current);
       if (tAbs < 1) { rafRef.current = requestAnimationFrame(tick); return; }
       setSpinning(false);
-      const currentMaps = mapsRef.current;
+      const currentMaps = wheelMapsRef.current;
+      if (!currentMaps.length) return;
       const slice = (Math.PI * 2) / currentMaps.length;
       const norm = ((-Math.PI / 2 - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = currentMaps[Math.floor(norm / slice) % currentMaps.length];
@@ -378,7 +403,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
     };
     rafRef.current = requestAnimationFrame(tick);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spinning, maps.length, drawWheel, broadcastSpinState]);
+  }, [spinning, wheelMaps.length, drawWheel, broadcastSpinState]);
 
   const prevSpinRef = useRef<SpinState | null>(null);
   useEffect(() => {
@@ -525,17 +550,33 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
               <div className="flex flex-wrap gap-2">
                 {maps.map(m => {
                   const isDefault = defaultMaps.includes(m);
+                  const isUsed = usedMaps.includes(m);
                   return (
-                    <span key={m} className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text">
+                    <span
+                      key={m}
+                      className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm"
+                      style={{ opacity: isUsed ? 0.45 : 1, color: 'var(--text-base)' }}
+                    >
                       {m}
+                      {isUsed && <span className="text-[9px] font-bold tracking-wider" style={{ color: 'var(--accent-gold)' }}>USED</span>}
                       {isAdmin && (
                         <>
-                          <button
-                            className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
-                            style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
-                            title={isDefault ? 'Unstar — removed on reset' : 'Star — keep after reset'}
-                            onClick={() => toggleDefault(m)}
-                          >★</button>
+                          {isUsed ? (
+                            <button
+                              className={`shrink-0 transition-colors text-[10px] leading-none ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
+                              style={{ color: 'var(--text-dim)' }}
+                              title="Restore to wheel"
+                              onClick={() => !busy && handleRestoreUsedMap(m)}
+                              disabled={busy}
+                            >↩</button>
+                          ) : (
+                            <button
+                              className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
+                              style={{ color: isDefault ? 'var(--accent-gold)' : 'var(--text-dim)' }}
+                              title={isDefault ? 'Unstar — removed on reset' : 'Star — keep after reset'}
+                              onClick={() => toggleDefault(m)}
+                            >★</button>
+                          )}
                           <span
                             className={`t-dim transition-colors shrink-0 ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
                             onClick={() => !busy && handleRemoveMap(m)}
@@ -563,7 +604,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
                   className="shrink-0 px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
                   style={{ background: 'var(--accent-red)' }}
                   onClick={spin}
-                  disabled={spinning || maps.length === 0}
+                  disabled={spinning || wheelMaps.length === 0}
                 >{spinning ? '🌀 Spinning…' : '🌀 SPIN'}</button>
               ) : (
                 <div className="shrink-0 h-9 flex items-center">
@@ -583,21 +624,25 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results Queue</h2>
               {isAdmin && (
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* restore pool — add back all maps that are in the queue but removed from wheel */}
+                  {/* restore pool — restore used maps + add back any fully-deleted queue maps */}
                   <button
                     className={`font-['DM_Mono'] text-[10px] whitespace-nowrap t-dim transition-colors
-                      ${busy || missingFromPool.length === 0 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
-                    title={missingFromPool.length === 0 ? 'All maps already in pool' : `Restore ${missingFromPool.length} map(s) back to wheel`}
+                      ${busy || (usedMaps.length === 0 && missingFromPool.length === 0) ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
+                    title={
+                      usedMaps.length === 0 && missingFromPool.length === 0
+                        ? 'All maps already on wheel'
+                        : `Restore ${usedMaps.length + missingFromPool.length} map(s) back to wheel`
+                    }
                     onClick={handleRestoreMapPool}
-                    disabled={busy || missingFromPool.length === 0}
+                    disabled={busy || (usedMaps.length === 0 && missingFromPool.length === 0)}
                   >↩ restore pool</button>
-                  {/* clear all — restore maps to wheel AND clear the result queue */}
+                  {/* clear all — restore all used maps, wipe spin queue */}
                   <button
                     className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
-                      ${spinQueue.length === 0 || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                      ${(spinQueue.length === 0 && usedMaps.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
                     title="Restore all maps to wheel and clear result queue"
                     onClick={handleClearAll}
-                    disabled={busy || spinQueue.length === 0}
+                    disabled={busy || (spinQueue.length === 0 && usedMaps.length === 0)}
                   >clear all</button>
                 </div>
               )}
@@ -693,7 +738,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
                       )}
 
                       {items.map(({ idx, map: m }, orderIdx) => {
-                        const isRemoved = !maps.includes(m);
+                        const isRemoved = !maps.includes(m) || usedMaps.includes(m);
                         const isUncat = cat === null;
                         const isDraggable = isAdmin;
 
@@ -720,7 +765,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
                                 <button
                                   className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
                                   title="Restore this map to pool"
-                                  onClick={() => handleRestoreMap(m)}
+                                  onClick={() => (usedMaps.includes(m) ? handleRestoreUsedMap(m) : addMap(m))}
                                   disabled={busy}
                                 >↩</button>
                               )}
@@ -765,16 +810,41 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
       {spunMap && isAdmin && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[#1e1e1e] border border-[var(--border-mid)] rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="bg-[#d32f2f] text-white px-5 py-3 font-semibold text-lg">We have a winner!</div>
+            {/* Header */}
+            <div className="bg-[#d32f2f] text-white px-5 py-3 font-semibold text-lg tracking-wide">🎯 Current Round Map</div>
+
+            {/* Map name */}
             <div className="p-10 flex items-center justify-center border-b border-[#333]">
               <p className="text-white text-5xl font-light tracking-wide text-center break-words">{spunMap}</p>
             </div>
-            <div className="px-5 py-4 flex items-center justify-end gap-4 bg-[#242424]">
-              <button className="text-sm text-gray-300 hover:text-white font-medium transition-colors cursor-pointer" onClick={() => setSpunMap('')}>Close</button>
+
+            {/* Subtext */}
+            <div className="px-5 pt-3 pb-1">
+              <p className="font-['DM_Mono'] text-xs text-gray-400">
+                Added to spin queue.{' '}
+                {usedMaps.includes(spunMap)
+                  ? <span style={{ color: 'var(--accent-gold)' }}>Already marked as used.</span>
+                  : 'Click "Use Map" to hide it from the wheel until reset.'}
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 py-4 flex items-center justify-end gap-3 bg-[#242424]">
               <button
-                className="px-4 py-2 bg-[#5c7cfa] hover:bg-[#4c6cf0] text-white text-sm font-semibold rounded shadow-sm transition-colors cursor-pointer"
+                className="text-sm text-gray-300 hover:text-white font-medium transition-colors cursor-pointer"
+                onClick={() => setSpunMap('')}
+              >Close</button>
+              <button
+                className="text-sm font-medium transition-colors cursor-pointer"
+                style={{ color: 'var(--accent-red)' }}
                 onClick={() => { handleRemoveMap(spunMap); setSpunMap(''); }}
-              >Remove from pool</button>
+              >Delete from pool</button>
+              <button
+                className="px-4 py-2 text-white text-sm font-semibold rounded shadow-sm transition-colors cursor-pointer disabled:opacity-40"
+                style={{ background: usedMaps.includes(spunMap) ? '#555' : '#5c7cfa' }}
+                disabled={usedMaps.includes(spunMap) || busy}
+                onClick={() => { handleUseMap(spunMap); setSpunMap(''); }}
+              >{usedMaps.includes(spunMap) ? '✓ Map used' : 'Use Map'}</button>
             </div>
           </div>
         </div>

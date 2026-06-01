@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { kv } from '@vercel/kv';
 import { listAdminAccounts, saveAdminAccount, deleteAdminAccount } from '@/lib/kv';
 import type { AdminAccount } from '@/lib/types';
 import { randomBytes } from 'crypto';
@@ -9,6 +10,33 @@ import {
   createAdminToken,
   revokeAdminToken,
 } from '@/lib/auth';
+
+// ── Brute-force protection ────────────────────────────────────────────────────
+// Sliding-window rate limiter: max 5 login attempts per IP per 60 seconds.
+// Implemented directly on @vercel/kv (Upstash Redis) — no extra package needed.
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_S = 60;
+
+async function checkRateLimit(ip: string): Promise<{ limited: boolean; retryAfter: number }> {
+  const key = `ratelimit:login:${ip}`;
+  try {
+    // Atomically increment and set TTL on first hit
+    const count = await kv.incr(key);
+    if (count === 1) await kv.expire(key, RATE_LIMIT_WINDOW_S);
+    if (count > RATE_LIMIT_MAX) {
+      const ttl = await kv.ttl(key);
+      return { limited: true, retryAfter: Math.max(ttl, 1) };
+    }
+  } catch {
+    // If KV is unavailable, fail open (don't block legitimate logins)
+  }
+  return { limited: false, retryAfter: 0 };
+}
+
+/** Clear the rate-limit counter on successful login so legit users aren't penalised. */
+async function clearRateLimit(ip: string): Promise<void> {
+  try { await kv.del(`ratelimit:login:${ip}`); } catch { /* ignore */ }
+}
 
 // ── Seed default admin if none exist ─────────────────────────────────────────
 // On a fresh deploy with no accounts, bootstrap one from env vars so the
@@ -37,6 +65,19 @@ async function ensureDefaultAdmin(): Promise<void> {
  * Returns: { ok, token, adminId, name, isSuperAdmin }
  */
 export async function POST(req: NextRequest) {
+  // ── Rate limit: 5 attempts / 60 s per IP ─────────────────────────────────
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+    req.headers.get('x-real-ip') ??
+    'unknown';
+  const { limited, retryAfter } = await checkRateLimit(ip);
+  if (limited) {
+    return NextResponse.json(
+      { ok: false, error: 'Too many login attempts. Please wait and try again.' },
+      { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+    );
+  }
+
   await ensureDefaultAdmin();
   const body = await req.json();
   const { name, password } = body as { name?: string; password?: string };
@@ -57,6 +98,8 @@ export async function POST(req: NextRequest) {
     await saveAdminAccount({ ...account, pwHash: await hashPassword(password) });
   }
   const token = await createAdminToken(account.adminId);
+  // Successful login — clear the rate-limit counter for this IP
+  await clearRateLimit(ip);
   return NextResponse.json({
     ok: true,
     token,

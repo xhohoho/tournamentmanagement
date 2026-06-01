@@ -295,7 +295,7 @@ export async function PATCH(req: NextRequest) {
     seedLBDropIn(bracket.lower, ri, loser, mi);
   }
 
-  sweepBracket(bracket);
+  sweepBracket(bracket, ri, section as 'upper' | 'lower');
   if (bracket.grandFinal?.winner) bracket.champion = bracket.grandFinal.winner;
 
   const next = await updateState(s => ({ ...s, bracket }), tid);

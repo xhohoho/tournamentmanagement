@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
   const state = await getState(tid);
   return NextResponse.json({ 
     maps: state.maps, 
+    usedMaps: state.usedMaps ?? [],
     stageMaps: state.stageMaps,
     spinQueue: state.spinQueue || [],
     spinCategories: state.spinCategories || [],
@@ -62,6 +63,27 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { action, stageKey, mapName, slot, spinQueue } = body;
 
+  // Move a map from the active wheel into the usedMaps pool (hides it from the wheel without deleting).
+  if (action === 'moveToUsed') {
+    const { map } = body;
+    if (!map) return NextResponse.json({ error: 'map required' }, { status: 400 });
+    const next = await updateState(s => {
+      if ((s.usedMaps ?? []).includes(map)) return s; // already used
+      return { ...s, usedMaps: [...(s.usedMaps ?? []), map] };
+    }, tid);
+    return NextResponse.json({ usedMaps: next.usedMaps ?? [] });
+  }
+
+  // Restore one or all maps from usedMaps back to the active wheel.
+  if (action === 'restoreUsed') {
+    const { map } = body; // if omitted → restore all
+    const next = await updateState(s => ({
+      ...s,
+      usedMaps: map ? (s.usedMaps ?? []).filter(m => m !== map) : [],
+    }), tid);
+    return NextResponse.json({ usedMaps: next.usedMaps ?? [] });
+  }
+
   if (action === 'updateSpinQueue') {
     const next = await updateState(s => ({ ...s, spinQueue: spinQueue || [] }), tid);
     return NextResponse.json({ spinQueue: next.spinQueue });
@@ -91,6 +113,23 @@ export async function PATCH(req: NextRequest) {
     if (!map) return NextResponse.json({ error: 'map required' }, { status: 400 });
     const next = await updateState(s => ({ ...s, spinQueue: [...(s.spinQueue || []), map] }), tid);
     return NextResponse.json({ spinQueue: next.spinQueue });
+  }
+
+  // Clear all: restore usedMaps back to wheel, wipe spinQueue + categories.
+  if (action === 'clearAll') {
+    const next = await updateState(s => ({
+      ...s,
+      usedMaps: [],
+      spinQueue: [],
+      spinCategories: s.spinCategories, // keep category definitions, clear assignments only
+      spinItemCategory: {},
+    }), tid);
+    return NextResponse.json({
+      usedMaps: next.usedMaps ?? [],
+      spinQueue: next.spinQueue,
+      spinCategories: next.spinCategories,
+      spinItemCategory: next.spinItemCategory,
+    });
   }
 
   if (action === 'updateSpinState') {

@@ -98,16 +98,39 @@ function isFeederResolved(
 
 // ─── Bye sweep ────────────────────────────────────────────────────────────────
 
-/** Advance any team that has no opponent (bye) through all applicable rounds. Mutates in place. */
-export function sweepBracket(bracket: Bracket): Bracket {
+/** Advance any team that has no opponent (bye) through all applicable rounds. Mutates in place.
+ *
+ * @param fromRi      - First round index to start sweeping from (default 0). Pass the
+ *                      round where the triggering change occurred so earlier settled
+ *                      rounds are skipped on the initial pass.
+ * @param fromSection - Section to begin sweeping from on the initial pass (default 'upper').
+ *                      Subsequent re-sweep passes always restart from round 0 of 'upper'.
+ */
+export function sweepBracket(
+  bracket: Bracket,
+  fromRi = 0,
+  fromSection: 'upper' | 'lower' = 'upper',
+): Bracket {
+  const sections: ('upper' | 'lower')[] =
+    bracket.type === 'double' ? ['upper', 'lower'] : ['upper'];
+
+  let firstPass = true;
   let sweepAgain = true;
   while (sweepAgain) {
     sweepAgain = false;
-    const sections: ('upper' | 'lower')[] = bracket.type === 'double' ? ['upper', 'lower'] : ['upper'];
 
     for (const section of sections) {
       const rounds = section === 'upper' ? bracket.upper : bracket.lower!;
-      for (let ri = 0; ri < rounds.length; ri++) {
+
+      // On the very first pass, skip rounds that precede the changed match;
+      // on subsequent re-sweep passes restart from 0 so cascading byes propagate.
+      const startRi = (firstPass && section === fromSection)
+        ? fromRi
+        : (firstPass && section === 'lower' && fromSection === 'upper')
+          ? 0   // always sweep lower from 0, even on first pass
+          : 0;
+
+      for (let ri = startRi; ri < rounds.length; ri++) {
         for (let mi = 0; mi < rounds[ri].length; mi++) {
           const m = rounds[ri][mi];
           if (m.winner) continue;

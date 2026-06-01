@@ -11,6 +11,7 @@ interface TourneyContext {
   elimMode: 'single' | 'double';
   bracket: Bracket | null;
   maps: string[];
+  usedMaps: string[];
   stageMaps: Record<string, string[]>;
   spinState: import('@/lib/types').SpinState | null;
   shuffleState: import('@/lib/types').ShuffleState | null;
@@ -74,6 +75,8 @@ interface TourneyContext {
 
   addMap: (name: string) => Promise<{ error?: string }>;
   removeMap: (name: string) => Promise<void>;
+  moveMapToUsed: (name: string) => Promise<void>;
+  restoreUsedMap: (name?: string) => Promise<void>;
   appendSpinQueue: (map: string) => Promise<void>;
   clearSpinQueue: () => Promise<void>;
   removeSpinQueueItem: (idx: number) => Promise<void>;
@@ -148,6 +151,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [elimMode, setElimModeState] = useState<'single' | 'double'>('single');
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [maps, setMaps] = useState<string[]>([]);
+  const [usedMaps, setUsedMaps] = useState<string[]>([]);
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
   const [spinState, setSpinState] = useState<import('@/lib/types').SpinState | null>(null);
   const [shuffleState, setShuffleState] = useState<import('@/lib/types').ShuffleState | null>(null);
@@ -174,6 +178,20 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     'Content-Type': 'application/json',
     ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
   }), [adminToken]);
+
+  /**
+   * Thin fetch wrapper: injects adminHeaders + JSON-serialises body.
+   * Use for all admin-authenticated API calls within TourneyProvider.
+   */
+  const apiFetch = useCallback(
+    (url: string, method: string, body?: unknown): Promise<Response> =>
+      fetch(url, {
+        method,
+        headers: adminHeaders,
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      }),
+    [adminHeaders],
+  );
 
   const setIsAdmin = (v: boolean) => {
     setIsAdminState(v);
@@ -209,6 +227,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('teams'))     setTeams(data.teams as Team[] ?? []);
     if (!fromSSE || !guard.guarded('bracket'))   setBracket((data.bracket as Bracket | null) ?? null);
     if (!fromSSE || !guard.guarded('maps'))      setMaps(data.maps as string[] ?? []);
+    if (!fromSSE || !guard.guarded('usedMaps'))  setUsedMaps(data.usedMaps as string[] ?? []);
     if (!fromSSE || !guard.guarded('stageMaps')) setStageMaps(data.stageMaps as Record<string, string[]> ?? {});
     if (!fromSSE || !guard.guarded('spinQueue')) setSpinQueue(data.spinQueue as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinCategories')) {
@@ -287,11 +306,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const removePlayer = async (name: string) => {
     guard.touch('players'); guard.touch('roster');
-    const res = await fetch(`/api/players?t=${t}`, {
-      method: 'DELETE',
-      headers: adminHeaders,
-      body: JSON.stringify({ name }),
-    });
+    const res = await apiFetch(`/api/players?t=${t}`, 'DELETE', { name });
     const data = await res.json();
     setPlayers(data.players);
     setRosterState(data.roster);
@@ -299,11 +314,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const renamePlayer = async (oldName: string, newName: string) => {
     guard.touch('players'); guard.touch('roster'); guard.touch('teams');
-    const res = await fetch(`/api/players?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'renamePlayer', oldName, newName }),
-    });
+    const res = await apiFetch(`/api/players?t=${t}`, 'PATCH', { action: 'renamePlayer', oldName, newName });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setPlayers(data.players);
@@ -314,44 +325,28 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const addToRoster = async (name: string) => {
     guard.touch('roster');
-    const res = await fetch(`/api/players?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'addToRoster', name }),
-    });
+    const res = await apiFetch(`/api/players?t=${t}`, 'PATCH', { action: 'addToRoster', name });
     const data = await res.json();
     setRosterState(data.roster);
   };
 
   const removeFromRoster = async (name: string) => {
     guard.touch('roster');
-    const res = await fetch(`/api/players?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'removeFromRoster', name }),
-    });
+    const res = await apiFetch(`/api/players?t=${t}`, 'PATCH', { action: 'removeFromRoster', name });
     const data = await res.json();
     setRosterState(data.roster);
   };
 
   const setRoster = async (names: string[]) => {
     guard.touch('roster');
-    const res = await fetch(`/api/players?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'setRoster', roster: names }),
-    });
+    const res = await apiFetch(`/api/players?t=${t}`, 'PATCH', { action: 'setRoster', roster: names });
     const data = await res.json();
     setRosterState(data.roster);
   };
 
   const clearQueue = async () => {
     guard.touch('players'); guard.touch('roster');
-    const res = await fetch(`/api/players?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'clearQueue' }),
-    });
+    const res = await apiFetch(`/api/players?t=${t}`, 'PATCH', { action: 'clearQueue' });
     const data = await res.json();
     setPlayers(data.players);
     setRosterState(data.roster);
@@ -359,11 +354,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const clearRoster = async () => {
     guard.touch('roster');
-    const res = await fetch(`/api/players?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'clearRoster' }),
-    });
+    const res = await apiFetch(`/api/players?t=${t}`, 'PATCH', { action: 'clearRoster' });
     const data = await res.json();
     setRosterState(data.roster);
   };
@@ -371,11 +362,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   // ── Join Key ──────────────────────────────────────────────────────────────
   const setJoinKey = async (key: string) => {
     guard.touch('joinKey');
-    const res = await fetch(`/api/players/joinkey?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ joinKey: key }),
-    });
+    const res = await apiFetch(`/api/players/joinkey?t=${t}`, 'PATCH', { joinKey: key });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setJoinKeyState(data.joinKey ?? '');
@@ -397,7 +384,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const clearChat = async () => {
     guard.touch('chat');
-    const res = await fetch(`/api/chat?t=${t}`, { method: 'DELETE', headers: adminHeaders });
+    const res = await apiFetch(`/api/chat?t=${t}`, 'DELETE');
     const data = await res.json();
     setChatMessages(data.messages);
   };
@@ -405,11 +392,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   // ── Teams ─────────────────────────────────────────────────────────────────
   const formTeams = async (leaders?: string[], manualTeams?: import('@/lib/types').ManualTeamAssignment[]) => {
     guard.touch('teams'); guard.touch('bracket');
-    const res = await fetch(`/api/teams?t=${t}`, {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({ teamMode, leaders, manualTeams }),
-    });
+    const res = await apiFetch(`/api/teams?t=${t}`, 'POST', { teamMode, leaders, manualTeams });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setTeams(data.teams);
@@ -420,11 +403,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const assignLeader = async (teamId: string, playerName: string) => {
     guard.touch('teams');
     try {
-      const res = await fetch(`/api/teams?t=${t}`, {
-        method: 'POST',
-        headers: adminHeaders,
-        body: JSON.stringify({ assignments: { [teamId]: playerName } }),
-      });
+      const res = await apiFetch(`/api/teams?t=${t}`, 'POST', { assignments: { [teamId]: playerName } });
       const data = await res.json();
       if (!res.ok) return { error: data.error || 'Server rejected leader assignment.' };
       setTeams(data.teams);
@@ -439,7 +418,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const resetTeams = async () => {
     guard.touch('teams'); guard.touch('bracket');
-    await fetch(`/api/teams?t=${t}`, { method: 'DELETE', headers: adminHeaders });
+    await apiFetch(`/api/teams?t=${t}`, 'DELETE');
     setTeams([]);
     setBracket(null);
   };
@@ -447,20 +426,12 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const setTeamMode = async (mode: 'leader' | 'random' | 'manual') => {
     guard.touch('teamMode');
     setTeamModeState(mode);
-    await fetch(`/api/teams?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ teamMode: mode }),
-    });
+    await apiFetch(`/api/teams?t=${t}`, 'PATCH', { teamMode: mode });
   };
 
   const renameTeam = async (teamId: string, customName: string) => {
     guard.touch('teams');
-    const res = await fetch(`/api/teams?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'renameTeam', teamId, customName }),
-    });
+    const res = await apiFetch(`/api/teams?t=${t}`, 'PATCH', { action: 'renameTeam', teamId, customName });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setTeams(data.teams);
@@ -469,11 +440,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const setTeamNameFromLeader = async (teamId: string) => {
     guard.touch('teams');
-    const res = await fetch(`/api/teams?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'setTeamNameFromLeader', teamId }),
-    });
+    const res = await apiFetch(`/api/teams?t=${t}`, 'PATCH', { action: 'setTeamNameFromLeader', teamId });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setTeams(data.teams);
@@ -482,11 +449,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const addReplacement = async (teamId: string, originalName: string, replacementName: string) => {
     guard.touch('teams');
-    const res = await fetch(`/api/teams?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'addReplacement', teamId, originalName, replacementName }),
-    });
+    const res = await apiFetch(`/api/teams?t=${t}`, 'PATCH', { action: 'addReplacement', teamId, originalName, replacementName });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setTeams(data.teams);
@@ -495,11 +458,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const removeReplacement = async (teamId: string, originalName: string) => {
     guard.touch('teams');
-    const res = await fetch(`/api/teams?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'removeReplacement', teamId, originalName }),
-    });
+    const res = await apiFetch(`/api/teams?t=${t}`, 'PATCH', { action: 'removeReplacement', teamId, originalName });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setTeams(data.teams);
@@ -508,11 +467,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const swapPlayer = async (playerName: string, fromTeamId: string, toTeamId: string) => {
     guard.touch('teams');
-    const res = await fetch(`/api/teams?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'swapPlayer', playerName, fromTeamId, toTeamId }),
-    });
+    const res = await apiFetch(`/api/teams?t=${t}`, 'PATCH', { action: 'swapPlayer', playerName, fromTeamId, toTeamId });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setTeams(data.teams);
@@ -522,20 +477,12 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   // ── Bracket ───────────────────────────────────────────────────────────────
   const setStageFormats = async (sf: import('@/lib/types').StageFormats) => {
     setStageFormatsState(sf);
-    await fetch(`/api/bracket?t=${t}`, {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({ elimMode, action: 'saveFormats', stageFormats: sf }),
-    });
+    await apiFetch(`/api/bracket?t=${t}`, 'POST', { elimMode, action: 'saveFormats', stageFormats: sf });
   };
 
   const generateBracket = async (sf?: import('@/lib/types').StageFormats) => {
     guard.touch('bracket');
-    const res = await fetch(`/api/bracket?t=${t}`, {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({ elimMode, matchFormat: 'bo1', action: 'generate', stageFormats: sf ?? stageFormats }),
-    });
+    const res = await apiFetch(`/api/bracket?t=${t}`, 'POST', { elimMode, matchFormat: 'bo1', action: 'generate', stageFormats: sf ?? stageFormats });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setBracket(data.bracket);
@@ -544,11 +491,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const seedBracket = async (sf?: import('@/lib/types').StageFormats) => {
     guard.touch('bracket');
-    const res = await fetch(`/api/bracket?t=${t}`, {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({ elimMode, matchFormat: 'bo1', action: 'seed', stageFormats: sf ?? stageFormats }),
-    });
+    const res = await apiFetch(`/api/bracket?t=${t}`, 'POST', { elimMode, matchFormat: 'bo1', action: 'seed', stageFormats: sf ?? stageFormats });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setBracket(data.bracket);
@@ -560,61 +503,41 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const updateScore = async (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => {
     guard.touch('bracket');
-    const res = await fetch(`/api/bracket?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ section, ri, mi, p1wins, p2wins }),
-    });
+    const res = await apiFetch(`/api/bracket?t=${t}`, 'PATCH', { section, ri, mi, p1wins, p2wins });
     const data = await res.json();
     setBracket(data.bracket);
   };
 
   const undoMatch = async (section: string, ri: number, mi: number) => {
     guard.touch('bracket');
-    const res = await fetch(`/api/bracket?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'undoMatch', section, ri, mi }),
-    });
+    const res = await apiFetch(`/api/bracket?t=${t}`, 'PATCH', { action: 'undoMatch', section, ri, mi });
     const data = await res.json();
     setBracket(data.bracket);
   };
 
   const updateThirdPlace = async (p1wins: number, p2wins: number) => {
     guard.touch('bracket');
-    const res = await fetch(`/api/bracket?t=${t}`, {
-      method: 'PUT',
-      headers: adminHeaders,
-      body: JSON.stringify({ p1wins, p2wins }),
-    });
+    const res = await apiFetch(`/api/bracket?t=${t}`, 'PUT', { p1wins, p2wins });
     const data = await res.json();
     setBracket(data.bracket);
   };
 
   const resetBracket = async () => {
     guard.touch('bracket'); guard.touch('stageMaps');
-    await fetch(`/api/bracket?t=${t}`, { method: 'DELETE', headers: adminHeaders });
+    await apiFetch(`/api/bracket?t=${t}`, 'DELETE');
     setBracket(null);
     setStageMaps({});
   };
 
   const setElimMode = async (mode: 'single' | 'double') => {
     setElimModeState(mode);
-    await fetch(`/api/bracket?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'setElimMode', elimMode: mode }),
-    });
+    await apiFetch(`/api/bracket?t=${t}`, 'PATCH', { action: 'setElimMode', elimMode: mode });
   };
 
   // ── Maps ──────────────────────────────────────────────────────────────────
   const addMap = async (name: string) => {
     guard.touch('maps');
-    const res = await fetch(`/api/maps?t=${t}`, {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({ name }),
-    });
+    const res = await apiFetch(`/api/maps?t=${t}`, 'POST', { name });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setMaps(data.maps);
@@ -623,25 +546,47 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const removeMap = async (name: string) => {
     guard.touch('maps'); guard.touch('stageMaps');
-    const res = await fetch(`/api/maps?t=${t}`, {
-      method: 'DELETE',
-      headers: adminHeaders,
-      body: JSON.stringify({ name }),
-    });
+    const res = await apiFetch(`/api/maps?t=${t}`, 'DELETE', { name });
     const data = await res.json();
     setMaps(data.maps);
     setStageMaps(data.stageMaps);
+  };
+
+  const moveMapToUsed = async (name: string) => {
+    guard.touch('usedMaps');
+    setUsedMaps(prev => prev.includes(name) ? prev : [...prev, name]);
+    try {
+      const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'moveToUsed', map: name });
+      if (res.ok) {
+        const data = await res.json();
+        guard.touch('usedMaps');
+        setUsedMaps(data.usedMaps ?? []);
+      } else {
+        setUsedMaps(prev => prev.filter(m => m !== name));
+      }
+    } catch {
+      setUsedMaps(prev => prev.filter(m => m !== name));
+    }
+  };
+
+  const restoreUsedMap = async (name?: string) => {
+    guard.touch('usedMaps');
+    setUsedMaps(name ? (prev => prev.filter(m => m !== name)) : []);
+    try {
+      const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'restoreUsed', ...(name ? { map: name } : {}) });
+      if (res.ok) {
+        const data = await res.json();
+        guard.touch('usedMaps');
+        setUsedMaps(data.usedMaps ?? []);
+      }
+    } catch { /* keep optimistic update */ }
   };
 
   const appendSpinQueue = async (map: string) => {
     guard.touch('spinQueue');
     setSpinQueue(prev => [...prev, map]);
     try {
-      const res = await fetch(`/api/maps?t=${t}`, {
-        method: 'PATCH',
-        headers: adminHeaders,
-        body: JSON.stringify({ action: 'appendSpinQueue', map }),
-      });
+      const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'appendSpinQueue', map });
       if (res.ok) {
         const data = await res.json();
         guard.touch('spinQueue');
@@ -658,64 +603,48 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     guard.touch('spinQueue');
     setSpinQueue(prev => {
       const newQ = prev.filter((_, i) => i !== idx);
-      fetch(`/api/maps?t=${t}`, {
-        method: 'PATCH',
-        headers: adminHeaders,
-        body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: newQ }),
-      });
+      apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinQueue', spinQueue: newQ });
       return newQ;
     });
   };
 
   const clearSpinQueue = async () => {
-    guard.touch('spinQueue');
+    guard.touch('spinQueue'); guard.touch('usedMaps');
     setSpinQueue([]);
-    await fetch(`/api/maps?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'updateSpinQueue', spinQueue: [] }),
-    });
+    setUsedMaps([]);
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'clearAll' });
+    if (res.ok) {
+      const data = await res.json();
+      guard.touch('usedMaps');
+      setUsedMaps(data.usedMaps ?? []);
+      guard.touch('spinQueue');
+      setSpinQueue(data.spinQueue ?? []);
+    }
   };
 
   const saveDefaultMaps = async (starred: string[]) => {
     guard.touch('defaultMaps');
     setDefaultMaps(starred);
-    await fetch(`/api/maps?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'updateDefaultMaps', defaultMaps: starred }),
-    });
+    await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateDefaultMaps', defaultMaps: starred });
   };
 
   const saveSpinCategories = async (cats: string[], itemCat: Record<number, string>) => {
     guard.touch('spinCategories');
     setSpinCategories(cats);
     setSpinItemCategory(itemCat);
-    await fetch(`/api/maps?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'updateSpinCategories', spinCategories: cats, spinItemCategory: itemCat }),
-    });
+    await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinCategories', spinCategories: cats, spinItemCategory: itemCat });
   };
 
   const assignStage = async (stageKey: string, mapName: string, slot = 0) => {
     guard.touch('stageMaps');
-    const res = await fetch(`/api/maps?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'assignStage', stageKey, mapName, slot }),
-    });
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'assignStage', stageKey, mapName, slot });
     const data = await res.json();
     setStageMaps(data.stageMaps);
   };
 
   const clearStage = async (stageKey: string, slot?: number) => {
     guard.touch('stageMaps');
-    const res = await fetch(`/api/maps?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ action: 'clearStage', stageKey, slot }),
-    });
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'clearStage', stageKey, slot });
     const data = await res.json();
     setStageMaps(data.stageMaps);
   };
@@ -723,32 +652,20 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const setTickerText = async (text: string) => {
     guard.touch('tickerText');
     setTickerTextState(text);
-    await fetch(`/api/ticker?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify({ tickerText: text }),
-    });
+    await apiFetch(`/api/ticker?t=${t}`, 'PATCH', { tickerText: text });
   };
 
   // ── FFA ───────────────────────────────────────────────────────────────────
   const ffaPatch = async (body: Record<string, unknown>) => {
     guard.touch('ffa');
-    const res = await fetch(`/api/ffa?t=${t}`, {
-      method: 'PATCH',
-      headers: adminHeaders,
-      body: JSON.stringify(body),
-    });
+    const res = await apiFetch(`/api/ffa?t=${t}`, 'PATCH', body);
     const data = await res.json();
     if (data.ffa) setFFA(data.ffa);
   };
 
   const createFFAMatch = async (mapInfo: FFAMapInfo) => {
     guard.touch('ffa');
-    const res = await fetch(`/api/ffa?t=${t}`, {
-      method: 'POST',
-      headers: adminHeaders,
-      body: JSON.stringify({ mapInfo }),
-    });
+    const res = await apiFetch(`/api/ffa?t=${t}`, 'POST', { mapInfo });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     if (data.ffa) setFFA(data.ffa);
@@ -796,14 +713,13 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   const resetAll = async () => {
-    ['players','roster','teams','bracket','maps','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps','ffa'].forEach(f => guard.touch(f));
-    await fetch(`/api/reset?t=${t}`, { method: 'DELETE', headers: adminHeaders });
+    ['players','roster','teams','bracket','maps','usedMaps','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps','ffa'].forEach(f => guard.touch(f));
+    await apiFetch(`/api/reset?t=${t}`, 'DELETE');
     setPlayers([]);
     setRosterState([]);
     setTeams([]);
     setBracket(null);
-    // Maps are intentionally preserved across reset (they are tournament-level config).
-    // setStageMaps resets assignment but keeps the map pool.
+    // Maps and usedMaps are preserved across reset (tournament-level config).
     setStageMaps({});
     setJoinKeyState('');
     setChatMessages([]);
@@ -817,7 +733,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   return (
     <Ctx.Provider value={{
-      players, roster, teamMode, teams, elimMode, bracket, maps, stageMaps, spinState, shuffleState, spinQueue,
+      players, roster, teamMode, teams, elimMode, bracket, maps, usedMaps, stageMaps, spinState, shuffleState, spinQueue,
       spinCategories, spinItemCategory, defaultMaps, stageFormats, ffa,
       tournamentId,
       joinKey, chatMessages,
@@ -829,7 +745,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       sendChat, clearChat,
       formTeams, resetTeams, setTeamMode, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement, swapPlayer,
       generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
-      addMap, removeMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
+      addMap, removeMap, moveMapToUsed, restoreUsedMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       assignLeader,
       createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,
       deleteFFAMatch, lockFFAMatch, updateFFAMapInfo, setFFAMatchImage, setFFAMatchScoreImage,

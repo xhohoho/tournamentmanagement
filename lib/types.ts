@@ -145,6 +145,11 @@ export interface ServerState {
   elimMode: 'single' | 'double';
   bracket: Bracket | null;
   maps: string[];
+  /**
+   * Maps that have been spun and set aside. They are hidden from the wheel but
+   * remain in the master pool — "clear all" moves them back rather than deleting.
+   */
+  usedMaps: string[];
   stageMaps: Record<string, string[]>; // key -> up to 3 map names (BO3)
   joinKey: string;          // empty string = no key required
   chatMessages: ChatMessage[];
