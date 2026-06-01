@@ -1,345 +1,92 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { SuperAdminPanel } from '@/components/SuperAdminPanel';
+import { useState, useCallback } from 'react';
 
-export interface TournamentMeta {
-  id: string;
-  name: string;
-  createdAt: number;
-  ownerAdminId?: string;
-  collaborators?: string[];
-  posterUrl?: string;
-  tournamentDate?: number;
-  organizer?: string;
-}
+import { useAdminSession }  from '@/hooks/useAdminSession';
+import { useTournaments }   from '@/hooks/useTournaments';
+import { usePosterUpload }  from '@/hooks/usePosterUpload';
 
-const ADMIN_TOKEN_KEY = 'adminToken';
-const ADMIN_INFO_KEY = 'adminInfo';
-const storage = typeof window !== 'undefined' ? sessionStorage : null;
+import { AdminToolbar }        from '@/components/picker/AdminToolbar';
+import { TournamentCard }      from '@/components/picker/TournamentCard';
+import { TournamentFormModal, TournamentFormValues } from '@/components/picker/TournamentFormModal';
+import { AdminUnlockPanel }    from '@/components/picker/modals/AdminUnlockPanel';
+import { DeleteConfirmModal }  from '@/components/picker/modals/DeleteConfirmModal';
+import { PosterLightbox }      from '@/components/picker/modals/PosterLightbox';
+import { SuperAdminPanel }     from '@/components/SuperAdminPanel';
+import BottomTicker            from '@/components/BottomTicker';
 
-const SHOP_URL = 'https://suddenattack.safie.cc';
+// Re-export so existing callers that import TournamentMeta from here still work
+export type { TournamentMeta } from '@/hooks/useTournaments';
+
 const SHOP_TICKER_TEXT =
-  '⚡ SUDDEN ATTACK SHOP NOW OPEN — Grab your gear at suddenattack.safie.cc — Exclusive deals on weapons, skins & more! 🛒 Click here to visit the shop! ⚡ SUDDEN ATTACK SHOP NOW OPEN — Grab your gear at suddenattack.safie.cc — Exclusive deals on weapons, skins & more! 🛒 Click here to visit the shop!';
-const PX_PER_SECOND = 120;
-
-// ─── Picker Ticker ─────────────────────────────────────────────────────────────
-function PickerTicker() {
-  const spanRef      = useRef<HTMLSpanElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const styleRef     = useRef<HTMLStyleElement | null>(null);
-
-  const rebuild = useCallback(() => {
-    const span      = spanRef.current;
-    const container = containerRef.current;
-    if (!span || !container) return;
-
-    const textWidth      = span.offsetWidth;
-    const containerWidth = container.clientWidth;
-    const totalTravel    = containerWidth + textWidth;
-    const duration       = totalTravel / PX_PER_SECOND;
-
-    if (!styleRef.current) {
-      styleRef.current = document.createElement('style');
-      document.head.appendChild(styleRef.current);
-    }
-    styleRef.current.textContent = `
-      @keyframes picker-ticker-slide {
-        from { left: ${containerWidth}px; }
-        to   { left: ${-textWidth}px; }
-      }
-      .picker-ticker-span {
-        animation: picker-ticker-slide ${duration}s linear infinite;
-      }
-    `;
-  }, []);
-
-  useEffect(() => {
-    rebuild();
-    const ro = new ResizeObserver(rebuild);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => {
-      ro.disconnect();
-      styleRef.current?.remove();
-      styleRef.current = null;
-    };
-  }, [rebuild]);
-
-  const handleClick = () => {
-    window.open(SHOP_URL, '_blank', 'noopener,noreferrer');
-  };
-
-  return (
-    <div
-      onClick={handleClick}
-      title="Visit Sudden Attack Shop"
-      className="w-full flex items-center shrink-0 cursor-pointer group"
-      style={{
-        height: 32,
-        background: 'linear-gradient(90deg, #1a0a00 0%, #1f1000 50%, #1a0a00 100%)',
-        borderTop: '1px solid #c8860055',
-        boxShadow: 'inset 0 1px 0 rgba(255,180,0,0.08), 0 -2px 12px rgba(200,120,0,0.08)',
-        position: 'sticky',
-        bottom: 0,
-        zIndex: 50,
-      }}
-      role="link"
-      aria-label="Visit Sudden Attack Shop"
-    >
-      {/* Left badge */}
-      <div
-        className="group-hover:opacity-100 transition-opacity"
-        style={{
-          flexShrink: 0,
-          margin: '0 6px',
-          padding: '2px 7px',
-          background: '#c87800',
-          borderRadius: 3,
-          fontFamily: '"Bebas Neue", sans-serif',
-          fontSize: 11,
-          letterSpacing: '0.12em',
-          color: '#fff8e8',
-          whiteSpace: 'nowrap',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
-          userSelect: 'none',
-        }}
-      >
-        🛒 SHOP
-      </div>
-
-      {/* Ticker track */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-hidden"
-        style={{
-          height: 32,
-          position: 'relative',
-          background: 'transparent',
-        }}
-      >
-        <span
-          ref={spanRef}
-          className="picker-ticker-span"
-          style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            display: 'flex',
-            alignItems: 'center',
-            whiteSpace: 'nowrap',
-            fontFamily: '"DM Mono", "Courier New", monospace',
-            fontWeight: 'bold',
-            fontSize: 12,
-            color: '#ffc040',
-            textShadow: '0 0 8px rgba(255,160,0,0.4)',
-            letterSpacing: '0.04em',
-            userSelect: 'none',
-          }}
-        >
-          {SHOP_TICKER_TEXT}
-        </span>
-      </div>
-
-      {/* Right arrow */}
-      <div
-        style={{
-          flexShrink: 0,
-          margin: '0 8px',
-          fontFamily: '"DM Mono", monospace',
-          fontSize: 11,
-          color: '#c87800',
-          userSelect: 'none',
-          opacity: 0.8,
-        }}
-        className="group-hover:opacity-100 transition-opacity"
-      >
-        →
-      </div>
-    </div>
-  );
-}
+  '⚡ SUDDEN ATTACK SHOP NOW OPEN — Grab your gear at suddenattack.safie.cc — Exclusive deals on weapons, skins & more! 🛒 Click here to visit the shop!';
 
 interface Props {
-  onSelect: (id: string, adminToken?: string, adminInfo?: { adminId: string; name: string; isSuperAdmin: boolean }) => void;
+  onSelect: (
+    id: string,
+    adminToken?: string,
+    adminInfo?: { adminId: string; name: string; isSuperAdmin: boolean },
+  ) => void;
 }
 
 export function TournamentPicker({ onSelect }: Props) {
-  const [tournaments, setTournaments] = useState<TournamentMeta[]>([]);
-  const [loading, setLoading] = useState(true);
+  // ── Hooks ────────────────────────────────────────────────────────────────
+  const { adminToken, adminInfo, isAdmin, login, logout, changePassword, expireSession } = useAdminSession();
+  const { tournaments, setTournaments, loading, refresh } = useTournaments();
+  const { uploadPoster } = usePosterUpload(adminToken);
 
-  // Admin state — initialize synchronously from sessionStorage so canManage()
-  // is correct on the very first render (avoids a flash of NO ACCESS overlays).
-  const [adminToken, setAdminToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem(ADMIN_TOKEN_KEY);
-  });
-  const [adminInfo, setAdminInfo] = useState<{ adminId: string; name: string; isSuperAdmin: boolean } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = sessionStorage.getItem(ADMIN_INFO_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch { return null; }
-  });
-  const [showUnlock, setShowUnlock] = useState(false);
+  // ── UI state ─────────────────────────────────────────────────────────────
+  const [showUnlock, setShowUnlock]     = useState(false);
   const [adminNameInput, setAdminNameInput] = useState('');
-  const [pw, setPw] = useState('');
-  const [pwErr, setPwErr] = useState('');
-  const [unlocking, setUnlocking] = useState(false);
+  const [pw, setPw]                     = useState('');
+  const [pwErr, setPwErr]               = useState('');
+  const [unlocking, setUnlocking]       = useState(false);
 
-  // Create form
-  const [creating, setCreating] = useState(false);
-  const [newId, setNewId] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newOrganizer, setNewOrganizer] = useState('');
-  const [newTournamentDate, setNewTournamentDate] = useState('');
-  const [newPosterFile, setNewPosterFile] = useState<File | null>(null);
-  const [newPosterPreview, setNewPosterPreview] = useState<string>('');
-  const [createErr, setCreateErr] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [showCreate, setShowCreate]     = useState(false);
+  const [createErr, setCreateErr]       = useState('');
+  const [creating, setCreating]         = useState(false);
 
-  // Poster edit (existing tournament)
+  const [editingTournamentId, setEditingTournamentId] = useState<string | null>(null);
+  const [editErr, setEditErr]           = useState('');
+  const [editSaving, setEditSaving]     = useState(false);
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting]         = useState(false);
+  const [deleteErr, setDeleteErr]       = useState('');
+
   const [editingPosterId, setEditingPosterId] = useState<string | null>(null);
   const [posterSaving, setPosterSaving] = useState(false);
 
-  // Edit tournament state
-  const [editingTournament, setEditingTournament] = useState<TournamentMeta | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editOrganizer, setEditOrganizer] = useState('');
-  const [editTournamentDate, setEditTournamentDate] = useState('');
-  const [editPosterFile, setEditPosterFile] = useState<File | null>(null);
-  const [editPosterPreview, setEditPosterPreview] = useState<string>('');
-  const [editErr, setEditErr] = useState('');
-  const [editSaving, setEditSaving] = useState(false);
-
-  // Delete state
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteErr, setDeleteErr] = useState('');
-
-  // SuperAdmin panel
   const [superAdminOpen, setSuperAdminOpen] = useState(false);
+  const [lightboxUrl, setLightboxUrl]   = useState<string | null>(null);
 
-  // Password change (for logged-in admin)
-  const [showChangePw, setShowChangePw] = useState(false);
-  const [newPwVal, setNewPwVal] = useState('');
-  const [changePwErr, setChangePwErr] = useState('');
-  const [changePwOk, setChangePwOk] = useState('');
-  const [savingPw, setSavingPw] = useState(false);
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const canManage = useCallback((t: { ownerAdminId?: string; collaborators?: string[] }): boolean => {
+    if (!adminInfo) return false;
+    if (adminInfo.isSuperAdmin) return true;
+    if (t.ownerAdminId === adminInfo.adminId) return true;
+    if (t.collaborators?.includes(adminInfo.adminId)) return true;
+    return false;
+  }, [adminInfo]);
 
-  // Shared upload helper — sends a file to /api/upload, returns the blob URL
-  const uploadPoster = async (file: File): Promise<string | null> => {
-    const fd = new FormData();
-    fd.append('file', file);
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: adminToken ? { 'X-Admin-Token': adminToken } : {},
-      body: fd,
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error('[uploadPoster] failed', res.status, err);
-      return null;
-    }
-    const data = await res.json();
-    console.log('[uploadPoster] success', data.url);
-    return data.url ?? null;
-  };
+  const authHeaders = useCallback(
+    (extra?: Record<string, string>) => ({
+      'Content-Type': 'application/json',
+      ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
+      ...extra,
+    }),
+    [adminToken],
+  );
 
-  // ── SSE sync — replaces polling ──────────────────────────────────────────
-  useEffect(() => {
-    let es: EventSource | null = null;
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
-
-    const applyData = (data: { tournaments: TournamentMeta[] }) => {
-      setTournaments(data.tournaments ?? []);
-      setLoading(false);
-    };
-
-    const fetchOnce = async () => {
-      try {
-        const res = await fetch('/api/tournaments');
-        const data = await res.json();
-        applyData(data);
-      } catch { /* silently ignore */ }
-    };
-
-    const connect = () => {
-      if (typeof EventSource === 'undefined') {
-        // No SSE support — fall back to polling
-        fetchOnce();
-        pollInterval = setInterval(fetchOnce, 10_000);
-        return;
-      }
-
-      es = new EventSource('/api/tournaments/stream');
-
-      es.onmessage = (e) => {
-        try {
-          applyData(JSON.parse(e.data));
-        } catch { /* ignore malformed frame */ }
-      };
-
-      es.onerror = () => {
-        // SSE connection dropped — close it and fall back to polling
-        es?.close();
-        es = null;
-        if (!pollInterval) {
-          fetchOnce();
-          pollInterval = setInterval(fetchOnce, 10_000);
-        }
-      };
-    };
-
-    connect();
-
-    return () => {
-      es?.close();
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, []);
-
-  // ── Change password ──────────────────────────────────────────────────────
-  const handleChangePw = async () => {
-    setChangePwErr(''); setChangePwOk('');
-    if (!adminToken || !adminInfo?.adminId) { setChangePwErr('Not logged in.'); return; }
-    if (!newPwVal.trim()) { setChangePwErr('Enter a new password.'); return; }
-    setSavingPw(true);
-    try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
-        body: JSON.stringify({ action: 'changePassword', adminId: adminInfo.adminId, newPassword: newPwVal.trim() }),
-      });
-      if (!res.ok) { setChangePwErr('Failed to update password.'); return; }
-      setChangePwOk('Password updated!');
-      setNewPwVal('');
-      setTimeout(() => { setShowChangePw(false); setChangePwOk(''); }, 1500);
-    } catch {
-      setChangePwErr('Network error.');
-    } finally {
-      setSavingPw(false);
-    }
-  };
-
-  // ── Admin unlock ──────────────────────────────────────────────────────────
+  // ── Admin unlock ─────────────────────────────────────────────────────────
   const handleUnlock = async () => {
     setPwErr('');
     if (!adminNameInput.trim()) { setPwErr('Enter your admin name.'); return; }
-    if (!pw.trim()) { setPwErr('Enter a password.'); return; }
+    if (!pw.trim())             { setPwErr('Enter a password.'); return; }
     setUnlocking(true);
     try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: adminNameInput.trim(), password: pw }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setPwErr(data.error ?? 'Wrong name or password.'); return; }
-      const info = { adminId: data.adminId, name: data.name, isSuperAdmin: data.isSuperAdmin };
-      storage?.setItem(ADMIN_TOKEN_KEY, data.token);
-      storage?.setItem(ADMIN_INFO_KEY, JSON.stringify(info));
-      setAdminToken(data.token);
-      setAdminInfo(info);
+      const result = await login(adminNameInput, pw);
+      if (result.error) { setPwErr(result.error); return; }
       setAdminNameInput(''); setPw('');
       setShowUnlock(false);
     } catch {
@@ -350,112 +97,77 @@ export function TournamentPicker({ onSelect }: Props) {
   };
 
   const handleLogout = () => {
-    if (adminToken) {
-      fetch('/api/admin/auth', { method: 'DELETE', headers: { 'X-Admin-Token': adminToken } }).catch(() => {});
-    }
-    storage?.removeItem(ADMIN_TOKEN_KEY);
-    storage?.removeItem(ADMIN_INFO_KEY);
-    setAdminToken(null);
-    setAdminInfo(null);
-    setCreating(false);
+    logout();
+    setShowCreate(false);
   };
 
   // ── Create tournament ─────────────────────────────────────────────────────
-  const handleCreate = async () => {
+  const handleCreate = async (values: TournamentFormValues) => {
     setCreateErr('');
-    const safeId = newId.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-    const safeName = newName.trim();
-    if (!safeId) { setCreateErr('ID is required (letters, numbers, hyphens only).'); return; }
+    const safeId   = (values.id ?? '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const safeName = values.name.trim();
+    if (!safeId)   { setCreateErr('ID is required.'); return; }
     if (!safeName) { setCreateErr('Name is required.'); return; }
-    setSaving(true);
+    setCreating(true);
     try {
-      // Upload the poster first if one was chosen, capture URL in a local var
-      let posterUrl: string | undefined = undefined;
-      if (newPosterFile) {
-        const uploadedUrl = await uploadPoster(newPosterFile);
-        if (uploadedUrl) {
-          posterUrl = uploadedUrl;
-          setNewPosterPreview(uploadedUrl);
-        } else {
-          // Upload failed — fall back to base64 data URL so poster still shows
-          posterUrl = newPosterPreview || undefined;
-        }
+      let posterUrl: string | undefined;
+      if (values.posterFile) {
+        posterUrl = (await uploadPoster(values.posterFile)) ?? undefined;
       }
-      const res = await fetch('/api/tournaments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-        body: JSON.stringify({
-          id: safeId,
-          name: safeName,
-          posterUrl: posterUrl || undefined,
-          organizer: newOrganizer.trim() || undefined,
-          tournamentDate: newTournamentDate ? new Date(newTournamentDate).getTime() : undefined,
+      const res  = await fetch('/api/tournaments', {
+        method:  'POST',
+        headers: authHeaders(),
+        body:    JSON.stringify({
+          id:             safeId,
+          name:           safeName,
+          posterUrl,
+          organizer:      values.organizer.trim() || undefined,
+          tournamentDate: values.tournamentDate ? new Date(values.tournamentDate).getTime() : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 403) { storage?.removeItem(ADMIN_TOKEN_KEY); setAdminToken(null); setCreateErr('Session expired. Please unlock again.'); }
+        if (res.status === 403) { expireSession(); setCreateErr('Session expired. Please unlock again.'); }
         else setCreateErr(data.error ?? 'Failed to create tournament.');
         return;
       }
-      // Apply immediately — SSE will also push the update shortly after
       setTournaments(data.tournaments ?? []);
-      setCreating(false); setNewId(''); setNewName(''); setNewOrganizer(''); setNewTournamentDate(''); setNewPosterFile(null); setNewPosterPreview('');
+      setShowCreate(false);
       onSelect(data.id, adminToken ?? undefined, adminInfo ?? undefined);
     } catch {
       setCreateErr('Network error. Please try again.');
     } finally {
-      setSaving(false);
+      setCreating(false);
     }
   };
 
-  // ── Edit tournament ──────────────────────────────────────────────────────
-  const openEditTournament = (t: TournamentMeta, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingTournament(t);
-    setEditName(t.name);
-    setEditOrganizer(t.organizer ?? '');
-    setEditTournamentDate(
-      t.tournamentDate
-        ? new Date(t.tournamentDate - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-        : ''
-    );
-    setEditPosterFile(null);
-    setEditPosterPreview(t.posterUrl ?? '');
+  // ── Edit tournament ───────────────────────────────────────────────────────
+  const handleSaveEdit = async (values: TournamentFormValues) => {
+    if (!editingTournamentId) return;
     setEditErr('');
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingTournament) return;
-    setEditErr('');
-    const safeName = editName.trim();
+    const safeName = values.name.trim();
     if (!safeName) { setEditErr('Name is required.'); return; }
     setEditSaving(true);
+    const existing = tournaments.find(t => t.id === editingTournamentId);
     try {
-      let posterUrl: string | undefined = editingTournament.posterUrl;
-      if (editPosterFile) {
-        const uploadedUrl = await uploadPoster(editPosterFile);
-        if (uploadedUrl) posterUrl = uploadedUrl;
+      let posterUrl: string | undefined = existing?.posterUrl;
+      if (values.posterFile) {
+        posterUrl = (await uploadPoster(values.posterFile)) ?? posterUrl;
       }
-      const body: Record<string, string | number | undefined> = {
-        name: safeName,
-        organizer: editOrganizer.trim() || undefined,
-        tournamentDate: editTournamentDate ? new Date(editTournamentDate).getTime() : undefined,
-        posterUrl,
-      };
-      const res = await fetch(`/api/tournaments?t=${editingTournament.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-        body: JSON.stringify(body),
+      const res  = await fetch(`/api/tournaments?t=${editingTournamentId}`, {
+        method:  'PATCH',
+        headers: authHeaders(),
+        body:    JSON.stringify({
+          name:           safeName,
+          organizer:      values.organizer.trim() || undefined,
+          tournamentDate: values.tournamentDate ? new Date(values.tournamentDate).getTime() : undefined,
+          posterUrl,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setEditErr(data.error ?? 'Failed to update tournament.');
-        return;
-      }
-      // Apply immediately — SSE will sync other clients
+      if (!res.ok) { setEditErr(data.error ?? 'Failed to update tournament.'); return; }
       setTournaments(data.tournaments ?? []);
-      setEditingTournament(null);
+      setEditingTournamentId(null);
     } catch {
       setEditErr('Network error. Please try again.');
     } finally {
@@ -463,16 +175,17 @@ export function TournamentPicker({ onSelect }: Props) {
     }
   };
 
-  // ── Update poster ─────────────────────────────────────────────────────────
+  // ── Poster quick-update ───────────────────────────────────────────────────
   const handleSavePoster = async (id: string, file: File) => {
+    setEditingPosterId(id);
     setPosterSaving(true);
     try {
       const url = await uploadPoster(file);
-      if (!url) { setPosterSaving(false); return; }
-      const res = await fetch(`/api/tournaments?t=${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-        body: JSON.stringify({ posterUrl: url }),
+      if (!url) return;
+      const res  = await fetch(`/api/tournaments?t=${id}`, {
+        method:  'PATCH',
+        headers: authHeaders(),
+        body:    JSON.stringify({ posterUrl: url }),
       });
       const data = await res.json();
       if (res.ok) setTournaments(data.tournaments ?? []);
@@ -487,22 +200,16 @@ export function TournamentPicker({ onSelect }: Props) {
     setDeleting(true);
     setDeleteErr('');
     try {
-      const res = await fetch(`/api/tournaments?t=${id}`, {
-        method: 'DELETE',
+      const res  = await fetch(`/api/tournaments?t=${id}`, {
+        method:  'DELETE',
         headers: adminToken ? { 'X-Admin-Token': adminToken } : {},
       });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 403) {
-          storage?.removeItem(ADMIN_TOKEN_KEY);
-          setAdminToken(null);
-          setDeleteErr('Session expired. Please unlock again.');
-        } else {
-          setDeleteErr(data.error ?? 'Failed to delete tournament.');
-        }
+        if (res.status === 403) { expireSession(); setDeleteErr('Session expired. Please unlock again.'); }
+        else setDeleteErr(data.error ?? 'Failed to delete tournament.');
         return;
       }
-      // Apply immediately — SSE will sync other clients
       setTournaments(data.tournaments ?? []);
       setConfirmDeleteId(null);
     } catch {
@@ -512,20 +219,22 @@ export function TournamentPicker({ onSelect }: Props) {
     }
   };
 
-  // Helper: returns true if the current admin can manage this tournament.
-  const canManage = (t: TournamentMeta): boolean => {
-    if (!adminInfo) return false;
-    if (adminInfo.isSuperAdmin) return true;
-    if (t.ownerAdminId === adminInfo.adminId) return true;
-    if (t.collaborators?.includes(adminInfo.adminId)) return true;
-    return false;
-  };
+  // ── Edit form initial values ──────────────────────────────────────────────
+  const editingTournament = tournaments.find(t => t.id === editingTournamentId) ?? null;
+  const editInitial: TournamentFormValues | null = editingTournament
+    ? {
+        name:           editingTournament.name,
+        organizer:      editingTournament.organizer ?? '',
+        tournamentDate: editingTournament.tournamentDate
+          ? new Date(editingTournament.tournamentDate - new Date().getTimezoneOffset() * 60000)
+              .toISOString().slice(0, 16)
+          : '',
+        posterFile:    null,
+        posterPreview: editingTournament.posterUrl ?? '',
+      }
+    : null;
 
-  const isAdmin = !!adminToken;
-
-  // Lightbox state
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen w-screen t-bg overflow-auto relative flex flex-col">
       {/* Ambient gradients */}
@@ -545,218 +254,54 @@ export function TournamentPicker({ onSelect }: Props) {
         </div>
 
         {/* Admin toolbar */}
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <button
-            onClick={isAdmin ? handleLogout : () => setShowUnlock(true)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
-              isAdmin
-                ? 'border-[var(--accent-gold)] text-[var(--accent-gold)] bg-[rgba(255,176,32,0.08)] hover:bg-[rgba(255,176,32,0.15)]'
-                : 't-border-mid t-muted t-elevated hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)]'
-            }`}
-          >
-            {isAdmin ? `🔓 ${adminInfo?.name ?? 'Admin'} (logout)` : '🔒 Admin Login'}
-          </button>
-          {isAdmin && (
-            <>
-              <button
-                onClick={() => { setCreating(true); setCreateErr(''); }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-dashed t-border-mid t-muted hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer"
-              >
-                + New Tournament
-              </button>
-              {adminInfo?.isSuperAdmin && (
-                <button
-                  onClick={() => setSuperAdminOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border font-['DM_Mono'] text-xs transition-all cursor-pointer"
-                  style={{ borderColor: 'var(--accent-gold)', color: 'var(--accent-gold)', background: 'rgba(255,176,32,0.07)' }}
-                >
-                  ★ Manage Admins
-                </button>
-              )}
-              <button
-                onClick={() => { setShowChangePw(v => !v); setChangePwErr(''); setChangePwOk(''); setNewPwVal(''); }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border t-border-mid t-muted t-elevated hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer"
-              >
-                🔑 Change Password
-              </button>
-            </>
-          )}
-        </div>
+        <AdminToolbar
+          isAdmin={isAdmin}
+          adminInfo={adminInfo}
+          onLogin={() => setShowUnlock(true)}
+          onLogout={handleLogout}
+          onNewTournament={() => { setShowCreate(true); setCreateErr(''); }}
+          onManageAdmins={() => setSuperAdminOpen(true)}
+          onChangePw={changePassword}
+        />
 
-        {/* ── Change password inline ────────────────────────────────────── */}
-        {isAdmin && showChangePw && (
-          <div className="max-w-sm mx-auto t-surface border t-border rounded-2xl p-5 shadow-xl mb-2">
-            <h3 className="font-['Bebas_Neue'] text-lg tracking-widest t-text mb-1">🔑 CHANGE PASSWORD</h3>
-            <p className="font-['DM_Mono'] text-[10px] t-muted mb-3">Logged in as <span style={{ color: 'var(--accent-gold)' }}>{adminInfo?.name}</span></p>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                className="flex-1 t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                placeholder="New password…"
-                value={newPwVal}
-                onChange={e => { setNewPwVal(e.target.value); setChangePwErr(''); setChangePwOk(''); }}
-                onKeyDown={e => e.key === 'Enter' && handleChangePw()}
-                autoFocus
-              />
-              <button
-                onClick={handleChangePw}
-                disabled={savingPw || !newPwVal.trim()}
-                className="px-4 py-2.5 rounded-xl font-['DM_Mono'] text-sm font-bold text-white disabled:opacity-40 hover:opacity-90 transition-opacity cursor-pointer"
-                style={{ background: 'var(--accent)' }}
-              >{savingPw ? '…' : 'Save'}</button>
-            </div>
-            {changePwErr && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-red)' }}>{changePwErr}</p>}
-            {changePwOk && <p className="font-['DM_Mono'] text-xs mt-2" style={{ color: 'var(--accent-green)' }}>{changePwOk}</p>}
-          </div>
-        )}
-
-        {/* ── Loading ─────────────────────────────────────────── */}
+        {/* Loading */}
         {loading && (
           <div className="flex items-center justify-center py-24">
             <div className="font-['DM_Mono'] text-xs t-muted animate-pulse">Loading tournaments…</div>
           </div>
         )}
 
-        {/* ── Admin unlock (inline modal) ─────────────────────── */}
+        {/* Admin unlock */}
         {!loading && showUnlock && (
-          <div className="max-w-sm mx-auto t-surface border t-border rounded-2xl p-6 shadow-xl">
-            <h3 className="font-['Bebas_Neue'] text-2xl tracking-widest t-text mb-1">🔐 ADMIN UNLOCK</h3>
-            <p className="font-['DM_Mono'] text-xs t-muted mb-4">Enter your admin name and password to manage tournaments.</p>
-            <input
-              type="text"
-              className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent-gold)] transition-colors mb-2"
-              placeholder="Admin name…"
-              value={adminNameInput}
-              onChange={e => setAdminNameInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && pw && handleUnlock()}
-              autoFocus
-              autoComplete="username"
-            />
-            <input
-              type="password"
-              className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent-gold)] transition-colors mb-3"
-              placeholder="Password…"
-              value={pw}
-              onChange={e => setPw(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && adminNameInput.trim() && handleUnlock()}
-              autoComplete="current-password"
-            />
-            {pwErr && <p className="font-['DM_Mono'] text-xs text-[var(--accent-red)] mb-3">{pwErr}</p>}
-            <div className="flex gap-3">
-              <button
-                className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
-                onClick={() => { setShowUnlock(false); setAdminNameInput(''); setPw(''); setPwErr(''); }}
-                disabled={unlocking}
-              >Cancel</button>
-              <button
-                className="flex-1 py-2.5 rounded-xl font-['DM_Mono'] text-sm font-bold disabled:opacity-40 cursor-pointer"
-                style={{ background: 'var(--accent-gold)', color: '#1a0f00' }}
-                onClick={handleUnlock}
-                disabled={unlocking || !adminNameInput.trim() || !pw.trim()}
-              >{unlocking ? 'Checking…' : 'Unlock'}</button>
-            </div>
-          </div>
+          <AdminUnlockPanel
+            adminNameInput={adminNameInput}
+            pw={pw}
+            pwErr={pwErr}
+            unlocking={unlocking}
+            onNameChange={setAdminNameInput}
+            onPwChange={setPw}
+            onUnlock={handleUnlock}
+            onCancel={() => { setShowUnlock(false); setAdminNameInput(''); setPw(''); setPwErr(''); }}
+          />
         )}
 
-        {/* ── Create form ─────────────────────────────────────── */}
-        {!loading && creating && (
+        {/* Create form */}
+        {!loading && showCreate && (
           <div className="max-w-sm mx-auto t-surface border t-border rounded-2xl p-6 shadow-xl">
             <h3 className="font-['Bebas_Neue'] text-2xl tracking-widest t-text mb-4">+ NEW TOURNAMENT</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Tournament Name</label>
-                <input
-                  type="text"
-                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                  placeholder="e.g. Kabut Open 2025"
-                  value={newName}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setNewName(val);
-                    const derived = val.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 64);
-                    const prevDerived = newName.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 64);
-                    if (!newId || newId === prevDerived) setNewId(derived);
-                  }}
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">ID / Slug</label>
-                <input
-                  type="text"
-                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                  placeholder="e.g. kabut-open-2025"
-                  value={newId}
-                  onChange={e => setNewId(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64))}
-                />
-                <p className="font-['DM_Mono'] text-[10px] t-muted mt-1">Letters, numbers, hyphens only.</p>
-              </div>
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Tournament Date & Time <span className="normal-case tracking-normal t-dim">(optional)</span></label>
-                <input
-                  type="datetime-local"
-                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                  value={newTournamentDate}
-                  onChange={e => setNewTournamentDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Organizer <span className="normal-case tracking-normal t-dim">(optional)</span></label>
-                <input
-                  type="text"
-                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                  placeholder="e.g. Kabut Esports"
-                  value={newOrganizer}
-                  onChange={e => setNewOrganizer(e.target.value.slice(0, 100))}
-                />
-              </div>
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Poster Image <span className="normal-case tracking-normal t-dim">(optional)</span></label>
-                <label className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-dashed t-border-mid t-muted hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer">
-                  📁 {newPosterFile ? newPosterFile.name : 'Choose image…'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={e => {
-                      const file = e.target.files?.[0] ?? null;
-                      setNewPosterFile(file);
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = ev => setNewPosterPreview(ev.target?.result as string);
-                        reader.readAsDataURL(file);
-                      } else {
-                        setNewPosterPreview('');
-                      }
-                    }}
-                  />
-                </label>
-                {newPosterPreview && (
-                  <div className="mt-2 rounded-lg overflow-hidden border t-border-mid h-28">
-                    <img src={newPosterPreview} alt="poster preview" className="w-full h-full object-cover" />
-                  </div>
-                )}
-              </div>
-              {createErr && <p className="font-['DM_Mono'] text-xs text-[var(--accent-red)]">{createErr}</p>}
-              <div className="flex gap-3 pt-1">
-                <button
-                  className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
-                  onClick={() => { setCreating(false); setCreateErr(''); setNewId(''); setNewName(''); setNewOrganizer(''); setNewTournamentDate(''); setNewPosterFile(null); setNewPosterPreview(''); }}
-                  disabled={saving}
-                >Cancel</button>
-                <button
-                  className="flex-1 py-2.5 rounded-xl text-white font-['DM_Mono'] text-sm font-bold hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer"
-                  style={{ background: 'var(--accent)' }}
-                  onClick={handleCreate}
-                  disabled={saving || !newId || !newName.trim()}
-                >{saving ? 'Creating…' : 'Create'}</button>
-              </div>
-            </div>
+            <TournamentFormModal
+              mode="create"
+              initial={{ name: '', id: '', organizer: '', tournamentDate: '', posterFile: null, posterPreview: '' }}
+              saving={creating}
+              error={createErr}
+              onSubmit={handleCreate}
+              onCancel={() => { setShowCreate(false); setCreateErr(''); }}
+            />
           </div>
         )}
 
-        {/* ── Card grid ──────────────────────────────────────── */}
-        {!loading && !showUnlock && !creating && (
+        {/* Card grid */}
+        {!loading && !showUnlock && !showCreate && (
           <>
             {tournaments.length === 0 ? (
               <div className="text-center py-20">
@@ -770,127 +315,23 @@ export function TournamentPicker({ onSelect }: Props) {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 {tournaments.map(t => (
-                  <div
+                  <TournamentCard
                     key={t.id}
-                    className={`group relative flex flex-col rounded-2xl border t-surface overflow-hidden shadow-lg transition-all ${
-                      isAdmin && !canManage(t)
-                        ? 'opacity-50 cursor-not-allowed border-[var(--border-mid)]'
-                        : 'cursor-pointer t-border-mid hover:border-[var(--accent)] hover:shadow-[0_0_24px_rgba(77,124,255,0.12)]'
-                    }`}
-                    onClick={() => {
-                      if (isAdmin && !canManage(t)) return;
-                      onSelect(t.id, adminToken ?? undefined, adminInfo ?? undefined);
+                    t={t}
+                    isAdmin={isAdmin}
+                    canManage={canManage(t)}
+                    editingPosterId={editingPosterId}
+                    posterSaving={posterSaving}
+                    onSelect={() => onSelect(t.id, adminToken ?? undefined, adminInfo ?? undefined)}
+                    onEdit={e => {
+                      e.stopPropagation();
+                      setEditingTournamentId(t.id);
+                      setEditErr('');
                     }}
-                  >
-
-                    {/* Lock overlay for inaccessible tournaments */}
-                      {isAdmin && !canManage(t) && (
-                        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-                          <div className="bg-black/60 backdrop-blur-sm rounded-xl px-4 py-2 flex items-center gap-2">
-                            <span className="text-lg">🔒</span>
-                            <span className="font-['DM_Mono'] text-xs text-white/80 tracking-widest uppercase">No Access</span>
-                          </div>
-                        </div>
-                      )}
-
-                    {/* Poster image */}
-                    <div
-                      className="relative w-full overflow-hidden"
-                      style={{ aspectRatio: '16/9' }}
-                    >
-                      {t.posterUrl ? (
-                        <img
-                          src={t.posterUrl}
-                          alt={`${t.name} poster`}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          onClick={e => { e.stopPropagation(); setLightboxUrl(t.posterUrl!); }}
-                          title="Click to view poster"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center t-elevated">
-                          <span className="text-4xl mb-2">🏆</span>
-                          <span className="font-['DM_Mono'] text-[10px] t-dim uppercase tracking-widest">No poster</span>
-                        </div>
-                      )}
-                      {/* Gradient overlay — pointer-events-none so clicks pass to img */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none" />
-
-                      {/* Admin: edit poster button */}
-                      {isAdmin && canManage(t) && (
-                        <label
-                          onClick={e => e.stopPropagation()}
-                          className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 font-['DM_Mono'] text-[10px] text-white/80 hover:bg-black/80 hover:text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                        >
-                          {posterSaving && editingPosterId === t.id ? '⏳ Uploading…' : '🖼 Edit Poster'}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            disabled={posterSaving}
-                            onChange={async e => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              setEditingPosterId(t.id);
-                              await handleSavePoster(t.id, file);
-                              e.target.value = '';
-                            }}
-                          />
-                        </label>
-                      )}
-
-                      {/* Admin: delete + edit buttons (top-left) */}
-                      {isAdmin && canManage(t) && (
-                        <div className="absolute top-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                          <button
-                            onClick={e => openEditTournament(t, e)}
-                            className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 font-['DM_Mono'] text-[10px] text-blue-300 hover:bg-blue-900/70 hover:text-blue-200 hover:border-blue-500/50 transition-all cursor-pointer"
-                          >
-                            ✏️ Edit
-                          </button>
-                          <button
-                            onClick={e => { e.stopPropagation(); setConfirmDeleteId(t.id); setDeleteErr(''); }}
-                            className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 font-['DM_Mono'] text-[10px] text-red-400 hover:bg-red-900/70 hover:text-red-300 hover:border-red-500/50 transition-all cursor-pointer"
-                          >
-                            🗑 Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Card body */}
-                    <div className="flex flex-col flex-1 p-4">
-                      <div className="font-['Bebas_Neue'] text-xl tracking-wider t-text leading-tight mb-0.5 group-hover:text-[var(--accent)] transition-colors">
-                        {t.name}
-                      </div>
-                      <div className="font-['DM_Mono'] text-[10px] t-muted mb-1">
-                        /{t.id} · Created {new Date(t.createdAt).toLocaleDateString()}
-                      </div>
-                      {t.tournamentDate && (
-                        <div className="font-['DM_Mono'] text-[10px] mb-0.5" style={{ color: 'var(--accent-gold)' }}>
-                          📅 {new Date(t.tournamentDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
-                        </div>
-                      )}
-                      {t.organizer && (
-                        <div className="font-['DM_Mono'] text-[10px] t-muted mb-3">
-                          <span className="t-dim">Organizer: </span>{t.organizer}
-                        </div>
-                      )}
-                      {!t.tournamentDate && !t.organizer && <div className="mb-3" />}
-                      <div
-                        className="mt-auto w-full py-2.5 rounded-xl font-['DM_Mono'] text-xs font-bold uppercase tracking-widest text-white text-center transition-all group-hover:opacity-90"
-                        style={{ background: 'linear-gradient(135deg, var(--accent-red), var(--accent))' }}
-                      >
-                        Enter Tournament →
-                      </div>
-                    </div>
-
-                    {/* Uploading overlay */}
-                    {editingPosterId === t.id && posterSaving && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-10">
-                        <div className="font-['DM_Mono'] text-xs text-white/70 animate-pulse">Uploading poster…</div>
-                      </div>
-                    )}
-                  </div>
+                    onDeleteClick={() => { setConfirmDeleteId(t.id); setDeleteErr(''); }}
+                    onPosterChange={file => handleSavePoster(t.id, file)}
+                    onPosterClick={url => setLightboxUrl(url)}
+                  />
                 ))}
               </div>
             )}
@@ -898,156 +339,49 @@ export function TournamentPicker({ onSelect }: Props) {
         )}
       </div>
 
-      {/* ── Shop Ticker ────────────────────────────────────────────────────── */}
+      {/* Bottom ticker */}
       <div className="relative z-10 w-full sticky bottom-0">
-        <PickerTicker />
+        <BottomTicker text={SHOP_TICKER_TEXT} />
       </div>
 
-      {/* ── Edit tournament modal ────────────────────────────────────────────── */}
-      {editingTournament && (
+      {/* Edit modal */}
+      {editingTournament && editInitial && (
         <div
           className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4"
-          onClick={e => { if (e.target === e.currentTarget && !editSaving) setEditingTournament(null); }}
+          onClick={e => { if (e.target === e.currentTarget && !editSaving) setEditingTournamentId(null); }}
         >
           <div className="t-surface border t-border rounded-2xl p-6 w-[420px] max-w-[95vw] shadow-2xl">
             <h3 className="font-['Bebas_Neue'] text-2xl tracking-widest t-text mb-4">✏️ EDIT TOURNAMENT</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Tournament Name</label>
-                <input
-                  type="text"
-                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                  value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Tournament Date & Time <span className="normal-case tracking-normal t-dim">(optional)</span></label>
-                <input
-                  type="datetime-local"
-                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                  value={editTournamentDate}
-                  onChange={e => setEditTournamentDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Organizer <span className="normal-case tracking-normal t-dim">(optional)</span></label>
-                <input
-                  type="text"
-                  className="w-full t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                  placeholder="e.g. Kabut Esports"
-                  value={editOrganizer}
-                  onChange={e => setEditOrganizer(e.target.value.slice(0, 100))}
-                />
-              </div>
-              <div>
-                <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">Poster Image <span className="normal-case tracking-normal t-dim">(optional — replaces current)</span></label>
-                <label className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-dashed t-border-mid t-muted hover:border-[var(--accent)] hover:text-[var(--accent)] font-['DM_Mono'] text-xs tracking-widest uppercase transition-all cursor-pointer">
-                  📁 {editPosterFile ? editPosterFile.name : 'Choose image…'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={e => {
-                      const file = e.target.files?.[0] ?? null;
-                      setEditPosterFile(file);
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = ev => setEditPosterPreview(ev.target?.result as string);
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </label>
-                {editPosterPreview && (
-                  <div className="mt-2 rounded-lg overflow-hidden border t-border-mid h-28">
-                    <img src={editPosterPreview} alt="poster preview" className="w-full h-full object-cover" />
-                  </div>
-                )}
-              </div>
-              {editErr && <p className="font-['DM_Mono'] text-xs text-[var(--accent-red)]">{editErr}</p>}
-              <div className="flex gap-3 pt-1">
-                <button
-                  className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
-                  onClick={() => setEditingTournament(null)}
-                  disabled={editSaving}
-                >Cancel</button>
-                <button
-                  className="flex-1 py-2.5 rounded-xl text-white font-['DM_Mono'] text-sm font-bold hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer"
-                  style={{ background: 'var(--accent)' }}
-                  onClick={handleSaveEdit}
-                  disabled={editSaving || !editName.trim()}
-                >{editSaving ? 'Saving…' : 'Save Changes'}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Poster lightbox ─────────────────────────────────────────────────── */}
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <div className="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center">
-            <img
-              src={lightboxUrl}
-              alt="Poster"
-              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
-              onClick={e => e.stopPropagation()}
+            <TournamentFormModal
+              mode="edit"
+              initial={editInitial}
+              saving={editSaving}
+              error={editErr}
+              onSubmit={handleSaveEdit}
+              onCancel={() => setEditingTournamentId(null)}
             />
-            <button
-              onClick={() => setLightboxUrl(null)}
-              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 border border-white/20 text-white/80 hover:bg-black/90 hover:text-white font-bold text-sm transition-all cursor-pointer"
-            >✕</button>
           </div>
         </div>
       )}
 
-      {/* ── Delete confirmation modal ────────────────────────────────────────── */}
-      {confirmDeleteId && (
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50"
-          onClick={e => { if (e.target === e.currentTarget && !deleting) setConfirmDeleteId(null); }}
-        >
-          <div className="t-surface border border-red-500/40 rounded-2xl p-7 w-[360px] max-w-[95vw] shadow-2xl">
-            <div className="text-3xl mb-3">⚠️</div>
-            <h3 className="font-['Bebas_Neue'] text-2xl tracking-widest text-red-400 mb-1">DELETE TOURNAMENT</h3>
-            <p className="font-['DM_Mono'] text-xs t-muted mb-1">
-              You are about to permanently delete:
-            </p>
-            <p className="font-['DM_Mono'] text-sm t-text font-bold mb-1">
-              {tournaments.find(t => t.id === confirmDeleteId)?.name ?? confirmDeleteId}
-            </p>
-            <p className="font-['DM_Mono'] text-[10px] text-red-400/80 mb-5">
-              This will delete all tournament data including teams, players, brackets, chat, and maps. This action cannot be undone.
-            </p>
-            {deleteErr && (
-              <p className="font-['DM_Mono'] text-xs text-[var(--accent-red)] mb-3">{deleteErr}</p>
-            )}
-            <div className="flex gap-3">
-              <button
-                className="flex-1 py-2.5 rounded-xl t-elevated border t-border-mid t-text font-['DM_Mono'] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer disabled:opacity-40"
-                onClick={() => { setConfirmDeleteId(null); setDeleteErr(''); }}
-                disabled={deleting}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 py-2.5 rounded-xl font-['DM_Mono'] text-sm font-bold text-white transition-all cursor-pointer hover:opacity-90 disabled:opacity-40"
-                style={{ background: 'var(--accent-red)' }}
-                onClick={() => handleDelete(confirmDeleteId)}
-                disabled={deleting}
-              >
-                {deleting ? 'Deleting…' : '🗑 Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <PosterLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       )}
-      {/* ── Super Admin Panel ─────────────────────────────────────────────── */}
+
+      {/* Delete confirm */}
+      {confirmDeleteId && (
+        <DeleteConfirmModal
+          tournamentName={tournaments.find(t => t.id === confirmDeleteId)?.name ?? ''}
+          tournamentId={confirmDeleteId}
+          deleting={deleting}
+          error={deleteErr}
+          onConfirm={() => handleDelete(confirmDeleteId)}
+          onCancel={() => { setConfirmDeleteId(null); setDeleteErr(''); }}
+        />
+      )}
+
+      {/* Super Admin panel */}
       <SuperAdminPanel
         open={superAdminOpen}
         onClose={() => setSuperAdminOpen(false)}
@@ -1055,13 +389,7 @@ export function TournamentPicker({ onSelect }: Props) {
         adminId={adminInfo?.adminId ?? null}
         adminName={adminInfo?.name ?? null}
         isSuperAdmin={adminInfo?.isSuperAdmin ?? false}
-        onTournamentsChanged={async () => {
-          try {
-            const res = await fetch('/api/tournaments');
-            const data = await res.json();
-            setTournaments(data.tournaments ?? []);
-          } catch { /* ignore */ }
-        }}
+        onTournamentsChanged={refresh}
       />
     </div>
   );
