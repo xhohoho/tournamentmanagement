@@ -48,14 +48,27 @@ export async function isAdminTokenValid(req: NextRequest): Promise<boolean> {
   return (await verifyAdminToken(req)) !== null;
 }
 
+// Reverse mapping: admin:currenttoken:<adminId> → <token>
+// Lets us revoke the previous token when the same admin logs in again.
+const CURRENT_TOKEN_PREFIX = 'admin:currenttoken:';
+
 async function createToken(adminId: string): Promise<string> {
+  // Revoke any existing token for this admin before issuing a new one.
+  const reverseKey = `${CURRENT_TOKEN_PREFIX}${adminId}`;
+  const oldToken = await kv.get<string>(reverseKey);
+  if (oldToken) await kv.del(`${TOKEN_PREFIX}${oldToken}`);
+
   const token = randomBytes(32).toString('hex');
   await kv.set(`${TOKEN_PREFIX}${token}`, adminId, { ex: TOKEN_TTL });
+  await kv.set(reverseKey, token, { ex: TOKEN_TTL });
   return token;
 }
 
 async function revokeToken(token: string): Promise<void> {
+  // Also clean up the reverse mapping on explicit logout.
+  const adminId = await kv.get<string>(`${TOKEN_PREFIX}${token}`);
   await kv.del(`${TOKEN_PREFIX}${token}`);
+  if (adminId) await kv.del(`${CURRENT_TOKEN_PREFIX}${adminId}`);
 }
 
 // ── Seed default admin if none exist ─────────────────────────────────────

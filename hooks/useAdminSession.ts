@@ -12,19 +12,19 @@ export interface AdminInfo {
 }
 
 function getStorage() {
-  return typeof window !== 'undefined' ? sessionStorage : null;
+  return typeof window !== 'undefined' ? localStorage : null;
 }
 
 export function useAdminSession() {
   const [adminToken, setAdminToken] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem(ADMIN_TOKEN_KEY);
+    return localStorage.getItem(ADMIN_TOKEN_KEY);
   });
 
   const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
-      const raw = sessionStorage.getItem(ADMIN_INFO_KEY);
+      const raw = localStorage.getItem(ADMIN_INFO_KEY);
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
   });
