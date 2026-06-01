@@ -1,364 +1,220 @@
-# Tournament Management — Task Tracker
+# Tournament Management — Refactor Task Tracker
 
 > Legend: `[ ]` todo · `[x]` done · `[-]` skipped/won't fix
 > Priority: 🔴 critical · 🟠 high · 🟡 medium · 🟢 low
+> Source: Full codebase analysis — June 2026
 
 ---
 
-## 🐛 Bug Fixes
+## 🏗️ Architecture / Structure
 
-- [x] 🔴 **[context.tsx + AdminModal.tsx]** Admin token never stored in context — `assignLeader` always 403
-  - Token was trapped in `AdminModal` local state, never passed to `adminHeaders`
-  - Fixed: exposed `setAdminToken` on context, called it from `AdminModal` on login
+- [ ] 🔴 **[app/api/admin/auth/route.ts → lib/auth.ts]** `verifyAdminToken`, `hashPassword`, `verifyPassword`, `isAdminTokenValid` are defined inside a route file and imported by every other route
+  - Importing from a route file is an antipattern — couples route modules, risks circular imports, leaks route-level side effects
+  - Fix: move all four helpers into `lib/auth.ts` (currently only `canAccessTournament` lives there); update every importer (`tournamentAccess.ts`, `bracket/route.ts`, `tournaments/route.ts`) to import from `lib/auth`
 
-- [x] 🔴 **[kv.ts]** `adminPwHash` stored as plaintext — password is `"admin123"` in `defaultState()`
-  - Anyone who reads the KV store sees the password directly
-  - Fixed: password hashed with `crypto.scrypt` (salt:hash format) on write; `verifyPassword` handles both legacy plaintext and new hashed values; auto-upgrades plaintext on first successful login
+- [ ] 🔴 **[app/api/bracket/route.ts → lib/bracket.ts]** All bracket business logic (`buildSE`, `buildDE`, `seedLBDropIn`, `sweepBracket`, `isFeederResolved`, `stageFormat`, `emptyMatch`, `resolveWinner`) lives in the route file — ~350 lines of pure logic mixed with HTTP handlers
+  - Fix: extract everything above into `lib/bracket.ts`; the route file becomes thin HTTP glue (parse request → call lib → return JSON)
+  - Bonus: these functions can then be unit-tested in isolation
 
-- [x] 🔴 **[api/admin/auth/route.ts]** In-memory token store (`validTokens`) is lost on server restart / redeployment
-  - On Vercel, serverless functions spin up fresh — all tokens are wiped, forcing re-login silently
-  - Fixed: tokens stored in Vercel KV with 8h TTL (`admin:token:<hex>` keys); `verifyAdminToken` is now async and checks KV; added `DELETE /api/admin/auth` to revoke tokens on logout; `context.tsx` calls it when admin logs out
+- [ ] 🟠 **[lib/tournamentAccess.ts]** Still imports `verifyAdminToken` from `@/app/api/admin/auth/route` — blocked until the auth helpers are moved to `lib/auth.ts`
+  - Fix: update import after the above is resolved
 
-- [x] 🟠 **[api/teams/route.ts]** Team formation (`POST`) has no auth check for the main creation path
-  - Any unauthenticated client can call `POST /api/teams` and regenerate teams
-  - Fixed: `verifyAdminToken` guard added to `POST`, `DELETE`, `PATCH`; redundant `authorizeAdmin` wrapper removed; auth check now at top of `POST` before any body parsing
+- [ ] 🟠 **[lib/types.ts]** `TournamentState` is kept as a deprecated alias (`= ServerState`) but is still actively used in `kv.ts` and many route handlers
+  - Fix: global find-and-replace `TournamentState` → `ServerState` across the entire codebase; remove the deprecated alias from `types.ts`
 
-- [x] 🟠 **[api/players/route.ts]** `addToRoster` has no auth check — any user can add themselves to the roster
-  - The UI hides the button for non-admins but the API is wide open
-  - Fixed: `DELETE` and all admin `PATCH` actions (`addToRoster`, `removeFromRoster`, `setRoster`, `clearQueue`, `clearRoster`) now require admin token; server-side name length check (≤24) also added here
+- [ ] 🟡 **[app/api/state/route.ts + app/api/state/stream/route.ts + app/api/reset/route.ts]** All three independently destructure `adminPwHash` out of state before responding — `const { adminPwHash: _, ...safe } = state`
+  - Fix: add a `safeState(s: ServerState): ClientState` helper in `lib/kv.ts` that does the omission once; all three routes call it instead of duplicating the destructure
 
-- [x] 🟠 **[api/bracket/route.ts]** Score updates (`PATCH`) have no auth check
-  - Any client can call `PATCH /api/bracket` and change scores
-  - Fixed: `verifyAdminToken` guard added to `POST`, `PATCH`, `PUT`, `DELETE`
-
-- [x] 🟠 **[api/maps/route.ts]** Map add/delete/assign has no auth check
-  - Fixed: `verifyAdminToken` guard added to `POST`, `DELETE`, `PATCH`
-
-- [x] 🟠 **[api/reset/route.ts]** `DELETE /api/reset` has no auth check — anyone can wipe the tournament
-  - Fixed: `verifyAdminToken` guard added; `context.tsx` updated to pass `adminHeaders` to all previously unprotected fetch calls
-
-- [x] 🟡 **[api/bracket/route.ts]** Double elimination lower bracket logic is incomplete
-  - Losers are dropped into `lower_r{ri*2}` but there's no logic to build consolidation rounds (LB winner advancing, alternating rounds)
-  - The lower bracket grows uncontrolled and doesn't properly produce a single LB finalist
-  - Fixed: rewrote `buildDE()` to pre-allocate the full LB skeleton (2*(U-1) rounds, alternating drop-in/consolidation); `seedLBDropIn()` deterministically places UB losers using `ri*2` drop-in mapping + `slotHint`; winner propagation in `PATCH` now correctly routes LB Final winner → `grandFinal.p2`; `autoByes` runs after each seeding; single-elim 3rd place and GF champion logic preserved
-
-- [x] 🟡 **[TeamsTab.tsx]** Reveal animation `revealOrderMap` is recomputed every time `teams` reference changes (polling every 4s)
-  - `useMemo` depends on `teams` — each poll replaces the array reference, reshuffling the reveal order for members not yet visible
-  - Fix: seed the map once on `formTeams` success and store it in a `useRef`, not `useMemo`
-
-- [x] 🟡 **[context.tsx]** `setElimMode` is client-side only — does NOT persist to KV
-  - The `PATCH /api/bracket` with `action: 'setElimMode'` exists in the route but `context.tsx` never calls it
-  - After a page refresh, `elimMode` reverts to whatever is stored (default `'single'`)
-  - Fix: make `setElimMode` async, call `PATCH /api/bracket` with `{ action: 'setElimMode', elimMode }`
-
-- [x] 🟡 **[MapsTab.tsx]** Wheel pointer (▶) is positioned above the canvas with `rotate-90` but its alignment is purely visual/approximate — the math in `spin()` normalises angle from 12 o'clock (top), not 3 o'clock (right)
-  - The picked map can be off by one slice in certain angle ranges
-  - Fix: align pointer to the right (3 o'clock, angle 0) or adjust the normalisation formula to match pointer position
-
-- [x] 🟢 **[PlayersTab.tsx]** Drag-and-drop `dragging` state is set via `handleDragStart` but never cleared on `dragend`
-  - If the user drags and drops outside a valid target, `dragging` stays set
-  - Fix: add `onDragEnd` handler to clear `setDragging(null)` on both queue items and roster items
-
-- [ ] 🔴 **[kv.ts]** `defaultState()` still has `adminPwHash: 'admin123'` as plaintext
-  - On a fresh KV store (new deployment), the default password is written as plaintext, bypassing the hashing added in `auth/route.ts`
-  - Fix: `defaultState()` should write an empty string or a pre-hashed sentinel; the first login flow should detect a missing/empty hash and set it properly, OR hash `'admin123'` at build time and embed the hash as the default
-
-- [ ] 🟠 **[api/state/stream/route.ts]** SSE endpoint polls KV every 1.5s regardless of whether any client is connected or state has changed
-  - Every open browser tab causes 1 KV read per 1.5s forever — with 10 spectators that's ~400 KV reads/min doing nothing useful
-  - Fix: track last-sent state hash and only push when state actually changed; or use a shared in-process emitter so KV is polled once per interval regardless of client count
-
-- [ ] 🟠 **[api/bracket/route.ts]** `PATCH` with score update re-runs `autoByes` on the entire bracket unconditionally after every score change
-  - If a match in round 3 is updated, `autoByes` scans all rounds from scratch — it can accidentally overwrite manually-set players or trigger double-propagation in edge cases
-  - Fix: only run `autoByes` on rounds affected by the current change (from `ri` forward), not the entire bracket
-
-- [ ] 🟡 **[MapsTab.tsx]** `drawWheel` uses the string `'var(--bg-elevated)'` and `'var(--text-dim)'` directly inside a `<canvas>` context
-  - Canvas `fillStyle` doesn't resolve CSS variables — it renders as black/transparent when the empty-map fallback is hit
-  - Fix: read computed CSS variable values via `getComputedStyle(document.documentElement).getPropertyValue('--bg-elevated')` before drawing
-
-- [ ] 🟡 **[context.tsx]** `resetAll` does not clear `maps` from local state — only `players`, `roster`, `teams`, `bracket`, `stageMaps` are reset
-  - After a reset, maps still appear in the UI until the next SSE push
-  - Fix: add `setMaps([])` inside `resetAll` (or have `/api/reset` also wipe maps and return them)
-
-- [ ] 🟡 **[api/players/route.ts]** Duplicate name check is case-insensitive on read but player names are stored with original casing
-  - `"Alice"` and `"alice"` are treated as duplicates in the queue check, but if one slips through (e.g. via a direct API call), the roster and teams will have both
-  - Fix: normalise name to trimmed original casing on write; the existing `.toLowerCase()` guard is correct but should also be applied to roster operations
-
-- [ ] 🟢 **[TeamsTab.tsx]** `isVisible()` falls back to `true` when `revealCount === 0` AND `revealing === false` — this means on the very first render after `formTeams`, before the animation starts, all members flash visible for one frame
-  - Fix: track a `hasRevealed` boolean ref that is set to `true` once `seedRevealOrder` runs; only show members when `hasRevealed && isVisible()` or when `!hasRevealed` (clean first load)
-
----
-
-## 🔒 Security
-
-- [x] 🔴 **[kv.ts]** Hash the admin password — see Bug Fixes above
-
-- [x] 🟠 **[All API routes]** Add auth middleware — see Bug Fixes above (teams, players, bracket, maps, reset)
-
-- [x] 🟡 **[api/players/route.ts]** No rate limit on `POST /api/players` — anyone can spam the queue with fake names
-  - Fix: add IP-based rate limiting (e.g. Vercel Edge middleware, or upstash ratelimit library)
-
-- [x] 🟡 **[api/players/route.ts]** Player name has no server-side max-length check (only `maxLength={24}` in the UI)
-  - Fix: validate `trimmed.length <= 24` in the POST handler
-
-- [ ] 🟠 **[api/admin/auth/route.ts]** No brute-force protection on `POST /api/admin/auth`
-  - An attacker can call the login endpoint in a tight loop with password guesses — nothing throttles or locks them out
-  - Fix: add IP-based rate limiting (e.g. Upstash Ratelimit) on the login route — stricter than the player queue limit (e.g. 5 attempts per minute per IP)
-
-- [ ] 🟠 **[api/admin/auth/route.ts]** Token has no binding — any client that intercepts a token (e.g. via shared clipboard, logs) can use it from any origin
-  - Fix: bind token to a User-Agent or IP fingerprint stored alongside `'valid'` in KV; verify on each `verifyAdminToken` call
-
-- [ ] 🟡 **[All API routes]** No CORS headers set — a malicious third-party site could send credentialed requests to the API if the browser has a session
-  - In practice low-risk since auth is token-based, but good hygiene
-  - Fix: add `Access-Control-Allow-Origin` restricted to the deployment domain in a Next.js middleware or `next.config.ts`
-
-- [ ] 🟡 **[api/players/route.ts]** `byAdmin` flag is accepted from the request body with no verification
-  - Any unauthenticated user can `POST /api/players` with `{ name: 'x', byAdmin: true }` and their name gets the 👑 badge
-  - Fix: ignore `byAdmin` from the body unless the request passes `verifyAdminToken`; otherwise force `byAdmin: false`
+- [ ] 🟡 **[app/api/ffa/route.ts]** `GET` handler does a lazy dynamic import `const { getState } = await import('@/lib/kv')` — the only route that does this; all others import at the top
+  - Fix: move `import { getState } from '@/lib/kv'` to the top of the file (static import)
 
 ---
 
 ## ♻️ Redundancy / Consistency
 
-- [x] 🟡 **[lib/utils.ts]** `TEAM_COLORS` and `WHEEL_COLORS` are identical arrays — only `WHEEL_COLORS` has two extra entries
-  - `TEAM_COLORS` is used for team card borders; `WHEEL_COLORS` for the spin wheel
-  - Fix: define one `BASE_COLORS` array, then `WHEEL_COLORS = [...BASE_COLORS, '#78c6ff', '#ffd966']`
+- [ ] 🟠 **[lib/context.tsx]** `adminHeaders` `useMemo` is fine, but it does NOT include `adminToken` in non-admin POST bodies — that's correct — yet the memo rebuilds on every token change including `null → null` equality. The real issue is that every single API helper in context spreads `adminHeaders` and manually adds `body: JSON.stringify(...)`, repeating the same fetch boilerplate ~30 times
+  - Fix: extract a small internal `apiFetch(path, method, body?, admin?)` helper inside the provider that handles `Content-Type`, optional `X-Admin-Token`, and `?t=` param injection; cut ~40% of the boilerplate in context
 
-- [x] 🟡 **[MapsTab.tsx + api/maps/route.ts]** `stageMaps` value type inconsistency — stored as `string[]` in KV but cast with `as unknown as string` in many places
-  - The type in `types.ts` is `Record<string, string[]>` but old KV data may have scalar strings
-  - Fix: normalise all reads through a single `getStageMaps(key)` helper (already partially done in `MapsTab`) and remove the `as unknown as` casts everywhere by ensuring KV always writes arrays
+- [ ] 🟠 **[lib/context.tsx]** Every roster/player/teams/bracket mutating function calls `guard.touch(field)` manually before the fetch, with inconsistent field names (e.g. `'players'` vs `'chat'` vs `'spinCategories'`) — easy to miss a guard or touch the wrong field
+  - Fix: standardise guard field names as a TypeScript `const` enum or string union at the top of context; add a helper `touchGuards(...fields: GuardField[])` to batch them
 
-- [x] 🟡 **[BracketTab.tsx]** `MatchCard` and `GrandFinalDisplay` render nearly identical JSX (player rows, BO3 score buttons, BO1 winner buttons)
-  - Fix: extract a shared `PlayerRow` component and a `ScoreControls` component used by both
+- [ ] 🟡 **[app/api/bracket/route.ts]** `PATCH` handler has two separate code paths that both do `await getState(tid)` + `const bracket: Bracket = JSON.parse(JSON.stringify(B))` — once for `undoMatch`, once for score updates. The deep-clone pattern is repeated 3 times in the same file
+  - Fix: extract `cloneBracket(b: Bracket): Bracket` as a one-liner util in `lib/bracket.ts`
 
-- [x] 🟡 **[BracketTab.tsx]** `ThirdPlaceDisplay` duplicates the player row render logic from `MatchCard`
-  - Fix: same as above — share `PlayerRow` / `ScoreControls`
+- [ ] 🟡 **[app/api/bracket/route.ts]** Winner propagation logic for `upper` rounds (same slot math: `Math.floor(mi/2)`, even/odd assignment) is copy-pasted in both the `PATCH` score update path AND the `undoMatch` path
+  - Fix: extract `propagateWinner(rounds, ri, mi, winner)` and `clearWinner(rounds, ri, mi, prevWinner)` helpers in `lib/bracket.ts`
 
-- [x] 🟡 **[context.tsx]** `removeSpunMap` is just an alias for `removeMap` — exported separately but identical
-  - Fix: remove `removeSpunMap` from context interface and just call `removeMap` directly in `MapsTab`
+- [ ] 🟡 **[app/api/maps/route.ts + lib/context.tsx]** `spinQueue` is updated three different ways: `updateSpinQueue` (full replace), `appendSpinQueue` (push one), and `clearSpinQueue` (set to `[]`) in context — but the API only has `updateSpinQueue` and `appendSpinQueue`; `clearSpinQueue` in context calls `updateSpinQueue` with `[]`
+  - Inconsistency: `removeSpinQueueItem` in context builds the new array client-side and fires `updateSpinQueue` without waiting for the response (fire-and-forget inside `setSpinQueue`)
+  - Fix: make `removeSpinQueueItem` await the response; or add a dedicated `removeSpinQueueItem` action on the API for atomicity
 
-- [x] 🟢 **[page.tsx]** Dark mode stored in `useState` — resets to light on every page refresh
-  - Fix: persist preference to `localStorage` and initialise from it (with a `useEffect` to avoid SSR mismatch)
+- [ ] 🟡 **[app/page.tsx]** Ticker edit modal is ~40 lines of inline JSX inside `MainApp` — a one-off modal that shares the same pattern as other modals in the codebase
+  - Fix: extract `<TickerEditModal open onClose onSave />` component (similar to `DeleteConfirmModal`)
 
-- [x] 🟢 **[AdminModal.tsx]** `sessionToken` local state in `AdminModal` is now redundant — `adminToken` in context holds the same value
-  - Fix: remove `sessionToken` local state; read `adminToken` from context (needs context to expose it as readable value)
+- [ ] 🟡 **[app/page.tsx]** `pickerAdminToken` and `pickerAdminInfo` state in the root `Home` component duplicates what `useAdminSession` hook already manages — the hook reads from `localStorage` on init, but the page component also reads from `localStorage` in a `useEffect` and stores it in separate state
+  - Fix: use `useAdminSession()` directly in `Home` and pass its values to `TourneyProvider`; remove the duplicate `useEffect` + `setPickerAdminToken`/`setPickerAdminInfo` state
 
-- [ ] 🟡 **[api/state/route.ts + api/state/stream/route.ts]** Both routes independently destructure `adminPwHash` out of state before responding — the pattern is repeated in two places and `/api/reset` does the same
-  - Fix: add a `safeState(s: ServerState): ClientState` helper to `kv.ts` that does the omission once; all three routes call it
+- [ ] 🟡 **[hooks/useTournaments.ts]** Duplicates the SSE-with-polling-fallback connection pattern that already exists in `lib/context.tsx` — same structure, different endpoint
+  - Fix: extract a generic `useSSE<T>(url: string, onData: (d: T) => void, pollInterval?: number)` hook into `hooks/useSSE.ts`; both `useTournaments` and the context `useEffect` use it
 
-- [ ] 🟡 **[context.tsx]** `adminHeaders` is a `useMemo` that rebuilds on every `adminToken` change — but it's used in every single API helper as a spread
-  - If `adminToken` is `null`, the header object still includes `Content-Type` — meaning non-admin POST bodies go out with the right content type but no auth, which is correct, but the memo is also recreated unnecessarily when the token hasn't changed in practice
-  - Fix: minor — convert to a plain getter function `getAdminHeaders()` or keep the memo but document clearly why it's a memo vs a ref
+- [ ] 🟢 **[app/api/maps/route.ts]** `DELETE` handler removes a map from `maps` array but does NOT clean up `stageMaps` — if the deleted map is assigned to a stage, it persists as a ghost value until the stage is manually cleared
+  - Fix: also filter `stageMaps` values in the `DELETE` updater, removing the map name from all stage arrays
 
-- [ ] 🟡 **[BracketTab.tsx]** `RoundSet` receives `stageMaps` as a prop drilled from `BracketDisplay` which gets it from `useTourney` — two levels of prop drilling for something already in context
-  - Fix: call `useTourney()` directly in `RoundSet` (or `MatchCard`) instead of prop-drilling `stageMaps`
-
-- [ ] 🟡 **[All route files]** Every route file imports `verifyAdminToken` directly from `@/app/api/admin/auth/route` — importing from a route file is an antipattern (couples route modules to each other)
-  - Fix: move `verifyAdminToken`, `hashPassword`, `verifyPassword` out of `route.ts` into a dedicated `lib/auth.ts`; `auth/route.ts` imports from there
-
-- [ ] 🟢 **[lib/kv.ts]** `updateState` always does a full read → transform → write cycle with no optimistic concurrency — two simultaneous requests can cause a lost-update race
-  - e.g. two admins clicking score buttons at the same moment: both read the same state, one write clobbers the other
-  - Fix: for KV, true transactions aren't available, but wrapping with a lightweight lock key (set NX with TTL) reduces the window; alternatively document the limitation
-
-- [ ] 🟢 **[components/*.tsx]** Each tab component re-declares its own loading skeleton inline (different heights, different number of placeholder blocks, inconsistent opacity ramps)
-  - Fix: extract a shared `<TabSkeleton />` component (already partially done in `PlayersTab` — `TabSkeleton` is defined there but not exported or shared with other tabs)
+- [ ] 🟢 **[app/api/teams/route.ts]** `POST` handler reads `teamMode` from `body` but if the `assignments` branch fires (leader assignment), `teamMode` is destructured but never used — `state.teamMode` is used implicitly
+  - Fix: only destructure `teamMode` outside the `assignments` branch (minor cleanup)
 
 ---
 
-## 🚀 Enhancement
+## 🔒 Security (Remaining)
 
-- [x] 🟠 **[context.tsx]** Polling every 4s with a full `/api/state` fetch is wasteful — every spectator and admin hammers the KV store
-  - Fix: replace with Server-Sent Events (SSE) or long-polling so the server pushes updates only when state actually changes
-  - Fixed: `/api/state/stream` SSE endpoint implemented (`app/api/state/stream/route.ts`); `context.tsx` connects via `EventSource` and falls back to 4s polling only on error
+- [ ] 🔴 **[app/api/admin/auth/route.ts]** No brute-force protection on `POST /api/admin/auth` — unlimited password guesses from any IP
+  - Fix: integrate Upstash Ratelimit (already a transitive dep via `@vercel/kv`): 5 attempts per minute per IP; return `429` with a `Retry-After` header on breach
 
-- [x] 🟠 **[api/teams/route.ts + context.tsx]** No optimistic update on `formTeams` — UI shows stale teams until the next poll after a reset+reform cycle
-  - Fix: return and immediately apply the new teams from the `formTeams` API response (already done), but also clear `bracket` optimistically in context
+- [ ] 🟠 **[app/api/players/route.ts]** `byAdmin` flag is not in the current POST handler (already stripped from the code), but there is no server-side assertion that ensures a non-admin cannot inject admin-level fields through the request body
+  - Fix: explicitly whitelist only `{ name, joinKey }` from the POST body; reject or ignore any extra keys
 
-- [x] 🟡 **[TeamsTab.tsx]** In Fully Random mode, the `✓` assign-leader button shows on every member
-  - After assigning a leader, the button disappears for that person but remains on all others — clicking a second member replaces the first leader silently
-  - Enhancement: show a subtle "change" indicator on the current leader instead of just hiding the button, so admin knows reassignment is possible
+- [ ] 🟠 **[app/api/admin/auth/route.ts]** Token has no binding to the requester — any client that intercepts a token can use it from any origin/IP/device
+  - Fix: store a User-Agent or IP fingerprint alongside the token in KV; verify fingerprint on each `verifyAdminToken` call; return 403 if mismatched
 
-- [x] 🟡 **[BracketTab.tsx]** No way to undo/revert a score once set — the match is locked with no reset option
-  - Fix: add a small ✕ / undo button on completed matches (admin only) that clears `winner`, `score1`, `score2` and re-propagates
-  - Fixed: `undoMatch` action added to `PATCH /api/bracket`; `↩ Undo` button rendered in `MatchCard` for admin on completed matches; reverse propagation (winner, loser, LB drop-in, 3rd place seeding) fully implemented
+- [ ] 🟡 **[All API routes]** No CORS headers — a third-party site could send credentialed requests if the browser has a session
+  - Fix: add `Access-Control-Allow-Origin: <deployment-domain>` in `next.config.ts` headers or a middleware; restrict to the Vercel deployment domain
 
-- [x] 🟡 **[PlayersTab.tsx]** Admin can add players via the same queue form as regular users (`byAdmin` flag exists but there's no dedicated "add as admin" UI path)
-  - Fix: add a separate "Add by Admin" input or a toggle on the submit button so admin-added players get the `byAdmin: true` flag and the 👑 badge
-
-- [x] 🟡 **[MapsTab.tsx]** Spun map result (`spunMap`) resets on page refresh — no persistence
-  - If the admin spins and then changes tabs, the result is gone
-  - Fix: store last spun map in context (or at least component-level across tab switches via `useState` lifted to page)
-
-- [x] 🟢 **[layout.tsx]** Google Fonts loaded via `<link>` in `<head>` — causes render-blocking and a console warning in Next.js 14+
-  - Fix: use `next/font/google` for `Bebas_Neue`, `DM_Mono`, and `Syne` instead
-  - Fixed: `layout.tsx` already uses `next/font/google` for all three fonts with CSS variables and `display: swap`
-
-- [x] 🟢 **[page.tsx]** Player count badge on the Players tab only counts the queue (`players.length`), not the roster
-  - Could be confusing — a player in the roster is no longer a pending queue item
-  - Fix: show separate indicators or change badge to show roster count when it differs
-
-- [x] 🟢 **[TeamsTab.tsx]** No feedback when `formTeams` is in-flight — the "Form Teams" button has no loading state
-  - Fix: add a `forming` boolean state, disable + show spinner on the button while awaiting the API
-
-- [-] 🟢 **[globals.css]** `t-header` utility uses `--header-bg` but the class is only used once (in `page.tsx`) — could just be an inline style or a direct Tailwind arbitrary value
-  - Minor: not worth changing unless doing a CSS cleanup pass
-
-- [ ] 🟠 **[BracketTab.tsx]** Bracket is displayed as a horizontal scroll of columns with no visual connectors between matches
-  - Teams advancing to the next round are shown by shared names, but there are no lines/arrows connecting match winners to their next match
-  - Fix: draw SVG connector lines between match cards and their target slot in the next round (standard bracket tree visualization)
-
-- [ ] 🟠 **[TeamsTab.tsx + api/teams/route.ts]** No way to manually move a player between teams after formation
-  - Once teams are formed, the only option is a full reset — admin can't fix a single bad placement
-  - Fix: add a drag-and-drop (or dropdown swap) UI for moving a player from one team to another; add `PATCH /api/teams` action `swapPlayer` that atomically moves a player between team member arrays
-
-- [ ] 🟡 **[PlayersTab.tsx]** Queue has no cap — the admin must manually clear once teams are formed; players keep submitting names even after the roster is locked
-  - Fix: add a "lock queue" toggle (admin only) that sets a KV flag; `POST /api/players` rejects new submissions when locked; UI shows a "Queue closed" message to non-admins
-
-- [ ] 🟡 **[BracketTab.tsx]** Match format (BO1 vs BO3) is hardcoded to `'bo1'` in `buildSE` and `buildDE` — there's no UI to pick format per-round or globally before generation
-  - Fix: add a format selector in the bracket control panel (Global BO1 / Global BO3 / Per-round) and pass it into `POST /api/bracket`
-
-- [ ] 🟡 **[MapsTab.tsx]** No visual feedback when a map is dragged onto a stage slot — the drag highlight (`dragOverStage`/`dragOverSlot`) works, but there's no animation or confirmation flash after a successful drop
-  - Fix: add a brief highlight/flash animation on the slot after a successful `assignStage` resolves
-
-- [ ] 🟡 **[page.tsx]** No connection status indicator — if KV is down or the SSE stream drops and the polling fallback fails silently, the admin has no idea the UI is showing stale data
-  - Fix: expose a `stale` or `lastUpdated` timestamp from context; show a subtle banner ("⚠ Connection lost — retrying…") when the last successful refresh is more than 10s ago
-
-- [ ] 🟡 **[AdminModal.tsx]** No session expiry feedback — the 8h KV token TTL will silently expire mid-session and all admin actions will start returning 403 with no indication
-  - Fix: detect 403 responses from admin API calls in context helpers and set `isAdmin(false)` + show a re-login prompt automatically
-
-- [ ] 🟢 **[page.tsx]** No mobile navigation — the tab bar overflows on small screens with `overflow-x-auto` but there's no indication of hidden tabs (no fade edge, no swipe affordance)
-  - Fix: add a fade-out gradient on the right edge of the tab bar to hint at horizontal scrollability
-
-- [ ] 🟢 **[BracketTab.tsx]** Champion banner `animate-pulse-glow` runs indefinitely — distracting once the tournament has been over for a while
-  - Fix: stop the animation after 10 seconds by toggling a CSS class or using `animation-iteration-count: 3`
-
-- [ ] 🟢 **[MapsTab.tsx]** The wheel canvas is fixed at `260×260` — on large screens it looks small; on mobile it can overflow its container
-  - Fix: make canvas size responsive using a `ResizeObserver` or `useEffect` that reads the container width and sets canvas dimensions accordingly
+- [ ] 🟡 **[app/api/players/route.ts]** Duplicate name check is case-insensitive (`toLowerCase`) in the queue but roster operations don't normalise — `"Alice"` and `"alice"` could both end up in the roster via direct API calls
+  - Fix: also apply `toLowerCase` guard to `addToRoster`; normalise on write to the queue as well
 
 ---
 
-## 🧹 Code Quality / Types
+## 🐛 Bug Fixes (Remaining)
 
-- [x] 🟡 **[lib/types.ts]** `TournamentState.adminPwHash` should never leave the server but the type is shared client/server
-  - Fix: split into `ServerState` (with `adminPwHash`) and `ClientState` (without), use `ClientState` on the frontend
-  - Fixed: `types.ts` defines `ServerState`, `ClientState = Omit<ServerState, 'adminPwHash'>`, and keeps `TournamentState` as a deprecated alias; `/api/state/stream` and `/api/reset` already destructure out `adminPwHash` before responding
+- [ ] 🔴 **[lib/kv.ts]** `defaultState()` has no `adminPwHash` field at all (good), but a fresh KV store gets the raw `defaultState()` on first `getState` — if code anywhere still reads `state.adminPwHash`, it will be `undefined`, which is fine; but the todo note from the old list remains: verify no code path can accidentally write a plaintext password as the default
+  - Fix: add a runtime assertion in `ensureDefaultAdmin` (in `auth/route.ts`) that checks the written `pwHash` contains `:` (i.e. is hashed) before saving
 
-- [x] 🟡 **[api/bracket/route.ts]** `autoByes` mutates its input array directly — side-effectful and hard to test
-  - Fix: return a new array / make it a pure function
-  - Fixed: `autoByes` now deep-copies input via `rounds.map(r => r.map(m => ({ ...m })))` and returns the new array; callers pass working copies without needing a separate clone
+- [ ] 🔴 **[app/api/state/stream/route.ts + context.tsx]** Admin updates are NOT appearing in real-time for spectators — the SSE stream polls KV every 1.5s regardless of whether the state changed, causing both wasteful reads AND delayed updates (up to 1.5s lag)
+  - Root fix: track a `lastSentHash` (MD5 or `JSON.stringify` hash) per SSE connection; only push when the hash changes; this also solves the KV spam issue from the old todo
 
-- [x] 🟡 **[context.tsx]** `useTourney` hook has no loading guard — components that call it during initial load may render with empty arrays before `refresh()` completes
-  - `loading` is exposed but most tab components don't check it
-  - Fixed: `BracketTab`, `TeamsTab`, `PlayersTab`, and `MapsTab` all check `loading` and return animated pulse skeletons before data is ready
+- [ ] 🟠 **[app/api/bracket/route.ts]** `PATCH` score update calls `sweepBracket` on the entire bracket unconditionally after every score change — can accidentally trigger double-propagation or overwrite manually-set slots in edge cases
+  - Fix: only call `sweepBracket` starting from the round affected by the current change (`ri` forward), not from round 0
 
-- [-] 🟢 **[api/teams/route.ts]** `teamMode` read from POST body but the route also sets it — if `assignments` branch fires, the `teamMode` from body is ignored but the variable is still destructured
-  - Won't fix: code is correct, purely cosmetic; destructuring an unused variable is harmless
+- [ ] 🟠 **[app/api/players/route.ts]** `POST` does a `getState` → check duplicate → `updateState` in two separate KV calls — a race condition exists where two players with the same name can submit simultaneously, both pass the duplicate check, and both get added
+  - Fix: move the duplicate check inside the `updateState` updater function so it runs atomically with the write
 
-- [x] 🟢 **[MapsTab.tsx]** `getStageMaps` helper is defined inside the component — identical logic exists in `BracketTab.tsx` (inline) and `api/maps/route.ts`
-  - Fix: move to `lib/utils.ts` as `parseStageMaps(value)` and share across all three
-  - Fixed: `parseStageMaps` lives in `lib/utils.ts`; `MapsTab`, `BracketTab`, and `api/maps/route.ts` all import and use it; the old inline `getStageMaps` wrapper in `MapsTab` delegates to it
+- [ ] 🟡 **[MapsTab.tsx]** `drawWheel` uses `'var(--bg-elevated)'` and `'var(--text-dim)'` as `fillStyle` — canvas does not resolve CSS variables, renders black/transparent
+  - Fix: `getComputedStyle(document.documentElement).getPropertyValue('--bg-elevated').trim()` before drawing
 
-- [-] 🟢 **[All components]** Inline `onMouseEnter`/`onMouseLeave` style mutations are used as a hover pattern throughout — fragile and verbose
-  - Won't fix: Tailwind `hover:` variants can't reference CSS variables like `var(--accent-red)`, so a `HoverButton` wrapper would be needed — more effort than the cosmetic gain justifies
+- [ ] 🟡 **[lib/context.tsx]** `resetAll` does not reset `maps` local state — maps remain visible in the UI until the next SSE push after reset
+  - Fix: add `setMaps([])` inside `resetAll` (or have `/api/reset` also wipe maps from the response and apply it)
 
-- [ ] 🟡 **[lib/types.ts]** `TournamentState` kept as a deprecated alias but still actively used across all server-side files (`kv.ts`, route handlers)
-  - Fix: do a find-and-replace across the codebase to replace all `TournamentState` usages with `ServerState`; remove the deprecated alias
-
-- [ ] 🟡 **[api/bracket/route.ts]** `buildSE`, `buildDE`, `autoByes`, `seedLBDropIn`, `resolveWinner` are all defined in the route file — business logic mixed with HTTP handler code
-  - Fix: move all bracket-building logic to `lib/bracket.ts`; the route file imports and calls them; easier to unit-test in isolation
-
-- [ ] 🟡 **[api/teams/route.ts]** Team color assignment uses `TEAM_COLORS[i % TEAM_COLORS.length]` but `TEAM_COLORS` only has 8 colors — with 10+ teams (possible with 50+ roster players), colors repeat visibly
-  - Fix: generate colors programmatically (HSL rotation) when team count exceeds `TEAM_COLORS.length`, or extend the palette
-
-- [ ] 🟢 **[next.config.ts]** Config is empty (`{}`) — no meaningful options set
-  - Fix: add `output: 'standalone'` for smaller Docker images if self-hosting ever becomes relevant; add `experimental.typedRoutes: true` for compile-time route type checking; document why it's intentionally minimal
+- [ ] 🟡 **[TeamsTab.tsx]** `isVisible()` falls back to `true` when `revealCount === 0` AND `revealing === false` — on first render after `formTeams`, before animation starts, all members flash visible for one frame
+  - Fix: track a `hasRevealed` ref; only show members when `hasRevealed && isVisible()` or `!hasRevealed` (clean first load before any formation)
 
 - [ ] 🟢 **[lib/kv.ts]** `getState` swallows all errors silently and returns `defaultState()` — if KV is misconfigured or rate-limited, the app silently serves empty state with no log
-  - Fix: log the error to `console.error` before returning default, so it appears in Vercel function logs
-
-- [ ] 🟢 **[All components]** No `displayName` set on any component — React DevTools shows anonymous components, making debugging harder
-  - Fix: add `ComponentName.displayName = 'ComponentName'` for non-exported inner components (`PlayerRow`, `ScoreControls`, `RoundSet`, `MatchCard`, etc.)
+  - Fix: `console.error(err)` before returning default so errors appear in Vercel function logs
 
 ---
 
-## 🎨 UX / Design Requests
+## 🔁 Code Quality / Types
+
+- [ ] 🟠 **[app/api/bracket/route.ts + POST handler]** `action === 'generate'` duplicates the SE round-building loop from `buildSE` — the same `emptyMatch` + round array construction is written out inline a second time instead of calling `buildSE` with empty team names
+  - Fix: call `buildSE(Array(state.teams.length).fill(''), sf)` and clear p1/p2 afterward, as is already done for the DE path; remove the duplicate loop
+
+- [ ] 🟡 **[app/api/teams/route.ts]** Team color assignment uses `TEAM_COLORS[i % TEAM_COLORS.length]` — with 10+ teams (≥50 roster players), colors repeat visibly since `TEAM_COLORS` only has 8 entries
+  - Fix: generate HSL colors dynamically when team count exceeds palette length: `hsl(${(i * 360 / n) % 360}, 70%, 55%)`
+
+- [ ] 🟡 **[lib/context.tsx]** `TourneyContext` interface is defined inline in `context.tsx` — it's large (~60 properties) and duplicates some types from `lib/types.ts`
+  - Fix: move `TourneyContext` to `lib/types.ts` (or a new `lib/context-types.ts`) so it can be imported cleanly by any component that needs to reference it
+
+- [ ] 🟡 **[All components]** No `displayName` on inner/anonymous components — React DevTools shows them as `Anonymous`
+  - Affected: `PlayerRow`, `ScoreControls`, `RoundSet`, `MatchCard`, `GrandFinalDisplay`, `ThirdPlaceDisplay` in `BracketTab`; `TabSkeleton` in `PlayersTab`
+  - Fix: add `ComponentName.displayName = 'ComponentName'` after each inner component definition
+
+- [ ] 🟡 **[app/api/maps/route.ts]** `PATCH` action `updateSpinState` exists in the route but there is no corresponding context method that calls it — the spin state is set from `picker-ticker` route instead
+  - Fix: either remove the dead `updateSpinState` action from maps route, or wire it up; document where spin state is actually set
+
+- [ ] 🟢 **[next.config.ts]** Config is empty `{}` — no options documented
+  - Fix: add `experimental: { typedRoutes: true }` for compile-time route checking; add a comment explaining why it's intentionally minimal; consider `output: 'standalone'` for self-hosting
+
+- [ ] 🟢 **[All components]** Inline `onMouseEnter`/`onMouseLeave` style mutations used as hover pattern throughout — fragile and verbose, but Tailwind `hover:` can't reference CSS variables like `var(--accent-red)`
+  - Fix: create a `<HoverButton>` wrapper that accepts `hoverColor` prop and handles the style swap internally, replacing all the inline handlers
+
+- [ ] 🟢 **[lib/kv.ts]** `updateState` uses an optimistic concurrency Lua script with 5 retries — the retry backoff is `10 + random * 40 * (attempt+1)` ms, which is fine, but there's no logging on retry or final fallback
+  - Fix: `console.warn('[kv] updateState retry', attempt)` inside the loop; `console.error('[kv] updateState fallback after 5 retries')` before the fallback write
+
+---
+
+## 🎨 UX / Design (Prioritised)
 
 ### Global
 
-- [ ] 🔴 **[All tabs — page.tsx, PlayersTab.tsx, TeamsTab.tsx, BracketTab.tsx, MapsTab.tsx, globals.css]** Each tab must fit entirely within one viewport — no vertical scrolling on any tab
-  - Current issue: `PlayersTab`, `BracketTab`, and `MapsTab` all overflow on standard 1080p screens
-  - Fix: redesign each tab to use a fixed-height layout (CSS grid with `height: 100%`); internal sub-panels may scroll within fixed containers, but tab chrome and controls must always be visible without scrolling the page
+- [ ] 🔴 **[All tabs]** Each tab must fit within one viewport — no vertical page scroll
+  - `PlayersTab`, `BracketTab`, `MapsTab` currently overflow on 1080p
+  - Fix: redesign each tab with `height: 100%` CSS grid; internal sub-panels scroll within fixed containers; tab chrome and controls always visible
 
-- [ ] 🔴 **[context.tsx + api/state/stream/route.ts]** Admin updates do not appear for regular users without a manual refresh
-  - Root cause: SSE stream or polling is not propagating KV writes from admin actions to connected spectator clients in real time
-  - Fix: audit `updateState` calls in every admin API route to ensure they trigger a KV write that the SSE stream picks up; verify SSE `lastHash` comparison is working correctly and not caching stale state between pushes
-
----
+- [ ] 🔴 **[context.tsx + api/state/stream/route.ts]** Admin updates do not appear in real-time for spectators (see Bug Fix above for root cause)
+  - UX manifestation: spectators see stale bracket/player/team data until SSE pushes (up to 1.5s) or until they manually refresh
 
 ### Players Tab
 
-- [ ] 🟠 **[PlayersTab.tsx]** Remove user/admin status indicator labels — not needed in the UI
-  - The `byAdmin` badge (👑) and any "Admin" / "User" role text should be stripped from player list items
-
-- [ ] 🟠 **[PlayersTab.tsx]** Remove the "Add as Admin" toggle button — it is unused and confusing
-  - The `byAdmin` POST flag path still exists in the API but the UI toggle should be removed entirely
-
-- [ ] 🟠 **[PlayersTab.tsx]** Submit is delayed and has a glitch where characters can be entered during submission
-  - Current: the input is not immediately disabled on submit; there is a brief window where additional keystrokes register before the API response clears the field
-  - Fix: disable the input and button synchronously on submit (set `submitting = true` before the `await`), not after; clear and re-enable only after the API resolves
-
-- [ ] 🟠 **[PlayersTab.tsx + api/players/route.ts]** Admin should be able to edit or replace a player's name mid-tournament
-  - Use case: a registered player cannot attend and is replaced by someone else
-  - Fix: add an inline edit (pencil icon) on each player row visible only to admin; clicking opens an input pre-filled with the current name; on confirm, call a new `PATCH /api/players` action `renamePlater` (or `replaceName`) that updates the name in both `players` queue and `roster` arrays atomically; the change propagates to `teams` player names too if the player has already been assigned
-
----
-
-### Teams Tab
-
-- [ ] 🟡 **[TeamsTab.tsx]** Review admin UI layout for usability — confirm controls are clearly separated from read-only team display
-  - Check: team formation controls (mode selector, form button, leader assign) are grouped and visually distinct from the team cards; non-admin view shows cards only with no orphaned control chrome
-
----
+- [ ] 🟠 **[PlayersTab.tsx]** Remove `byAdmin` badge (👑) and any role text from player list items — not needed in UI
+- [ ] 🟠 **[PlayersTab.tsx]** Remove the "Add as Admin" toggle button — confusing and unused in practice
+- [ ] 🟠 **[PlayersTab.tsx]** Input not disabled synchronously on submit — characters can be entered during the async window
+  - Fix: `setSubmitting(true)` before `await`, not after; clear and re-enable only after API resolves
+- [ ] 🟠 **[PlayersTab.tsx + api/players/route.ts]** Admin cannot rename/replace a player mid-tournament
+  - Fix: inline edit (pencil icon) on each player row (admin only); new `PATCH /api/players` action `renamePlater` updates name in `players`, `roster`, and `teams` atomically
 
 ### Bracket Tab
 
-- [ ] 🔴 **[BracketTab.tsx + api/bracket/route.ts]** Add Best-of-1 / Best-of-3 format selector before bracket generation
-  - Fix: add a format toggle (BO1 / BO3) in the bracket control panel; persist selection to KV as `bracketFormat`; `buildSE` and `buildDE` read it to set `format` on every match; score validation in `PATCH` enforces BO1 (first to 1) vs BO3 (first to 2) win condition automatically
+- [ ] 🔴 **[BracketTab.tsx + api/bracket/route.ts]** Add BO1/BO3 format selector before bracket generation (per-stage: Group / Semi / Grand Final)
+  - Already partially implemented in types and API; missing is a UI selector in the bracket control panel that calls the existing `saveFormats` action before `generate`
 
-- [ ] 🔴 **[BracketTab.tsx]** Replace "Waiting for admin to generate the bracket." with live ghost bracket previews
-  - Show two side-by-side (or tabbed) ghost bracket diagrams — one for Single Elimination, one for Double Elimination — using the current team count but with placeholder slot names ("Team 1", "Team 2", etc.) and no real data
-  - The preview updates reactively as team count changes
-  - This gives the admin and spectators a clear picture of the format before committing
+- [ ] 🔴 **[BracketTab.tsx]** Replace "Waiting for admin to generate the bracket." with ghost bracket previews
+  - Show two previews (SE and DE) using current team count with placeholder slot names; updates reactively as teams change
 
-- [ ] 🔴 **[BracketTab.tsx + api/bracket/route.ts]** Add a shuffle/seeding step between team formation and bracket generation
-  - New flow: after teams are formed → admin clicks "Seed Bracket" → animated step shows teams being inserted into bracket slots one by one (same reveal style as player queue) → admin confirms → bracket is locked and generated
-  - Add a `PATCH /api/bracket` action `shuffleSeeds` that randomises team order and stores it as `bracketSeeds` in KV without generating the full bracket yet; a second action `confirmSeeds` (or the existing `POST`) then builds the bracket from the stored seed order
-  - The animation runs client-side using the returned seed order from `shuffleSeeds`
+- [ ] 🔴 **[BracketTab.tsx + api/bracket/route.ts]** Add shuffle/seeding step between team formation and bracket generation
+  - Already implemented (`action: 'seed'` exists); missing: the UI to show a "Seed Bracket" button that triggers the animation before "Generate"
 
-- [ ] 🟠 **[BracketTab.tsx + api/bracket/route.ts]** Admin updates score directly — team advances automatically based on BO format
-  - Current: admin clicks a team name to declare winner
-  - New: admin enters numeric scores for each side via +/− stepper buttons; the system determines the winner based on the selected format (BO1: first to 1; BO3: first to 2) and auto-advances the winner without requiring a manual winner-click
+- [ ] 🟠 **[BracketTab.tsx]** No SVG connector lines between match rounds — teams advancing are only traceable by name, not visually
+  - Fix: draw SVG polylines from each match card's right edge to the target match card's left edge in the next round
 
-- [ ] 🟠 **[BracketTab.tsx]** Bracket connector lines between rounds are missing or disconnected
-  - Fix: draw SVG polylines or bezier curves from each match card's right edge to the target match card's left edge in the next round; lines should visually fork (two matches feeding one) and use `--accent` color at reduced opacity; update when bracket state changes
+- [ ] 🟠 **[BracketTab.tsx + api/bracket/route.ts]** Score input is a winner-click, not a numeric stepper — admin must click the team name to advance, rather than entering actual scores
+  - Fix: +/− stepper buttons for each side; system auto-advances when win condition is met (BO1 = first to 1, BO3 = first to 2)
 
----
+### Teams Tab
+
+- [ ] 🟡 **[TeamsTab.tsx]** Review admin vs. non-admin UI layout — ensure formation controls are visually grouped and separated from read-only team cards
 
 ### Maps Tab
 
-- [ ] 🔴 **[MapsTab.tsx + api/maps/route.ts]** Rework the map spin flow — the chosen (landed-on) map is the one played this round and must be removed from the wheel pool
-  - Correct flow:
-    1. Wheel spins → lands on a map → that map is **selected as the map to play this round**
-    2. Selected map is **removed from the wheel** so it cannot be picked again this session
-    3. Next spin uses only the remaining maps
-    4. This repeats per stage/round
-  - Fix: on spin resolve, move the chosen map from `maps` into a `usedMaps` array stored in KV (persists across refreshes); the wheel only renders maps not in `usedMaps`
+- [ ] 🔴 **[MapsTab.tsx + api/maps/route.ts]** Rework spin flow: landed map should be removed from the wheel pool (marked as "used"), not removed from the master list
+  - New flow: spin → result → move to `usedMaps` in KV → wheel shows only remaining maps
+  - "Restore All Maps" button: moves `usedMaps` back into active pool without touching the master list
 
-- [ ] 🔴 **[MapsTab.tsx + api/maps/route.ts]** Add a "Restore All Maps" button that re-lists all removed/used maps back into the wheel
-  - This is NOT a full reset — it only moves `usedMaps` back into the active `maps` pool; the master map list (admin-added maps) is unchanged
-  - Use case: a new set of rounds starts and the admin wants all maps available again without re-entering them
-  - Fix: add a `PATCH /api/maps` action `restoreAll` that clears `usedMaps` and merges them back into `maps`; button visible to admin only, labeled "↩ Restore All Maps"
+- [ ] 🟠 **[MapsTab.tsx]** Show "Current Round Map" prominently after spin; accumulate `mapHistory` in KV for full round sequence visibility
 
-- [ ] 🟠 **[MapsTab.tsx]** The spun map result is per-round, per-stage — make this explicit in the UI
-  - Show a "Current Round Map" display that shows the last spun map prominently
-  - When the admin spins again (for the next stage), the previous result is moved to a "Round History" list so the full sequence of chosen maps is visible
-  - Fix: store `mapHistory: string[]` in KV (appended on each spin resolve); display as a read-only ordered list below the wheel
+- [ ] 🟡 **[MapsTab.tsx]** No visual feedback (animation/flash) when a map is dropped onto a stage slot after a successful `assignStage`
+
+---
+
+## 🚀 Enhancement (Remaining)
+
+- [ ] 🟠 **[BracketTab.tsx]** No SVG connector lines — see UX section above
+
+- [ ] 🟠 **[TeamsTab.tsx + api/teams/route.ts]** No way to move a player between teams after formation — full reset is the only option
+  - Fix: drag-and-drop or dropdown swap UI; new `PATCH /api/teams` action `swapPlayer` atomically moves a player between team member arrays
+
+- [ ] 🟡 **[PlayersTab.tsx]** No queue cap — players can keep submitting even after teams are formed/roster locked
+  - Fix: "lock queue" toggle (admin only) sets a KV flag; `POST /api/players` rejects when locked; UI shows "Queue closed" to non-admins
+
+- [ ] 🟡 **[page.tsx]** No connection status indicator — if SSE drops and polling fails, UI silently shows stale data
+  - Fix: expose `lastUpdated` timestamp from context; show a banner "⚠ Connection lost — retrying…" when last refresh is >10s ago
+
+- [ ] 🟡 **[AdminModal.tsx]** No session expiry feedback — 8h token TTL expires silently; admin actions return 403 with no prompt to re-login
+  - Fix: detect 403 from admin API calls in context helpers; call `setIsAdmin(false)` and show a re-login prompt
+
+- [ ] 🟢 **[page.tsx]** Tab bar has no scroll affordance on mobile — no fade edge, no swipe hint
+  - Fix: add a right-edge gradient fade on the tab bar to hint at horizontal scrollability
+
+- [ ] 🟢 **[BracketTab.tsx]** Champion banner `animate-pulse-glow` runs indefinitely
+  - Fix: stop after 10s via `animation-iteration-count` or a timeout that removes the class
+
+- [ ] 🟢 **[MapsTab.tsx]** Wheel canvas fixed at `260×260` — small on large screens, overflows on mobile
+  - Fix: responsive canvas size via `ResizeObserver` reading container width
