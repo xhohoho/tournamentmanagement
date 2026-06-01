@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { SuperAdminPanel } from '@/components/SuperAdminPanel';
 
 export interface TournamentMeta {
@@ -17,6 +17,147 @@ export interface TournamentMeta {
 const ADMIN_TOKEN_KEY = 'adminToken';
 const ADMIN_INFO_KEY = 'adminInfo';
 const storage = typeof window !== 'undefined' ? sessionStorage : null;
+
+const SHOP_URL = 'https://suddenattack.safie.cc';
+const SHOP_TICKER_TEXT =
+  '⚡ SUDDEN ATTACK SHOP NOW OPEN — Grab your gear at suddenattack.safie.cc — Exclusive deals on weapons, skins & more! 🛒 Click here to visit the shop! ⚡ SUDDEN ATTACK SHOP NOW OPEN — Grab your gear at suddenattack.safie.cc — Exclusive deals on weapons, skins & more! 🛒 Click here to visit the shop!';
+const PX_PER_SECOND = 120;
+
+// ─── Picker Ticker ─────────────────────────────────────────────────────────────
+function PickerTicker() {
+  const spanRef      = useRef<HTMLSpanElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const styleRef     = useRef<HTMLStyleElement | null>(null);
+
+  const rebuild = useCallback(() => {
+    const span      = spanRef.current;
+    const container = containerRef.current;
+    if (!span || !container) return;
+
+    const textWidth      = span.offsetWidth;
+    const containerWidth = container.clientWidth;
+    const totalTravel    = containerWidth + textWidth;
+    const duration       = totalTravel / PX_PER_SECOND;
+
+    if (!styleRef.current) {
+      styleRef.current = document.createElement('style');
+      document.head.appendChild(styleRef.current);
+    }
+    styleRef.current.textContent = `
+      @keyframes picker-ticker-slide {
+        from { left: ${containerWidth}px; }
+        to   { left: ${-textWidth}px; }
+      }
+      .picker-ticker-span {
+        animation: picker-ticker-slide ${duration}s linear infinite;
+      }
+    `;
+  }, []);
+
+  useEffect(() => {
+    rebuild();
+    const ro = new ResizeObserver(rebuild);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => {
+      ro.disconnect();
+      styleRef.current?.remove();
+      styleRef.current = null;
+    };
+  }, [rebuild]);
+
+  const handleClick = () => {
+    window.open(SHOP_URL, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <div
+      onClick={handleClick}
+      title="Visit Sudden Attack Shop"
+      className="w-full flex items-center shrink-0 cursor-pointer group"
+      style={{
+        height: 32,
+        background: 'linear-gradient(90deg, #1a0a00 0%, #1f1000 50%, #1a0a00 100%)',
+        borderTop: '1px solid #c8860055',
+        boxShadow: 'inset 0 1px 0 rgba(255,180,0,0.08), 0 -2px 12px rgba(200,120,0,0.08)',
+        position: 'sticky',
+        bottom: 0,
+        zIndex: 50,
+      }}
+      role="link"
+      aria-label="Visit Sudden Attack Shop"
+    >
+      {/* Left badge */}
+      <div
+        className="group-hover:opacity-100 transition-opacity"
+        style={{
+          flexShrink: 0,
+          margin: '0 6px',
+          padding: '2px 7px',
+          background: '#c87800',
+          borderRadius: 3,
+          fontFamily: '"Bebas Neue", sans-serif',
+          fontSize: 11,
+          letterSpacing: '0.12em',
+          color: '#fff8e8',
+          whiteSpace: 'nowrap',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+          userSelect: 'none',
+        }}
+      >
+        🛒 SHOP
+      </div>
+
+      {/* Ticker track */}
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-hidden"
+        style={{
+          height: 32,
+          position: 'relative',
+          background: 'transparent',
+        }}
+      >
+        <span
+          ref={spanRef}
+          className="picker-ticker-span"
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            whiteSpace: 'nowrap',
+            fontFamily: '"DM Mono", "Courier New", monospace',
+            fontWeight: 'bold',
+            fontSize: 12,
+            color: '#ffc040',
+            textShadow: '0 0 8px rgba(255,160,0,0.4)',
+            letterSpacing: '0.04em',
+            userSelect: 'none',
+          }}
+        >
+          {SHOP_TICKER_TEXT}
+        </span>
+      </div>
+
+      {/* Right arrow */}
+      <div
+        style={{
+          flexShrink: 0,
+          margin: '0 8px',
+          fontFamily: '"DM Mono", monospace',
+          fontSize: 11,
+          color: '#c87800',
+          userSelect: 'none',
+          opacity: 0.8,
+        }}
+        className="group-hover:opacity-100 transition-opacity"
+      >
+        →
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   onSelect: (id: string, adminToken?: string, adminInfo?: { adminId: string; name: string; isSuperAdmin: boolean }) => void;
@@ -372,12 +513,6 @@ export function TournamentPicker({ onSelect }: Props) {
   };
 
   // Helper: returns true if the current admin can manage this tournament.
-  // Rules mirror server-side canAccessTournament:
-  //   1. Super admin → always allowed
-  //   2. Owner → always allowed
-  //   3. Collaborator → allowed if adminId is in meta.collaborators
-  //   4. Legacy tournament (no ownerAdminId) → allowed only if a collaborator
-  //      (a super admin already explicitly granted access via the toggle)
   const canManage = (t: TournamentMeta): boolean => {
     if (!adminInfo) return false;
     if (adminInfo.isSuperAdmin) return true;
@@ -392,14 +527,14 @@ export function TournamentPicker({ onSelect }: Props) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   return (
-    <div className="min-h-screen w-screen t-bg overflow-auto relative">
+    <div className="min-h-screen w-screen t-bg overflow-auto relative flex flex-col">
       {/* Ambient gradients */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 40% at 20% 10%, var(--grad-start) 0%, transparent 70%)' }} />
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 50% 40% at 80% 90%, var(--grad-end) 0%, transparent 70%)' }} />
       </div>
 
-      <div className="relative z-10 w-full max-w-5xl mx-auto px-6 py-12">
+      <div className="relative z-10 w-full max-w-5xl mx-auto px-6 py-12 flex-1">
         {/* Header */}
         <div className="text-center mb-10">
           <div className="flex items-center justify-center gap-3 font-['Bebas_Neue'] text-6xl tracking-widest bg-gradient-to-r from-[var(--accent-red)] to-[var(--accent)] bg-clip-text text-transparent mb-2">
@@ -761,6 +896,11 @@ export function TournamentPicker({ onSelect }: Props) {
             )}
           </>
         )}
+      </div>
+
+      {/* ── Shop Ticker ────────────────────────────────────────────────────── */}
+      <div className="relative z-10 w-full sticky bottom-0">
+        <PickerTicker />
       </div>
 
       {/* ── Edit tournament modal ────────────────────────────────────────────── */}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 
 const PX_PER_SECOND = 200;
+const SHOP_URL = 'https://suddenattack.safie.cc';
 
 interface Props {
   text: string;
@@ -23,8 +24,6 @@ export default function BottomTicker({ text }: Props) {
     const totalTravel    = containerWidth + textWidth;
     const duration       = totalTravel / PX_PER_SECOND;
 
-    // Inject / replace the <style> tag so the animation always matches
-    // the current container dimensions — fixes the resize blank gap.
     if (!styleRef.current) {
       styleRef.current = document.createElement('style');
       document.head.appendChild(styleRef.current);
@@ -51,23 +50,30 @@ export default function BottomTicker({ text }: Props) {
       styleRef.current?.remove();
       styleRef.current = null;
     };
-  }, [rebuild, text]); // re-run when text changes too
+  }, [rebuild, text]);
+
+  const handleClick = () => {
+    window.open(SHOP_URL, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div
-      className="w-full flex items-center shrink-0"
+      onClick={handleClick}
+      title="Visit Sudden Attack Shop"
+      className="w-full flex items-center shrink-0 cursor-pointer group"
       style={{
         height: 28,
         background: '#1a1a14',
         borderTop: '1px solid #5a5a52',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
       }}
-      role="marquee"
-      aria-label="Scrolling announcement"
+      role="link"
+      aria-label="Scrolling announcement — click to visit Sudden Attack Shop"
     >
       {/* Left decorative button */}
       <div
         aria-hidden="true"
+        className="group-hover:bg-[#4a4a3c] transition-colors"
         style={{
           width: 16, height: 20, margin: '0 4px', flexShrink: 0,
           background: '#3c3c34', border: '1px solid #5a5a52',
@@ -101,6 +107,7 @@ export default function BottomTicker({ text }: Props) {
             fontSize: 13,
             color: '#d4c59a',
             textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
+            userSelect: 'none',
           }}
         >
           {text}
@@ -110,6 +117,7 @@ export default function BottomTicker({ text }: Props) {
       {/* Right decorative button */}
       <div
         aria-hidden="true"
+        className="group-hover:bg-[#4a4a3c] transition-colors"
         style={{
           width: 16, height: 20, margin: '0 4px', flexShrink: 0,
           background: '#3c3c34', border: '1px solid #5a5a52',
