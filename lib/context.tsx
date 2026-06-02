@@ -656,7 +656,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   const resetAll = async () => {
-    ['players','roster','teams','bracket','maps','usedMaps','stageMaps','joinKey','chat','spinQueue','spinCategories','defaultMaps','ffa'].forEach(f => guard.touch(f));
+    (['players','roster','teams','bracket','maps','usedMaps','stageMaps','joinKey','queueCap','queueLocked','chat','spinQueue','spinCategories','defaultMaps','ffa'] as const satisfies readonly GuardField[]).forEach(f => guard.touch(f));
     await apiFetch(`/api/reset?t=${t}`, 'DELETE');
     setPlayers([]);
     setRosterState([]);
