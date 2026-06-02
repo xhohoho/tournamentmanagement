@@ -330,16 +330,17 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
 
   const [localSF, setLocalSF] = useState(stageFormats);
   const [localElim, setLocalElim] = useState<'single' | 'double'>(elimMode);
-  const seeded = useRef(false);
 
+  // Sync local UI state from server whenever the bracket exists (locked) or on
+  // first load. This ensures a refresh always shows the saved formats correctly.
   useEffect(() => {
-    if (!loading && !seeded.current) {
+    if (!loading) {
       setLocalSF(stageFormats);
       setLocalElim(elimMode);
-      seeded.current = true;
     }
+  // Only re-sync when the server values actually change, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, stageFormats.groupStage, stageFormats.semiFinal, stageFormats.grandFinal, elimMode]);
 
   const handleSFChange = useCallback((key: keyof typeof localSF, fmt: 'bo1' | 'bo3' | 'bo5') => {
     const next = { ...localSF, [key]: fmt };
