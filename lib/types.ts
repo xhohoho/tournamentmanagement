@@ -152,6 +152,8 @@ export interface ServerState {
   usedMaps: string[];
   stageMaps: Record<string, string[]>; // key -> up to 3 map names (BO3)
   joinKey: string;          // empty string = no key required
+  queueCap: number;          // 0 = unlimited
+  queueLocked: boolean;      // when true, new submissions are rejected
   chatMessages: ChatMessage[];
   defaultMaps: string[];     // maps that are always restored after reset
   spinQueue: string[];
@@ -191,3 +193,108 @@ export interface StageFormats {
 }
 
 export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'ffa' | 'chat';
+
+// ─── Context shape ─────────────────────────────────────────────────────────────
+// Exported so components can import the type without pulling in the full context module.
+export interface TourneyContext {
+  players: Player[];
+  roster: string[];
+  teamMode: 'leader' | 'random' | 'manual';
+  teams: Team[];
+  elimMode: 'single' | 'double';
+  bracket: Bracket | null;
+  maps: string[];
+  usedMaps: string[];
+  stageMaps: Record<string, string[]>;
+  spinState: SpinState | null;
+  shuffleState: ShuffleState | null;
+  spinQueue: string[];
+  spinCategories: string[];
+  spinItemCategory: Record<number, string>;
+  defaultMaps: string[];
+  stageFormats: StageFormats;
+  ffa: FFAState;
+  isAdmin: boolean;
+  previewAsUser: boolean;
+  adminToken: string | null;
+  adminId: string | null;
+  adminName: string | null;
+  isSuperAdmin: boolean;
+  loading: boolean;
+  sseStatus: 'connecting' | 'connected' | 'polling' | 'error';
+  tickerText: string;
+
+  tournamentId: string;
+  joinKey: string;
+  queueCap: number;
+  queueLocked: boolean;
+  chatMessages: ChatMessage[];
+
+  setIsAdmin: (v: boolean) => void;
+  setPreviewAsUser: (v: boolean) => void;
+  setAdminToken: (token: string | null) => void;
+  setAdminInfo: (info: { adminId: string; name: string; isSuperAdmin: boolean } | null) => void;
+  setStageFormats: (sf: StageFormats) => Promise<void>;
+  refresh: () => Promise<void>;
+  setTickerText: (text: string) => Promise<void>;
+
+  submitPlayer: (name: string, joinKey?: string) => Promise<{ error?: string }>;
+  removePlayer: (name: string) => Promise<void>;
+  renamePlayer: (oldName: string, newName: string) => Promise<{ error?: string }>;
+  addToRoster: (name: string) => Promise<void>;
+  removeFromRoster: (name: string) => Promise<void>;
+  setRoster: (names: string[]) => Promise<void>;
+  clearQueue: () => Promise<void>;
+  clearRoster: () => Promise<void>;
+
+  setJoinKey: (key: string) => Promise<{ error?: string }>;
+  setQueueCap: (cap: number) => Promise<{ error?: string }>;
+  setQueueLocked: (locked: boolean) => Promise<{ error?: string }>;
+
+  sendChat: (name: string, text: string) => Promise<{ error?: string }>;
+  clearChat: () => Promise<void>;
+
+  formTeams: (leaders?: string[], manualTeams?: ManualTeamAssignment[]) => Promise<{ error?: string; teams?: Team[] }>;
+  resetTeams: () => Promise<void>;
+  setTeamMode: (mode: 'leader' | 'random' | 'manual') => Promise<void>;
+  renameTeam: (teamId: string, customName: string) => Promise<{ error?: string }>;
+  setTeamNameFromLeader: (teamId: string) => Promise<{ error?: string }>;
+  addReplacement: (teamId: string, originalName: string, replacementName: string) => Promise<{ error?: string }>;
+  removeReplacement: (teamId: string, originalName: string) => Promise<{ error?: string }>;
+  swapPlayer: (playerName: string, fromTeamId: string, toTeamId: string) => Promise<{ error?: string }>;
+
+  generateBracket: (sf?: StageFormats) => Promise<{ error?: string }>;
+  seedBracket: (sf?: StageFormats) => Promise<{ error?: string; shuffleState?: ShuffleState | null }>;
+  updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
+  undoMatch: (section: string, ri: number, mi: number) => Promise<void>;
+  updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
+  resetBracket: () => Promise<void>;
+  setElimMode: (mode: 'single' | 'double') => Promise<void>;
+
+  addMap: (name: string) => Promise<{ error?: string }>;
+  removeMap: (name: string) => Promise<void>;
+  moveMapToUsed: (name: string) => Promise<void>;
+  restoreUsedMap: (name?: string) => Promise<void>;
+  appendSpinQueue: (map: string) => Promise<void>;
+  clearSpinQueue: () => Promise<void>;
+  removeSpinQueueItem: (idx: number) => Promise<void>;
+  saveSpinCategories: (cats: string[], itemCat: Record<number, string>) => Promise<void>;
+  saveDefaultMaps: (starred: string[]) => Promise<void>;
+  assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
+  clearStage: (stageKey: string, slot?: number) => Promise<void>;
+  assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
+
+  createFFAMatch: (mapInfo: FFAMapInfo) => Promise<{ error?: string }>;
+  updateFFAScore: (matchId: string, playerName: string, score: number, imageUrl?: string) => Promise<void>;
+  removeFFAScore: (matchId: string, playerName: string) => Promise<void>;
+  setFFAScores: (matchId: string, scores: FFAPlayerScore[]) => Promise<void>;
+  setFFAPlayers: (players: string[]) => Promise<void>;
+  deleteFFAMatch: (matchId: string) => Promise<void>;
+  lockFFAMatch: (matchId: string, locked: boolean) => Promise<void>;
+  updateFFAMapInfo: (matchId: string, mapInfo: FFAMapInfo) => Promise<void>;
+  setFFAMatchImage: (matchId: string, imageUrl: string) => Promise<void>;
+  setFFAMatchScoreImage: (matchId: string, scoreImageUrl: string) => Promise<void>;
+  setFFAMatchWinners: (matchId: string, winners: FFAWinner[]) => Promise<void>;
+
+  resetAll: () => Promise<void>;
+}

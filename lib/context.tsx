@@ -3,106 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Player, Team, Bracket, ChatMessage, FFAState, FFAMapInfo, FFAPlayerScore, FFAWinner } from '@/lib/types';
 
-interface TourneyContext {
-  players: Player[];
-  roster: string[];
-  teamMode: 'leader' | 'random' | 'manual';
-  teams: Team[];
-  elimMode: 'single' | 'double';
-  bracket: Bracket | null;
-  maps: string[];
-  usedMaps: string[];
-  stageMaps: Record<string, string[]>;
-  spinState: import('@/lib/types').SpinState | null;
-  shuffleState: import('@/lib/types').ShuffleState | null;
-  spinQueue: string[];
-  spinCategories: string[];
-  spinItemCategory: Record<number, string>;
-  defaultMaps: string[];
-  stageFormats: import('@/lib/types').StageFormats;
-  ffa: FFAState;
-  isAdmin: boolean;
-  previewAsUser: boolean;
-  adminToken: string | null;
-  adminId: string | null;
-  adminName: string | null;
-  isSuperAdmin: boolean;
-  loading: boolean;
-  tickerText: string;
-
-  tournamentId: string;
-  joinKey: string;
-  chatMessages: ChatMessage[];
-
-  setIsAdmin: (v: boolean) => void;
-  setPreviewAsUser: (v: boolean) => void;
-  setAdminToken: (token: string | null) => void;
-  setAdminInfo: (info: { adminId: string; name: string; isSuperAdmin: boolean } | null) => void;
-  setStageFormats: (sf: import('@/lib/types').StageFormats) => Promise<void>;
-  refresh: () => Promise<void>;
-  setTickerText: (text: string) => Promise<void>;
-
-  submitPlayer: (name: string, joinKey?: string) => Promise<{ error?: string }>;
-  removePlayer: (name: string) => Promise<void>;
-  renamePlayer: (oldName: string, newName: string) => Promise<{ error?: string }>;
-  addToRoster: (name: string) => Promise<void>;
-  removeFromRoster: (name: string) => Promise<void>;
-  setRoster: (names: string[]) => Promise<void>;
-  clearQueue: () => Promise<void>;
-  clearRoster: () => Promise<void>;
-
-  setJoinKey: (key: string) => Promise<{ error?: string }>;
-
-  sendChat: (name: string, text: string) => Promise<{ error?: string }>;
-  clearChat: () => Promise<void>;
-
-  formTeams: (leaders?: string[], manualTeams?: import('@/lib/types').ManualTeamAssignment[]) => Promise<{ error?: string; teams?: Team[] }>;
-  resetTeams: () => Promise<void>;
-  setTeamMode: (mode: 'leader' | 'random' | 'manual') => Promise<void>;
-  renameTeam: (teamId: string, customName: string) => Promise<{ error?: string }>;
-  setTeamNameFromLeader: (teamId: string) => Promise<{ error?: string }>;
-  addReplacement: (teamId: string, originalName: string, replacementName: string) => Promise<{ error?: string }>;
-  removeReplacement: (teamId: string, originalName: string) => Promise<{ error?: string }>;
-  swapPlayer: (playerName: string, fromTeamId: string, toTeamId: string) => Promise<{ error?: string }>;
-
-  generateBracket: (sf?: import('@/lib/types').StageFormats) => Promise<{ error?: string }>;
-  seedBracket: (sf?: import('@/lib/types').StageFormats) => Promise<{ error?: string; shuffleState?: import('@/lib/types').ShuffleState | null }>;
-  updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
-  undoMatch: (section: string, ri: number, mi: number) => Promise<void>;
-  updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
-  resetBracket: () => Promise<void>;
-  setElimMode: (mode: 'single' | 'double') => Promise<void>;
-
-  addMap: (name: string) => Promise<{ error?: string }>;
-  removeMap: (name: string) => Promise<void>;
-  moveMapToUsed: (name: string) => Promise<void>;
-  restoreUsedMap: (name?: string) => Promise<void>;
-  appendSpinQueue: (map: string) => Promise<void>;
-  clearSpinQueue: () => Promise<void>;
-  removeSpinQueueItem: (idx: number) => Promise<void>;
-  saveSpinCategories: (cats: string[], itemCat: Record<number, string>) => Promise<void>;
-  saveDefaultMaps: (starred: string[]) => Promise<void>;
-  assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
-  clearStage: (stageKey: string, slot?: number) => Promise<void>;
-  assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;
-
-  // FFA actions
-  createFFAMatch: (mapInfo: FFAMapInfo) => Promise<{ error?: string }>;
-  updateFFAScore: (matchId: string, playerName: string, score: number, imageUrl?: string) => Promise<void>;
-  removeFFAScore: (matchId: string, playerName: string) => Promise<void>;
-  setFFAScores: (matchId: string, scores: FFAPlayerScore[]) => Promise<void>;
-  setFFAPlayers: (players: string[]) => Promise<void>;
-  deleteFFAMatch: (matchId: string) => Promise<void>;
-  lockFFAMatch: (matchId: string, locked: boolean) => Promise<void>;
-  updateFFAMapInfo: (matchId: string, mapInfo: FFAMapInfo) => Promise<void>;
-  setFFAMatchImage: (matchId: string, imageUrl: string) => Promise<void>;
-  /** Upload/replace the score-tab screenshot for a FFA match. Pass empty string to remove. */
-  setFFAMatchScoreImage: (matchId: string, scoreImageUrl: string) => Promise<void>;
-  /** Set/replace the winners list for a FFA match. */
-  setFFAMatchWinners: (matchId: string, winners: FFAWinner[]) => Promise<void>;
-
-  resetAll: () => Promise<void>;
-}
+import type { TourneyContext } from '@/lib/types';
 
 const Ctx = createContext<TourneyContext | null>(null);
 
@@ -132,12 +33,20 @@ function applyShuffleState(
 // ─── SSE guard ────────────────────────────────────────────────────────────────
 const GUARD_MS = 1500;
 
+// All state fields that can be optimistically guarded against SSE overwrites.
+const GUARD_FIELDS = [
+  'players', 'roster', 'teamMode', 'teams', 'bracket', 'stageMaps',
+  'maps', 'usedMaps', 'spinQueue', 'spinCategories', 'defaultMaps',
+  'joinKey', 'queueCap', 'queueLocked', 'chat', 'tickerText', 'ffa',
+] as const;
+type GuardField = typeof GUARD_FIELDS[number];
+
 function makeGuard() {
-  const stamps: Record<string, number> = {};
+  const stamps = {} as Record<GuardField, number>;
   return {
-    touch(field: string) { stamps[field] = Date.now(); },
-    guarded(field: string) { return Date.now() - (stamps[field] ?? 0) < GUARD_MS; },
-    clear(field: string) { stamps[field] = 0; },
+    touch(field: GuardField) { stamps[field] = Date.now(); },
+    guarded(field: GuardField) { return Date.now() - (stamps[field] ?? 0) < GUARD_MS; },
+    clear(field: GuardField) { stamps[field] = 0; },
   };
 }
 
@@ -160,6 +69,8 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [spinItemCategory, setSpinItemCategory] = useState<Record<number, string>>({});
   const [defaultMaps, setDefaultMaps] = useState<string[]>([]);
   const [joinKey, setJoinKeyState] = useState<string>('');
+  const [queueCap, setQueueCapState] = useState<number>(0);
+  const [queueLocked, setQueueLockedState] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [ffa, setFFA] = useState<FFAState>({ matches: [], players: [] });
   const [isAdmin, setIsAdminState] = useState(!!initialAdminToken);
@@ -169,6 +80,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [adminName, setAdminName] = useState<string | null>(initialAdminInfo?.name ?? null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(initialAdminInfo?.isSuperAdmin ?? false);
   const [loading, setLoading] = useState(true);
+  const [sseStatus, setSseStatus] = useState<import('@/hooks/useSSE').SSEStatus>('connecting');
   const [tickerText, setTickerTextState] = useState('');
 
   const guard = useRef(makeGuard()).current;
@@ -236,6 +148,8 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     }
     if (!fromSSE || !guard.guarded('defaultMaps')) setDefaultMaps(data.defaultMaps as string[] ?? []);
     if (!fromSSE || !guard.guarded('joinKey'))   setJoinKeyState(data.joinKey as string ?? '');
+    if (!fromSSE || !guard.guarded('queueCap'))   setQueueCapState((data.queueCap as number) ?? 0);
+    if (!fromSSE || !guard.guarded('queueLocked')) setQueueLockedState((data.queueLocked as boolean) ?? false);
     if (!fromSSE || !guard.guarded('chat'))      setChatMessages(data.chatMessages as ChatMessage[] ?? []);
     if (!fromSSE || !guard.guarded('tickerText')) setTickerTextState(data.tickerText as string ?? '');
     if (!fromSSE || !guard.guarded('ffa'))       setFFA((data.ffa as FFAState) ?? { matches: [], players: [] });
@@ -267,20 +181,28 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     const connect = () => {
       if (typeof EventSource === 'undefined') {
         pollFallback = setInterval(refresh, 4000);
+        setSseStatus('polling');
         return;
       }
+      setSseStatus('connecting');
       es = new EventSource(`/api/state/stream?t=${t}`);
+      es.onopen = () => setSseStatus('connected');
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
           applySnapshot(data, true);
         } catch { /* ignore malformed frames */ }
         setLoading(false);
+        setSseStatus('connected');
       };
       es.onerror = () => {
         es?.close();
         es = null;
-        if (!pollFallback) pollFallback = setInterval(refresh, 4000);
+        setSseStatus('error');
+        if (!pollFallback) {
+          pollFallback = setInterval(refresh, 4000);
+          setSseStatus('polling');
+        }
       };
     };
 
@@ -366,6 +288,24 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     const data = await res.json();
     if (!res.ok) return { error: data.error };
     setJoinKeyState(data.joinKey ?? '');
+    return {};
+  };
+
+  const setQueueCap = async (cap: number) => {
+    guard.touch('queueCap');
+    const res = await apiFetch(`/api/players/joinkey?t=${t}`, 'PATCH', { queueCap: cap });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setQueueCapState(data.queueCap ?? 0);
+    return {};
+  };
+
+  const setQueueLocked = async (locked: boolean) => {
+    guard.touch('queueLocked');
+    const res = await apiFetch(`/api/players/joinkey?t=${t}`, 'PATCH', { queueLocked: locked });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setQueueLockedState(data.queueLocked ?? false);
     return {};
   };
 
@@ -601,11 +541,14 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const removeSpinQueueItem = async (idx: number) => {
     guard.touch('spinQueue');
-    setSpinQueue(prev => {
-      const newQ = prev.filter((_, i) => i !== idx);
-      apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinQueue', spinQueue: newQ });
-      return newQ;
-    });
+    const prev = spinQueue;
+    const newQ = prev.filter((_, i) => i !== idx);
+    setSpinQueue(newQ); // optimistic update
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinQueue', spinQueue: newQ });
+    if (!res.ok) {
+      setSpinQueue(prev); // rollback on server error
+      guard.clear('spinQueue');
+    }
   };
 
   const clearSpinQueue = async () => {
@@ -737,11 +680,12 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       spinCategories, spinItemCategory, defaultMaps, stageFormats, ffa,
       tournamentId,
       joinKey, chatMessages,
-      isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, adminId, adminName, isSuperAdmin, loading, tickerText,
+      queueCap, queueLocked,
+      isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, adminId, adminName, isSuperAdmin, loading, sseStatus, tickerText,
       setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, setAdminInfo, refresh, setTickerText, setStageFormats,
       submitPlayer, removePlayer, renamePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
-      setJoinKey,
+      setJoinKey, setQueueCap, setQueueLocked,
       sendChat, clearChat,
       formTeams, resetTeams, setTeamMode, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement, swapPlayer,
       generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,

@@ -132,12 +132,6 @@ export async function PATCH(req: NextRequest) {
     });
   }
 
-  if (action === 'updateSpinState') {
-    const { spinState } = body;
-    const next = await updateState(s => ({ ...s, spinState: spinState ?? null }), tid);
-    return NextResponse.json({ spinState: next.spinState });
-  }
-
   if (action === 'assignStage') {
     const next = await updateState(s => {
       const current: string[] = [...parseStageMaps(s.stageMaps[stageKey])];

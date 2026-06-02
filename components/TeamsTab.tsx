@@ -91,6 +91,10 @@ export function TeamsTab() {
   const [err, setErr] = useState('');
   const [revealing, setRevealing] = useState(false);
   const [forming, setForming] = useState(false);
+  // Tracks whether a reveal animation has been initiated for the current team set.
+  // Prevents the flash where all members appear visible for one frame before
+  // revealing=true takes effect after formTeams completes.
+  const hasRevealStarted = useRef(false);
 
   // Team name inline editing: teamId -> draft string | undefined (not editing)
   const [editingName, setEditingName] = useState<Record<string, string | undefined>>({});
@@ -243,6 +247,7 @@ export function TeamsTab() {
     setLeaders(Array(n).fill(''));
     setErr('');
     setExpandedSub(null);
+    hasRevealStarted.current = false;
   };
 
   const handleForm = async () => {
@@ -264,13 +269,14 @@ export function TeamsTab() {
     setForming(false);
     if (result.error) { setErr(result.error); return; }
     if (result.teams) seedRevealOrder(result.teams);
+    hasRevealStarted.current = true;
     setRevealing(true);
   };
 
   const rosterOk = roster.length >= 10 && roster.length % 5 === 0;
 
   const isVisible = (member: string) => {
-    if (!revealing && revealCount === 0) return true;
+    if (!hasRevealStarted.current) return true;
     const assignedIndex = revealOrderMap.current.get(member) ?? 0;
     return assignedIndex < revealCount;
   };
@@ -301,6 +307,34 @@ export function TeamsTab() {
           5 players per team · {isAdmin ? 'Admin controls below' : 'View only — admin required to edit'}
         </p>
       </div>
+
+      {/* Non-admin: read-only status bar */}
+      {!isAdmin && (
+        <div className="shrink-0 flex flex-wrap items-center gap-3 px-4 py-2 rounded-xl border t-border" style={{ background: 'var(--bg-elevated)' }}>
+          <span className="font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest">Mode:</span>
+          <span className="font-['DM_Mono'] text-[10px] font-bold t-text">
+            {teamMode === 'leader' ? '👑 Leader + Random' : teamMode === 'random' ? '🎲 Fully Random' : '✍️ Manual'}
+          </span>
+          <span className="t-dim" style={{ fontSize: 8 }}>•</span>
+          <span className="font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest">Roster:</span>
+          <span className="font-['DM_Mono'] text-[10px] font-bold" style={{ color: rosterOk ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+            {roster.length} players
+          </span>
+          {teams.length > 0 && (
+            <>
+              <span className="t-dim" style={{ fontSize: 8 }}>•</span>
+              <span className="font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest">Teams:</span>
+              <span className="font-['DM_Mono'] text-[10px] font-bold t-text">{teams.length}</span>
+            </>
+          )}
+          {!rosterOk && teams.length === 0 && (
+            <span className="font-['DM_Mono'] text-[10px]" style={{ color: 'var(--accent-gold)' }}>Waiting for roster…</span>
+          )}
+          {rosterOk && teams.length === 0 && (
+            <span className="font-['DM_Mono'] text-[10px]" style={{ color: 'var(--accent-gold)' }}>Waiting for admin to form teams…</span>
+          )}
+        </div>
+      )}
 
       {/* Main layout */}
       <div className="flex-1 flex gap-4 min-h-0">

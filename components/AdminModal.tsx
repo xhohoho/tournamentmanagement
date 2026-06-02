@@ -23,7 +23,9 @@ export function AdminModal({ open, onClose }: Props) {
     try {
       const result = await login(name, pw);
       if (result.error) {
-        setErr(result.error);
+        // Distinguish session-expiry / auth failures from generic errors.
+        const is403 = result.status === 403 || result.error?.toLowerCase().includes('expired') || result.error?.toLowerCase().includes('session');
+        setErr(is403 ? '⚠️ Session expired — please log in again.' : result.error);
         return;
       }
 

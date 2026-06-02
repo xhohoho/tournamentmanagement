@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
   if (!account.pwHash.includes(':')) {
     await saveAdminAccount({ ...account, pwHash: await hashPassword(password) });
   }
-  const token = await createAdminToken(account.adminId);
+  const token = await createAdminToken(account.adminId, req);
   // Successful login — clear the rate-limit counter for this IP
   await clearRateLimit(ip);
   return NextResponse.json({

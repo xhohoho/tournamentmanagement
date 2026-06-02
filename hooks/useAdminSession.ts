@@ -33,14 +33,14 @@ export function useAdminSession() {
   const login = async (
     name: string,
     password: string,
-  ): Promise<{ error?: string; token?: string; info?: AdminInfo }> => {
+  ): Promise<{ error?: string; status?: number; token?: string; info?: AdminInfo }> => {
     const res  = await fetch('/api/admin/auth', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ name: name.trim(), password }),
     });
     const data = await res.json();
-    if (!res.ok) return { error: data.error ?? 'Wrong name or password.' };
+    if (!res.ok) return { error: data.error ?? 'Wrong name or password.', status: res.status };
 
     const info: AdminInfo = {
       adminId:      data.adminId,

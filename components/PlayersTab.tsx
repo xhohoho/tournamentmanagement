@@ -2,6 +2,7 @@
 
 import { useState, useRef, useMemo } from 'react';
 import { useTourney } from '@/lib/context';
+import { HoverButton } from '@/components/HoverButton';
 
 export function PlayersTab() {
   const {
@@ -10,6 +11,7 @@ export function PlayersTab() {
     addToRoster, removeFromRoster,
     setRoster, clearQueue, clearRoster,
     joinKey, setJoinKey,
+    queueCap, queueLocked, setQueueCap, setQueueLocked,
   } = useTourney();
 
   const [nameInput, setNameInput] = useState('');
@@ -241,17 +243,56 @@ export function PlayersTab() {
                   {joinKey ? 'Change' : 'Set Key'}
                 </button>
                 {joinKey && (
-                  <button
+                  <HoverButton
+                    base={{ borderColor: 'var(--border-mid)', background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+                    hover={{ color: 'var(--accent-red)', borderColor: 'var(--accent-red)' }}
                     className="font-['DM_Mono'] text-[10px] px-2 py-1 rounded-md border cursor-pointer transition-colors"
-                    style={{ borderColor: 'var(--border-mid)', background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
                     onClick={() => setJoinKey('')}
                   >
                     Remove Key
-                  </button>
+                  </HoverButton>
                 )}
               </>
+            )}
+          </div>
+        )}
+
+        {/* Admin: queue cap + lock */}
+        {isAdmin && (
+          <div className="flex items-center gap-3">
+            {/* Lock toggle */}
+            <button
+              className="flex items-center gap-1.5 font-['DM_Mono'] text-[10px] px-2 py-1 rounded-md border transition-all cursor-pointer"
+              style={{
+                background: queueLocked ? 'rgba(232,41,74,0.1)' : 'var(--bg-elevated)',
+                borderColor: queueLocked ? 'var(--accent-red)' : 'var(--border-mid)',
+                color: queueLocked ? 'var(--accent-red)' : 'var(--text-muted)',
+              }}
+              onClick={() => setQueueLocked(!queueLocked)}
+              title={queueLocked ? 'Queue locked — click to reopen' : 'Lock queue to stop new registrations'}
+            >
+              {queueLocked ? '🔒 Locked' : '🔓 Open'}
+            </button>
+            {/* Cap control */}
+            <span className="font-['DM_Mono'] text-[10px] t-muted shrink-0">Cap:</span>
+            <input
+              type="number"
+              min={0}
+              max={999}
+              className="rounded-md px-2 py-0.5 font-['DM_Mono'] text-xs outline-none border"
+              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text)', width: 56, textAlign: 'center' }}
+              placeholder="∞"
+              value={queueCap === 0 ? '' : queueCap}
+              onChange={e => {
+                const v = parseInt(e.target.value, 10);
+                setQueueCap(isNaN(v) ? 0 : Math.max(0, v));
+              }}
+              title="Maximum number of players (0 = unlimited)"
+            />
+            {queueCap > 0 && (
+              <span className="font-['DM_Mono'] text-[10px]" style={{ color: players.length >= queueCap ? 'var(--accent-red)' : 'var(--accent-green)' }}>
+                {players.length}/{queueCap}
+              </span>
             )}
           </div>
         )}
@@ -288,13 +329,12 @@ export function PlayersTab() {
               </span>
             </div>
             {isAdmin && players.length > 0 && (
-              <button
+              <HoverButton
+                base={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
+                hover={{ color: 'var(--accent-red)', borderColor: 'var(--accent-red)' }}
                 className="font-['DM_Mono'] text-[9px] px-2 py-1 rounded-md border transition-colors cursor-pointer"
-                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
                 onClick={clearQueue}
-              >Clear</button>
+              >Clear</HoverButton>
             )}
           </div>
 
@@ -364,13 +404,12 @@ export function PlayersTab() {
               <span className="font-['DM_Mono'] text-[9px] t-dim">/ need 10+ (×5)</span>
             </div>
             {isAdmin && roster.length > 0 && (
-              <button
+              <HoverButton
+                base={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
+                hover={{ color: 'var(--accent-red)', borderColor: 'var(--accent-red)' }}
                 className="font-['DM_Mono'] text-[9px] px-2 py-1 rounded-md border transition-colors cursor-pointer"
-                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', color: 'var(--text-muted)' }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.borderColor = 'var(--accent-red)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
                 onClick={clearRoster}
-              >Clear</button>
+              >Clear</HoverButton>
             )}
           </div>
 

@@ -13,7 +13,17 @@ export async function PATCH(req: NextRequest) {
   if (!await verifyAdminToken(req)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
   }
-  const { joinKey } = await req.json();
-  const next = await updateState(s => ({ ...s, joinKey: (joinKey ?? '').trim() }), tid);
-  return NextResponse.json({ joinKey: next.joinKey, hasKey: !!(next.joinKey) });
+  const body = await req.json();
+  const next = await updateState(s => ({
+    ...s,
+    ...(body.joinKey !== undefined ? { joinKey: (body.joinKey ?? '').trim() } : {}),
+    ...(body.queueCap !== undefined ? { queueCap: Math.max(0, Number(body.queueCap) || 0) } : {}),
+    ...(body.queueLocked !== undefined ? { queueLocked: !!body.queueLocked } : {}),
+  }), tid);
+  return NextResponse.json({
+    joinKey: next.joinKey,
+    hasKey: !!(next.joinKey),
+    queueCap: next.queueCap ?? 0,
+    queueLocked: next.queueLocked ?? false,
+  });
 }

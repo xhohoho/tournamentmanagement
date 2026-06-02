@@ -1,5 +1,5 @@
 import { kv } from '@vercel/kv';
-import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
+import { randomBytes, scrypt, timingSafeEqual, createHash } from 'crypto';
 import { promisify } from 'util';
 import type { NextRequest } from 'next/server';
 import type { TournamentMeta } from './kv';
@@ -9,7 +9,24 @@ const scryptAsync = promisify(scrypt);
 // ─── Token constants ──────────────────────────────────────────────────────────
 export const TOKEN_TTL = 60 * 60 * 8; // 8 hours in seconds
 export const TOKEN_PREFIX = 'admin:token:';
-export const CURRENT_TOKEN_PREFIX = 'admin:currenttoken:';
+export const CURRENT_TOKEN_PREFIX = 'admin:currenttoken:'
+
+// ─── Token payload stored in KV ──────────────────────────────────────────────
+interface TokenPayload {
+  adminId: string;
+  /** SHA-256 of (IP + '|' + origin). Absent on old tokens — fail open. */
+  fingerprint?: string;
+}
+
+/** Derive a stable fingerprint from the request's IP and Origin header. */
+function requestFingerprint(req: NextRequest): string {
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+    req.headers.get('x-real-ip') ??
+    'unknown';
+  const origin = req.headers.get('origin') ?? req.headers.get('referer') ?? '';
+  return createHash('sha256').update(`${ip}|${origin}`).digest('hex');
+}
 
 // ─── Password helpers ─────────────────────────────────────────────────────────
 
@@ -32,13 +49,24 @@ export async function verifyPassword(password: string, stored: string): Promise<
 /**
  * Verifies the X-Admin-Token header against KV.
  * Returns the adminId if valid, null otherwise.
+ * If the stored payload contains a fingerprint, it must match the request's IP+Origin.
+ * Old tokens (plain string adminId) are accepted without fingerprint check.
  */
 export async function verifyAdminToken(req: NextRequest): Promise<string | null> {
   const token = req.headers.get('X-Admin-Token');
   if (!token) return null;
   try {
-    const adminId = await kv.get<string>(`${TOKEN_PREFIX}${token}`);
-    return adminId ?? null;
+    const raw = await kv.get<string | TokenPayload>(`${TOKEN_PREFIX}${token}`);
+    if (!raw) return null;
+    // Legacy tokens stored the adminId as a plain string.
+    if (typeof raw === 'string') return raw;
+    // New tokens store { adminId, fingerprint }.
+    const payload = raw as TokenPayload;
+    if (payload.fingerprint) {
+      const fp = requestFingerprint(req);
+      if (fp !== payload.fingerprint) return null;
+    }
+    return payload.adminId;
   } catch {
     return null;
   }
@@ -51,15 +79,18 @@ export async function isAdminTokenValid(req: NextRequest): Promise<boolean> {
 
 /**
  * Issues a new token for the given adminId, revoking any existing one first.
- * Stores both forward (token → adminId) and reverse (adminId → token) mappings.
+ * Stores both forward (token → payload) and reverse (adminId → token) mappings.
+ * The payload includes a fingerprint of the issuing request's IP+Origin so that
+ * the token is rejected if used from a different network context.
  */
-export async function createAdminToken(adminId: string): Promise<string> {
+export async function createAdminToken(adminId: string, req: NextRequest): Promise<string> {
   const reverseKey = `${CURRENT_TOKEN_PREFIX}${adminId}`;
   const oldToken = await kv.get<string>(reverseKey);
   if (oldToken) await kv.del(`${TOKEN_PREFIX}${oldToken}`);
 
   const token = randomBytes(32).toString('hex');
-  await kv.set(`${TOKEN_PREFIX}${token}`, adminId, { ex: TOKEN_TTL });
+  const payload: TokenPayload = { adminId, fingerprint: requestFingerprint(req) };
+  await kv.set(`${TOKEN_PREFIX}${token}`, payload, { ex: TOKEN_TTL });
   await kv.set(reverseKey, token, { ex: TOKEN_TTL });
   return token;
 }

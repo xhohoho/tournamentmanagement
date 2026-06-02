@@ -26,13 +26,13 @@
 
 - [x] 🟠 **[lib/context.tsx]** `apiFetch` helper not extracted — ~30 fetch calls repeat Content-Type + auth header boilerplate.
 
-- [ ] 🟠 **[lib/context.tsx]** Guard field names not standardised as a const union/enum.
+- [x] 🟠 **[lib/context.tsx]** Guard field names not standardised as a const union/enum.
 
-- [ ] 🟡 **[app/api/bracket/route.ts]** `cloneBracket` not yet extracted to `lib/bracket.ts`.
+- [x] 🟡 **[app/api/bracket/route.ts]** `cloneBracket` not yet extracted to `lib/bracket.ts`.
 
-- [ ] 🟡 **[app/api/bracket/route.ts]** `propagateWinner` / `clearWinner` not yet extracted.
+- [x] 🟡 **[app/api/bracket/route.ts]** `propagateWinner` / `clearWinner` not yet extracted.
 
-- [ ] 🟡 **[app/api/maps/route.ts + lib/context.tsx]** `removeSpinQueueItem` still fire-and-forget.
+- [x] 🟡 **[app/api/maps/route.ts + lib/context.tsx]** `removeSpinQueueItem` still fire-and-forget.
 
 - [x] 🟡 **[app/page.tsx]** `<TickerEditModal>` extracted with `displayName`.
 
@@ -50,9 +50,9 @@
 
 - [x] 🟠 **[app/api/players/route.ts]** POST body whitelists only `{ name, joinKey }`.
 
-- [ ] 🟠 **[app/api/admin/auth/route.ts]** Token has no IP/origin binding.
+- [x] 🟠 **[app/api/admin/auth/route.ts]** Token has no IP/origin binding.
 
-- [ ] 🟡 **[All API routes]** No CORS headers.
+- [x] 🟡 **[All API routes]** No CORS headers.
 
 - [x] 🟡 **[app/api/players/route.ts]** Case-insensitive dedup applied consistently.
 
@@ -72,7 +72,7 @@
 
 - [-] 🟡 **[lib/context.tsx]** `resetAll` doesn't reset `maps` local state. (intentional — maps persist across round resets; comment added in context.tsx)
 
-- [ ] 🟡 **[TeamsTab.tsx]** `isVisible()` flash on first render after `formTeams`.
+- [x] 🟡 **[TeamsTab.tsx]** `isVisible()` flash on first render after `formTeams`.
 
 - [x] 🟢 **[lib/kv.ts]** `getState`/`listTournaments`/`updateState` error logging added.
 
@@ -84,15 +84,15 @@
 
 - [x] 🟡 **[app/api/teams/route.ts]** HSL color generation for >8 teams.
 
-- [ ] 🟡 **[lib/context.tsx]** `TourneyContext` interface still inline — move to `lib/types.ts`.
+- [x] 🟡 **[lib/context.tsx]** `TourneyContext` interface still inline — move to `lib/types.ts`.
 
-- [ ] 🟡 **[All components]** Missing `displayName` on anonymous components.
+- [x] 🟡 **[All components]** Missing `displayName` on anonymous components. (all components are named function declarations; no memo/forwardRef wraps exist — implicit names sufficient)
 
-- [ ] 🟡 **[app/api/maps/route.ts]** Dead `updateSpinState` action.
+- [x] 🟡 **[app/api/maps/route.ts]** Dead `updateSpinState` action.
 
-- [ ] 🟢 **[next.config.ts]** Add `typedRoutes`, `output: 'standalone'`.
+- [x] 🟢 **[next.config.ts]** Add `typedRoutes`, `output: 'standalone'`.
 
-- [ ] 🟢 **[All components]** Extract `<HoverButton>` wrapper.
+- [x] 🟢 **[All components]** Extract `<HoverButton>` wrapper.
 
 - [x] 🟢 **[lib/kv.ts]** `updateState` retry/fallback logging.
 
@@ -102,7 +102,7 @@
 
 ### Global
 
-- [ ] 🔴 **[All tabs]** Each tab must fit one viewport — `PlayersTab`, `BracketTab`, `MapsTab` overflow on 1080p.
+- [x] 🔴 **[All tabs]** Each tab must fit one viewport — `PlayersTab`, `BracketTab`, `MapsTab` overflow on 1080p.
 
 - [x] 🔴 **[context.tsx + api/state/stream/route.ts]** SSE hash dedup — real-time spectator updates.
 
@@ -136,12 +136,13 @@
 ## 🚀 Enhancement (Remaining)
 
 - [x] 🟠 **[TeamsTab.tsx + api/teams/route.ts]** `swapPlayer` action — moves player between teams atomically.
-- [ ] 🟡 **[PlayersTab.tsx]** No queue cap / "lock queue" toggle.
-- [ ] 🟡 **[page.tsx]** No connection status indicator.
-- [ ] 🟡 **[AdminModal.tsx]** No 403 session expiry feedback.
-- [ ] 🟢 **[page.tsx]** Tab bar no scroll affordance on mobile.
-- [ ] 🟢 **[BracketTab.tsx]** Champion banner pulse runs indefinitely.
-- [ ] 🟢 **[MapsTab.tsx]** Wheel canvas fixed 260×260 — not responsive.
+- [x] 🟡 **[PlayersTab.tsx]** No queue cap / "lock queue" toggle.
+- [x] 🟡 **[page.tsx]** No connection status indicator.
+- [x] 🟡 **[AdminModal.tsx]** No 403 session expiry feedback.
+- [x] 🟢 **[page.tsx]** Tab bar no scroll affordance on mobile.
+- [x] 🟢 **[BracketTab.tsx]** Champion banner pulse runs indefinitely.
+- [x] 🟢 **[MapsTab.tsx]** Wheel canvas fixed 260×260 — not responsive. (ResizeObserver already wired by prior session)
+- [x] 🟡 **[TeamsTab.tsx]** Review admin vs. non-admin UI layout.
 
 ---
 

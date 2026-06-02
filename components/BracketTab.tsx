@@ -41,8 +41,8 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
     @keyframes sparkle { 0%,100% { opacity:0; transform:scale(0.4); } 50% { opacity:1; transform:scale(1); } }
     @keyframes slot-pop { 0% { opacity:0; transform:scale(0.7) translateY(4px); } 60% { transform:scale(1.08) translateY(-1px); } 100% { opacity:1; transform:scale(1) translateY(0); } }
     @keyframes ghost-pulse { 0%,100% { opacity:0.45; } 50% { opacity:0.7; } }
-    .trophy-spin { display:inline-block; animation: trophy-spin 0.7s ease-in-out infinite alternate; }
-    .sparkle { position:absolute; font-size:10px; animation: sparkle 1.2s ease-in-out infinite; }
+    .trophy-spin { display:inline-block; animation: trophy-spin 0.7s ease-in-out 8 alternate; }
+    .sparkle { position:absolute; font-size:10px; animation: sparkle 1.2s ease-in-out 5; }
     .slot-pop { animation: slot-pop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards; }
     .ghost-card { animation: ghost-pulse 2s ease-in-out infinite; }
   `;
@@ -582,7 +582,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
 
   return (
     <>
-      <div className="t-surface border t-border rounded-xl p-5 shrink-0" style={{ position: 'relative' }}>
+      <div className="t-surface border t-border rounded-xl p-5" style={{ position: 'relative' }}>
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
           {bracket.type === 'single' ? 'Bracket' : 'Tournament Bracket'}
           <div className="flex gap-2">
@@ -621,7 +621,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
         const third = tp.winner;
         const fourth = third ? (third === tp.p1 ? tp.p2 : tp.p1) : null;
         return (
-          <div className="t-surface border t-border rounded-xl p-5 shrink-0">
+          <div className="t-surface border t-border rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
               <h3 className="font-['Bebas_Neue'] text-xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>🥉 3rd Place Match</h3>
               {third && (

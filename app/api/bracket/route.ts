@@ -11,7 +11,8 @@ import {
   buildDE,
   buildEmptySE,
   buildEmptyDE,
-  seedLBDropIn,
+  propagateWinner,
+  undoMatchResult,
 } from '@/lib/bracket';
 import type { BracketMatch, Bracket, ShuffleReveal, StageFormats } from '@/lib/types';
 
@@ -152,65 +153,8 @@ export async function PATCH(req: NextRequest) {
       section === 'upper' ? bracket.upper : section === 'lower' ? bracket.lower : undefined;
     if (!rounds) return NextResponse.json({ error: 'Invalid section' }, { status: 400 });
 
-    const match = rounds[ri]?.[mi];
-    if (!match?.winner) return NextResponse.json({ error: 'Match not complete' }, { status: 400 });
-
-    const prevWinner = match.winner;
-    const prevLoser = prevWinner === match.p1 ? match.p2 : match.p1;
-    match.winner = null; match.score1 = 0; match.score2 = 0;
-
-    const isLastRound = ri === rounds.length - 1;
-    if (!isLastRound) {
-      if (section === 'upper') {
-        const slot = Math.floor(mi / 2);
-        const target = rounds[ri + 1][slot];
-        if (target.p1 === prevWinner) target.p1 = null;
-        if (target.p2 === prevWinner) target.p2 = null;
-        target.winner = null; target.score1 = 0; target.score2 = 0;
-      } else {
-        if (ri % 2 === 0) {
-          const target = rounds[ri + 1][mi];
-          if (target.p1 === prevWinner) target.p1 = null;
-          target.winner = null; target.score1 = 0; target.score2 = 0;
-        } else {
-          const slot = Math.floor(mi / 2);
-          const target = rounds[ri + 1][slot];
-          if (target.p1 === prevWinner) target.p1 = null;
-          if (target.p2 === prevWinner) target.p2 = null;
-          target.winner = null; target.score1 = 0; target.score2 = 0;
-        }
-      }
-    } else {
-      if (section === 'upper') {
-        if (bracket.type === 'single') bracket.champion = null;
-        else if (bracket.grandFinal) {
-          bracket.grandFinal.p1 = null; bracket.grandFinal.winner = null; bracket.champion = null;
-        }
-      } else if (section === 'lower' && bracket.grandFinal) {
-        bracket.grandFinal.p2 = null; bracket.grandFinal.winner = null; bracket.champion = null;
-      }
-    }
-
-    // Undo third-place seeding (SE only)
-    if (bracket.type === 'single' && ri === rounds.length - 2 && bracket.thirdPlace) {
-      if (mi % 2 === 0 && bracket.thirdPlace.p1 === prevLoser) bracket.thirdPlace.p1 = null;
-      if (mi % 2 === 1 && bracket.thirdPlace.p2 === prevLoser) bracket.thirdPlace.p2 = null;
-      bracket.thirdPlace.winner = null; bracket.thirdPlace.score1 = 0; bracket.thirdPlace.score2 = 0;
-    }
-
-    // Undo LB drop-in (DE only)
-    if (bracket.type === 'double' && section === 'upper' && prevLoser && bracket.lower) {
-      if (ri === 0) {
-        const m = bracket.lower[0]?.[Math.floor(mi / 2)];
-        if (m) {
-          if (m.p1 === prevLoser) { m.p1 = null; m.winner = null; m.score1 = 0; m.score2 = 0; }
-          else if (m.p2 === prevLoser) { m.p2 = null; m.winner = null; m.score1 = 0; m.score2 = 0; }
-        }
-      } else {
-        const m = bracket.lower[ri * 2 - 1]?.[mi];
-        if (m && m.p2 === prevLoser) { m.p2 = null; m.winner = null; m.score1 = 0; m.score2 = 0; }
-      }
-    }
+    const ok = undoMatchResult(bracket, section as 'upper' | 'lower', ri, mi);
+    if (!ok) return NextResponse.json({ error: 'Match not complete' }, { status: 400 });
 
     const next = await updateState(s => ({ ...s, bracket }), tid);
     return NextResponse.json({ bracket: next.bracket });
@@ -260,40 +204,7 @@ export async function PATCH(req: NextRequest) {
   const loser = winner === match.p1 ? match.p2 : match.p1;
   match.winner = winner;
 
-  const isLastRound = ri === rounds.length - 1;
-  if (!isLastRound) {
-    if (section === 'upper') {
-      const slot = Math.floor(mi / 2);
-      if (mi % 2 === 0) rounds[ri + 1][slot].p1 = winner;
-      else rounds[ri + 1][slot].p2 = winner;
-    } else {
-      if (ri % 2 === 0) {
-        rounds[ri + 1][mi].p1 = winner;
-      } else {
-        const slot = Math.floor(mi / 2);
-        if (mi % 2 === 0) rounds[ri + 1][slot].p1 = winner;
-        else rounds[ri + 1][slot].p2 = winner;
-      }
-    }
-  } else {
-    if (section === 'upper') {
-      if (bracket.type === 'single') bracket.champion = winner;
-      else if (bracket.grandFinal) bracket.grandFinal.p1 = winner;
-    } else if (section === 'lower' && bracket.grandFinal) {
-      bracket.grandFinal.p2 = winner;
-    }
-  }
-
-  // Seed third place (SE semi-final losers)
-  if (bracket.type === 'single' && ri === rounds.length - 2 && loser && bracket.thirdPlace) {
-    if (mi % 2 === 0) bracket.thirdPlace.p1 = loser;
-    else bracket.thirdPlace.p2 = loser;
-  }
-
-  // Seed LB drop-in (DE upper bracket losers)
-  if (bracket.type === 'double' && section === 'upper' && loser && bracket.lower) {
-    seedLBDropIn(bracket.lower, ri, loser, mi);
-  }
+  propagateWinner(bracket, section as 'upper' | 'lower', ri, mi, winner, loser);
 
   sweepBracket(bracket, ri, section as 'upper' | 'lower');
   if (bracket.grandFinal?.winner) bracket.champion = bracket.grandFinal.winner;

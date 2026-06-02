@@ -80,7 +80,7 @@ TickerEditModal.displayName = 'TickerEditModal';
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
-  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText, ffa } = useTourney();
+  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText, ffa, sseStatus } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
@@ -152,6 +152,19 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
               <span className="font-['DM_Mono'] text-[10px] t-muted border t-border-mid rounded px-2 py-1 uppercase tracking-widest hidden sm:inline">
                 {tournamentId}
               </span>
+              {/* SSE connection status indicator */}
+              <span
+                className="hidden sm:inline-flex items-center gap-1 font-['DM_Mono'] text-[10px] px-2 py-1 rounded border"
+                style={{
+                  color: sseStatus === 'connected' ? 'var(--accent-green)' : sseStatus === 'polling' ? 'var(--accent-gold)' : sseStatus === 'error' ? 'var(--accent-red)' : 'var(--text-muted)',
+                  borderColor: sseStatus === 'connected' ? 'rgba(34,184,98,0.3)' : sseStatus === 'polling' ? 'rgba(224,144,16,0.3)' : sseStatus === 'error' ? 'rgba(232,41,74,0.3)' : 'var(--border-mid)',
+                  background: sseStatus === 'connected' ? 'rgba(34,184,98,0.06)' : sseStatus === 'polling' ? 'rgba(224,144,16,0.06)' : sseStatus === 'error' ? 'rgba(232,41,74,0.06)' : 'transparent',
+                }}
+                title={sseStatus === 'connected' ? 'Live updates active' : sseStatus === 'polling' ? 'Polling for updates' : sseStatus === 'error' ? 'Connection lost — retrying' : 'Connecting…'}
+              >
+                <span style={{ fontSize: 7 }}>{sseStatus === 'connected' ? '●' : sseStatus === 'polling' ? '◎' : sseStatus === 'error' ? '●' : '○'}</span>
+                {sseStatus === 'connected' ? 'Live' : sseStatus === 'polling' ? 'Polling' : sseStatus === 'error' ? 'Offline' : 'Connecting'}
+              </span>
               <button
                 onClick={toggleDark}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--border)] hover:t-text cursor-pointer"
@@ -207,8 +220,10 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
         </header>
 
         {/* Tab nav */}
-        <nav className="t-surface border-b t-border shrink-0">
-          <div className="w-full px-8 flex overflow-x-auto">
+        <nav className="t-surface border-b t-border shrink-0 relative">
+          {/* Mobile scroll hint gradient */}
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 sm:hidden" style={{ background: 'linear-gradient(to left, var(--bg-surface), transparent)', zIndex: 1 }} />
+          <div className="w-full px-8 flex overflow-x-auto scrollbar-none">
             {TABS.map(tab => (
               <button
                 key={tab.id}

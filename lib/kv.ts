@@ -146,6 +146,8 @@ export function defaultState(): ServerState {
     usedMaps: [],
     stageMaps: {},
     joinKey: '',
+    queueCap: 0,
+    queueLocked: false,
     chatMessages: [],
     defaultMaps: [],
     spinQueue: [],

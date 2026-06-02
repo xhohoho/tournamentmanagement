@@ -302,9 +302,9 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
   };
 
   if (loading) return (
-    <div className="flex-1 flex flex-col w-full py-6 gap-5 animate-pulse">
+    <div className="flex-1 flex flex-col w-full py-4 gap-5 min-h-0 overflow-hidden animate-pulse">
       <div className="h-10 w-40 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 min-h-0">
         <div className="rounded-2xl" style={{ background: 'var(--bg-elevated)' }} />
         <div className="rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 0.6 }} />
       </div>

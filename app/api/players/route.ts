@@ -28,6 +28,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid join key' }, { status: 403 });
     }
   }
+  // Enforce queue lock.
+  if (precheck.queueLocked) {
+    return NextResponse.json({ error: 'Queue is locked — registrations are closed.' }, { status: 403 });
+  }
+  // Enforce queue cap.
+  if (precheck.queueCap && precheck.queueCap > 0 && precheck.players.length >= precheck.queueCap) {
+    return NextResponse.json({ error: `Queue is full (max ${precheck.queueCap} players).` }, { status: 409 });
+  }
 
   const lo = trimmed.toLowerCase();
 

@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+export type SSEStatus = 'connecting' | 'connected' | 'polling' | 'error';
 
 /**
  * Generic SSE hook with polling fallback.
@@ -8,6 +10,8 @@ import { useEffect, useRef } from 'react';
  * Connects to `url` via EventSource and calls `onData` for each message.
  * Falls back to `fetch(url)` polling at `pollInterval` ms if EventSource
  * is unavailable or encounters an error.
+ *
+ * Returns the current connection status so callers can render a UI indicator.
  *
  * @param url           The SSE endpoint URL (or regular JSON endpoint for polling).
  * @param onData        Callback invoked with the parsed JSON payload on each event.
@@ -19,21 +23,28 @@ export function useSSE<T>(
   onData: (data: T) => void,
   pollInterval = 4000,
   deps: unknown[] = [],
-): void {
+): SSEStatus {
   // Keep a stable ref to onData so the effect doesn't re-run when the callback changes.
   const onDataRef = useRef(onData);
   useEffect(() => { onDataRef.current = onData; });
 
+  const [status, setStatus] = useState<SSEStatus>('connecting');
+
   useEffect(() => {
     let es: EventSource | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    setStatus('connecting');
 
     const fetchOnce = async () => {
       try {
         const res = await fetch(url);
         const data = await res.json();
         onDataRef.current(data as T);
-      } catch { /* silently ignore network blip */ }
+        setStatus('polling');
+      } catch {
+        setStatus('error');
+      }
     };
 
     const connect = () => {
@@ -43,12 +54,17 @@ export function useSSE<T>(
         return;
       }
       es = new EventSource(url);
+      es.onopen = () => setStatus('connected');
       es.onmessage = (e) => {
-        try { onDataRef.current(JSON.parse(e.data) as T); } catch { /* ignore malformed frame */ }
+        try {
+          onDataRef.current(JSON.parse(e.data) as T);
+          setStatus('connected');
+        } catch { /* ignore malformed frame */ }
       };
       es.onerror = () => {
         es?.close();
         es = null;
+        setStatus('error');
         if (!pollTimer) {
           fetchOnce();
           pollTimer = setInterval(fetchOnce, pollInterval);
@@ -63,4 +79,6 @@ export function useSSE<T>(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, pollInterval, ...deps]);
+
+  return status;
 }
