@@ -14,6 +14,15 @@ function hashState(s: ReturnType<typeof safeState>): string {
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   let closed = false;
+  let pushInterval: ReturnType<typeof setInterval> | null = null;
+  let kaInterval: ReturnType<typeof setInterval> | null = null;
+
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    if (pushInterval) { clearInterval(pushInterval); pushInterval = null; }
+    if (kaInterval)   { clearInterval(kaInterval);   kaInterval = null;   }
+  };
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -46,21 +55,11 @@ export async function GET(req: NextRequest) {
       // Send initial state immediately.
       await pushIfChanged();
 
-      const pushInterval = setInterval(async () => {
-        if (closed) { clearInterval(pushInterval); return; }
-        await pushIfChanged();
-      }, PUSH_INTERVAL_MS);
-
-      const kaInterval = setInterval(keepalive, KEEPALIVE_MS);
-
-      return () => {
-        closed = true;
-        clearInterval(pushInterval);
-        clearInterval(kaInterval);
-      };
+      pushInterval = setInterval(pushIfChanged, PUSH_INTERVAL_MS);
+      kaInterval   = setInterval(keepalive,      KEEPALIVE_MS);
     },
     cancel() {
-      closed = true;
+      cleanup();
     },
   });
 
