@@ -22,6 +22,7 @@ export function PlayersTab() {
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
+  const [rosterDragOver, setRosterDragOver] = useState(false);
   const submitLock = useRef(false);
 
   const term = search.toLowerCase().trim();
@@ -92,6 +93,7 @@ export function PlayersTab() {
 
   const handleDropOnRoster = async (e: React.DragEvent) => {
     e.preventDefault();
+    setRosterDragOver(false);
     const name = e.dataTransfer.getData('text/plain') || dragging;
     if (name && isAdmin && !roster.includes(name)) await addToRoster(name);
     setDragging(null);
@@ -414,8 +416,10 @@ export function PlayersTab() {
           </div>
 
           <div
-            className="flex-1 overflow-y-auto p-2 min-h-0"
-            onDragOver={e => e.preventDefault()}
+            className="flex-1 overflow-y-auto p-2 min-h-0 transition-all"
+            style={rosterDragOver && dragging && !roster.includes(dragging) ? { outline: '2px dashed var(--accent-green)', outlineOffset: '-4px', borderRadius: 12 } : {}}
+            onDragOver={e => { e.preventDefault(); if (!rosterDragOver) setRosterDragOver(true); }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setRosterDragOver(false); }}
             onDrop={handleDropOnRoster}
           >
             {roster.length === 0 ? (
@@ -429,14 +433,7 @@ export function PlayersTab() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-1">
-                {isAdmin && (
-                  <div
-                    className="col-span-2 flex items-center justify-center h-6 rounded-lg border border-dashed font-['DM_Mono'] text-[9px] t-dim opacity-40"
-                    style={{ borderColor: 'var(--border-mid)' }}
-                  >
-                    drop zone
-                  </div>
-                )}
+
                 {filteredRoster.length === 0 && term ? (
                   <div className="col-span-2 flex items-center justify-center py-4">
                     <p className="font-['DM_Mono'] text-xs t-dim">No matches in roster.</p>
