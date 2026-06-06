@@ -233,6 +233,38 @@ export async function updateState(
   return next;
 }
 
+// ─── Active admin tracking (picker page) ────────────────────────────────────────
+// Stored in KV as a hash: adminId → expiry timestamp (ms).
+// TTL mirrors the token TTL so stale entries self-clean.
+const ACTIVE_ADMINS_KEY = 'picker:activeAdmins';
+const ACTIVE_ADMIN_TTL_MS = 60 * 60 * 8 * 1000; // 8 hours
+
+export async function registerActiveAdmin(adminId: string): Promise<void> {
+  try {
+    const map = (await kv.get<Record<string, number>>(ACTIVE_ADMINS_KEY)) ?? {};
+    map[adminId] = Date.now() + ACTIVE_ADMIN_TTL_MS;
+    await kv.set(ACTIVE_ADMINS_KEY, map, { ex: 60 * 60 * 9 }); // keep key alive 9h
+  } catch { /* non-critical */ }
+}
+
+export async function unregisterActiveAdmin(adminId: string): Promise<void> {
+  try {
+    const map = (await kv.get<Record<string, number>>(ACTIVE_ADMINS_KEY)) ?? {};
+    delete map[adminId];
+    await kv.set(ACTIVE_ADMINS_KEY, map, { ex: 60 * 60 * 9 });
+  } catch { /* non-critical */ }
+}
+
+export async function getActiveAdminCount(): Promise<number> {
+  try {
+    const map = (await kv.get<Record<string, number>>(ACTIVE_ADMINS_KEY)) ?? {};
+    const now = Date.now();
+    // Prune expired entries
+    const live = Object.values(map).filter(exp => exp > now);
+    return live.length;
+  } catch { return 0; }
+}
+
 // ─── Delete a tournament's state entirely ──────────────────────────────────────
 export async function deleteTournamentState(tournamentId: string): Promise<void> {
   await kv.del(kvKey(tournamentId));

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createHash } from 'crypto';
+import { getActiveAdminCount } from '@/lib/kv';
 
 export const runtime = 'nodejs';
 
@@ -27,10 +28,16 @@ function broadcast(tid: string, data: object) {
   }
 }
 
-// ─── SSE endpoint ────────────────────────────────────────────────────────────
+// ─── Build and broadcast current counts to all clients for a tournament ──────
+async function broadcastCounts(tid: string) {
+  const visitorCount = pickerClients.get(tid)?.size ?? 0;
+  const activeAdminCount = await getActiveAdminCount();
+  broadcast(tid, { visitorCount, activeAdminCount });
+}
+
+// ─── SSE endpoint ─────────────────────────────────────────────────────────────
 // GET /api/picker/stream?t={tournamentId}
-// Tracks visitor count via SSE connections. Admin count is tracked locally
-// in the TournamentPicker component via login/logout events.
+// Tracks visitor count via SSE connections and activeAdminCount from KV.
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'picker';
 
@@ -57,9 +64,13 @@ export async function GET(req: NextRequest) {
       const client: PickerClient = { controller, visitorKey };
       clients.set(visitorKey, client);
 
-      // Send current visitor count (after registering so count includes this visitor)
+      // Send current counts (visitor + admin) immediately after registering
+      const activeAdminCount = await getActiveAdminCount();
       const visitorCount = clients.size;
-      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ visitorCount })}\n\n`));
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ visitorCount, activeAdminCount })}\n\n`));
+
+      // Broadcast updated counts to all other connected clients
+      broadcastCounts(tid).catch(() => {});
 
       // Keepalive
       kaInterval = setInterval(() => {
@@ -77,9 +88,8 @@ export async function GET(req: NextRequest) {
         clients.delete(visitorKey);
         if (clients.size === 0) pickerClients.delete(tid);
       }
-      // Broadcast updated visitor count
-      const visitorCount = clients?.size ?? 0;
-      broadcast(tid, { visitorCount });
+      // Broadcast updated counts to remaining clients
+      broadcastCounts(tid).catch(() => {});
     },
   });
 

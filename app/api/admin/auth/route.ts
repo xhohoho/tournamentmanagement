@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
-import { listAdminAccounts, saveAdminAccount, deleteAdminAccount, updateState } from '@/lib/kv';
+import { listAdminAccounts, saveAdminAccount, deleteAdminAccount, updateState, registerActiveAdmin, unregisterActiveAdmin } from '@/lib/kv';
 import type { AdminAccount } from '@/lib/types';
 import { randomBytes } from 'crypto';
 import {
@@ -96,8 +96,9 @@ export async function POST(req: NextRequest) {
     await saveAdminAccount({ ...account, pwHash: await hashPassword(password) });
   }
   const token = await createAdminToken(account.adminId, req);
-  // Successful login — clear rate limit
-    await clearRateLimit(ip);
+  // Successful login — register as active admin and clear rate limit
+  await registerActiveAdmin(account.adminId);
+  await clearRateLimit(ip);
 
   return NextResponse.json({
     ok: true,
@@ -186,7 +187,10 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const token = req.headers.get('X-Admin-Token');
   if (token) {
+    // Resolve adminId before revoking so we can unregister them
+    const adminId = await verifyAdminToken(req);
     await revokeAdminToken(token);
+    if (adminId) await unregisterActiveAdmin(adminId);
   }
   return NextResponse.json({ ok: true });
 }
