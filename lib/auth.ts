@@ -1,5 +1,5 @@
 import { kv } from '@vercel/kv';
-import { randomBytes, scrypt, timingSafeEqual, createHash } from 'crypto';
+import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import type { NextRequest } from 'next/server';
 import type { TournamentMeta } from './kv';
@@ -14,18 +14,6 @@ export const CURRENT_TOKEN_PREFIX = 'admin:currenttoken:'
 // ─── Token payload stored in KV ──────────────────────────────────────────────
 interface TokenPayload {
   adminId: string;
-  /** SHA-256 of (IP + '|' + origin). Absent on old tokens — fail open. */
-  fingerprint?: string;
-}
-
-/** Derive a stable fingerprint from the request's IP and Origin header. */
-function requestFingerprint(req: NextRequest): string {
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-    req.headers.get('x-real-ip') ??
-    'unknown';
-  const origin = req.headers.get('origin') ?? req.headers.get('referer') ?? '';
-  return createHash('sha256').update(`${ip}|${origin}`).digest('hex');
 }
 
 // ─── Password helpers ─────────────────────────────────────────────────────────
@@ -60,13 +48,8 @@ export async function verifyAdminToken(req: NextRequest): Promise<string | null>
     if (!raw) return null;
     // Legacy tokens stored the adminId as a plain string.
     if (typeof raw === 'string') return raw;
-    // New tokens store { adminId, fingerprint }.
-    const payload = raw as TokenPayload;
-    if (payload.fingerprint) {
-      const fp = requestFingerprint(req);
-      if (fp !== payload.fingerprint) return null;
-    }
-    return payload.adminId;
+    // New tokens store { adminId }.
+    return (raw as TokenPayload).adminId;
   } catch {
     return null;
   }
@@ -89,7 +72,7 @@ export async function createAdminToken(adminId: string, req: NextRequest): Promi
   if (oldToken) await kv.del(`${TOKEN_PREFIX}${oldToken}`);
 
   const token = randomBytes(32).toString('hex');
-  const payload: TokenPayload = { adminId, fingerprint: requestFingerprint(req) };
+  const payload: TokenPayload = { adminId };
   await kv.set(`${TOKEN_PREFIX}${token}`, payload, { ex: TOKEN_TTL });
   await kv.set(reverseKey, token, { ex: TOKEN_TTL });
   return token;
