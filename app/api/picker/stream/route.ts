@@ -8,30 +8,28 @@ const KEEPALIVE_MS = 25_000;
 const ACTIVE_ADMINS_KEY = 'tournament:activeAdmins';
 
 // ─── Per-tournament SSE client sets ──────────────────────────────────────────
-// Each tournament has a Set of { controller, visitorKey } for active SSE connections
 interface PickerClient {
   controller: ReadableStreamDefaultController;
   visitorKey: string;
 }
-const pickerClients = new Map<string, Set<PickerClient>>();
+const pickerClients = new Map<string, Map<string, PickerClient>>();
 
 // ─── Broadcast to all picker SSE clients for a tournament ────────────────────
 function broadcast(tid: string, data: object) {
   const clients = pickerClients.get(tid);
   if (!clients) return;
   const payload = `data: ${JSON.stringify(data)}\n\n`;
-  const encoder = new TextEncoder();
-  const encoded = encoder.encode(payload);
-  for (const client of clients) {
+  const encoded = new TextEncoder().encode(payload);
+  for (const client of clients.values()) {
     try {
       client.controller.enqueue(encoded);
     } catch {
-      // Client disconnected, will be cleaned up on cancel
+      // Client disconnected
     }
   }
 }
 
-// ─── Get current stats for a tournament ──────────────────────────────────────
+// ─── Get current stats ───────────────────────────────────────────────────────
 async function getStats(tid: string): Promise<{ visitorCount: number; activeAdminCount: number }> {
   const clients = pickerClients.get(tid);
   const visitorCount = clients?.size ?? 0;
@@ -43,7 +41,7 @@ async function getStats(tid: string): Promise<{ visitorCount: number; activeAdmi
   }
 }
 
-// ─── Register / unregister admin (called by auth route) ───────────────────────
+// ─── Register / unregister admin ──────────────────────────────────────────────
 export async function registerAdmin(adminId: string) {
   try {
     const current = await kv.get<string[]>(ACTIVE_ADMINS_KEY) ?? [];
@@ -51,7 +49,7 @@ export async function registerAdmin(adminId: string) {
       await kv.set(ACTIVE_ADMINS_KEY, [...current, adminId]);
     }
   } catch { /* ignore */ }
-  // Broadcast updated admin count to all tournaments
+  // Broadcast to all connected picker streams
   for (const tid of pickerClients.keys()) {
     const stats = await getStats(tid);
     broadcast(tid, stats);
@@ -63,7 +61,6 @@ export async function unregisterAdmin(adminId: string) {
     const current = await kv.get<string[]>(ACTIVE_ADMINS_KEY) ?? [];
     await kv.set(ACTIVE_ADMINS_KEY, current.filter(id => id !== adminId));
   } catch { /* ignore */ }
-  // Broadcast updated admin count to all tournaments
   for (const tid of pickerClients.keys()) {
     const stats = await getStats(tid);
     broadcast(tid, stats);
@@ -71,25 +68,35 @@ export async function unregisterAdmin(adminId: string) {
 }
 
 // ─── SSE endpoint ────────────────────────────────────────────────────────────
-// GET /api/picker/stream?t={tournamentId}
-// If no tournamentId, connects to the picker page stream
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'picker';
-  let closed = false;
-  let kaInterval: ReturnType<typeof setInterval> | null = null;
 
   const visitorKey = createHash('sha1')
     .update(`${req.headers.get('x-forwarded-for') ?? 'unknown'}|${req.headers.get('user-agent') ?? 'unknown'}`)
     .digest('hex');
 
+  let closed = false;
+  let kaInterval: ReturnType<typeof setInterval> | null = null;
+
   const stream = new ReadableStream({
     async start(controller) {
-      // Register this client
-      if (!pickerClients.has(tid)) pickerClients.set(tid, new Set());
-      const client: PickerClient = { controller, visitorKey };
-      pickerClients.get(tid)!.add(client);
+      // Dedupe: if same visitor key already connected, close the old one first
+      if (!pickerClients.has(tid)) pickerClients.set(tid, new Map());
+      const clients = pickerClients.get(tid)!;
 
-      // Send initial stats immediately
+      const oldClient = clients.get(visitorKey);
+      if (oldClient) {
+        // Close the previous connection from this same visitor
+        try { oldClient.controller.close(); } catch { /* already closed */ }
+        clients.delete(visitorKey);
+        // Don't broadcast here — the new connection will send correct count
+      }
+
+      // Register new client
+      const client: PickerClient = { controller, visitorKey };
+      clients.set(visitorKey, client);
+
+      // Send current stats (after registering so count includes this visitor)
       const stats = await getStats(tid);
       controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(stats)}\n\n`));
 
@@ -106,15 +113,10 @@ export async function GET(req: NextRequest) {
       // Remove this client
       const clients = pickerClients.get(tid);
       if (clients) {
-        for (const c of clients) {
-          if (c.visitorKey === visitorKey) {
-            clients.delete(c);
-            break;
-          }
-        }
+        clients.delete(visitorKey);
         if (clients.size === 0) pickerClients.delete(tid);
       }
-      // Broadcast updated visitor count
+      // Broadcast updated visitor count after disconnect
       getStats(tid).then(stats => broadcast(tid, stats)).catch(() => {});
     },
   });
