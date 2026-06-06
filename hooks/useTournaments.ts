@@ -12,6 +12,8 @@ export interface TournamentMeta {
   posterUrl?: string;
   tournamentDate?: number;
   organizer?: string;
+  visitorCount?: number;
+  activeAdminCount?: number;
 }
 
 export function useTournaments() {

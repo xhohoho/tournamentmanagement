@@ -8,6 +8,8 @@ interface Props {
   canManage: boolean;
   editingPosterId: string | null;
   posterSaving: boolean;
+  visitorCount?: number;
+  activeAdminCount?: number;
   onSelect: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDeleteClick: () => void;
@@ -21,6 +23,8 @@ export function TournamentCard({
   canManage,
   editingPosterId,
   posterSaving,
+  visitorCount = 0,
+  activeAdminCount = 0,
   onSelect,
   onEdit,
   onDeleteClick,
@@ -124,6 +128,11 @@ export function TournamentCard({
           </div>
         )}
         {!t.tournamentDate && !t.organizer && <div className="mb-3" />}
+        <div className="font-['DM_Mono'] text-[10px] t-muted mb-2 flex items-center gap-2">
+          <span>👁 {visitorCount}</span>
+          <span>·</span>
+          <span>🛡 {activeAdminCount}</span>
+        </div>
         <div
           className="mt-auto w-full py-2.5 rounded-xl font-['DM_Mono'] text-xs font-bold uppercase tracking-widest text-white text-center transition-all group-hover:opacity-90"
           style={{ background: 'linear-gradient(135deg, var(--accent-red), var(--accent))' }}

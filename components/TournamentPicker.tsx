@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 import { useAdminSession }  from '@/hooks/useAdminSession';
 import { useTournaments }   from '@/hooks/useTournaments';
@@ -59,6 +59,38 @@ export function TournamentPicker({ onSelect }: Props) {
 
   const [superAdminOpen, setSuperAdminOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl]   = useState<string | null>(null);
+
+  // ── Stats (visitor / admin counts) ──────────────────────────────────────────
+  const [statsMap, setStatsMap] = useState<Record<string, { visitorCount: number; activeAdminCount: number }>>({});
+  const tournamentsRef = useRef(tournaments);
+  tournamentsRef.current = tournaments;
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchStats = async () => {
+      const list = tournamentsRef.current;
+      if (list.length === 0) return;
+      const entries = await Promise.all(
+        list.map(async (t) => {
+          try {
+            const res = await fetch(`/api/stats?t=${encodeURIComponent(t.id)}`);
+            if (!res.ok) return { id: t.id, visitorCount: 0, activeAdminCount: 0 };
+            const data = await res.json();
+            return { id: t.id, visitorCount: data.visitorCount ?? 0, activeAdminCount: data.activeAdminCount ?? 0 };
+          } catch {
+            return { id: t.id, visitorCount: 0, activeAdminCount: 0 };
+          }
+        }),
+      );
+      if (cancelled) return;
+      const next: Record<string, { visitorCount: number; activeAdminCount: number }> = {};
+      for (const e of entries) next[e.id] = { visitorCount: e.visitorCount, activeAdminCount: e.activeAdminCount };
+      setStatsMap(next);
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [tournaments]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const canManage = useCallback((t: { ownerAdminId?: string; collaborators?: string[] }): boolean => {
@@ -324,6 +356,8 @@ export function TournamentPicker({ onSelect }: Props) {
                     canManage={canManage(t)}
                     editingPosterId={editingPosterId}
                     posterSaving={posterSaving}
+                    visitorCount={statsMap[t.id]?.visitorCount ?? 0}
+                    activeAdminCount={statsMap[t.id]?.activeAdminCount ?? 0}
                     onSelect={() => onSelect(t.id, adminToken ?? undefined, adminInfo ?? undefined)}
                     onEdit={e => {
                       e.stopPropagation();
