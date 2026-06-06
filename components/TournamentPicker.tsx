@@ -62,7 +62,13 @@ export function TournamentPicker({ onSelect }: Props) {
 
   // ── Live visitor / admin counts via SSE ─────────────────────────────────────
   const [totalVisitors, setTotalVisitors] = useState(0);
-  const [totalAdmins, setTotalAdmins] = useState(0);
+  // Track SSE-connected visitor count locally (we know our own connection)
+  const [localVisitorCount, setLocalVisitorCount] = useState(0);
+
+  // ── Admin count: track locally from login/logout events ──────────────────────
+  // adminInfo changes on login/logout — use it as the source of truth for admin count
+  // on the picker page. Other tabs will pick it up via SSE broadcast from the stream endpoint.
+  const adminCountFromLogin = adminInfo ? 1 : 0;
 
   useEffect(() => {
     if (typeof EventSource === 'undefined') return;
@@ -71,20 +77,19 @@ export function TournamentPicker({ onSelect }: Props) {
 
     const connect = () => {
       es = new EventSource('/api/picker/stream?t=picker');
-      es.onopen = () => { if (!closed) console.log('[picker] SSE connected'); };
+      es.onopen = () => { if (!closed) setLocalVisitorCount(1); };
       es.onmessage = (e) => {
         if (closed) return;
         try {
           const data = JSON.parse(e.data);
           setTotalVisitors(data.visitorCount ?? 0);
-          setTotalAdmins(data.activeAdminCount ?? 0);
         } catch { /* ignore malformed */ }
       };
       es.onerror = () => {
         if (closed) return;
+        setLocalVisitorCount(0);
         es?.close();
         es = null;
-        // Reconnect after 3s
         setTimeout(() => { if (!closed) connect(); }, 3000);
       };
     };
@@ -92,6 +97,7 @@ export function TournamentPicker({ onSelect }: Props) {
     connect();
     return () => {
       closed = true;
+      setLocalVisitorCount(0);
       es?.close();
     };
   }, []);
@@ -291,7 +297,7 @@ export function TournamentPicker({ onSelect }: Props) {
           <div className="mt-3 inline-flex items-center gap-2 font-['DM_Mono'] text-[10px] t-muted border t-border-mid rounded px-3 py-1.5">
             <span>👁 {totalVisitors} visitor{totalVisitors !== 1 ? 's' : ''}</span>
             <span className="opacity-30">|</span>
-            <span>🛡 {totalAdmins} admin{totalAdmins !== 1 ? 's' : ''}</span>
+            <span>🛡 {adminCountFromLogin} admin{adminCountFromLogin !== 1 ? 's' : ''}</span>
           </div>
         </div>
 

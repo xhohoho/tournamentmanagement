@@ -73,6 +73,7 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
       const accData = await accRes.json();
       const tourData = await tourRes.json();
       if (!accRes.ok) { setLoadErr(accData.error ?? 'Failed to load accounts.'); return; }
+      if (!accData.isSuperAdmin) { setLoadErr('Super admin required.'); return; }
       setAccounts(accData.accounts ?? []);
       setTournaments(tourData.tournaments ?? []);
     } catch {

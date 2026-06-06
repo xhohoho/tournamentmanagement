@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
 import { listAdminAccounts, saveAdminAccount, deleteAdminAccount, updateState } from '@/lib/kv';
-import { registerAdmin, unregisterAdmin } from '@/app/api/picker/stream/route';
 import type { AdminAccount } from '@/lib/types';
 import { randomBytes } from 'crypto';
 import {
@@ -97,9 +96,8 @@ export async function POST(req: NextRequest) {
     await saveAdminAccount({ ...account, pwHash: await hashPassword(password) });
   }
   const token = await createAdminToken(account.adminId, req);
-  // Successful login — clear rate limit and track active admin
+  // Successful login — clear rate limit
     await clearRateLimit(ip);
-    registerAdmin(account.adminId);
 
   return NextResponse.json({
     ok: true,
@@ -111,15 +109,17 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * GET /api/admin/auth — list all admin accounts (super admin only)
+ * GET /api/admin/auth — verify session and return admin info
  */
 export async function GET(req: NextRequest) {
   const adminId = await verifyAdminToken(req);
   if (!adminId) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 403 });
   const accounts = await listAdminAccounts();
   const me = accounts.find(a => a.adminId === adminId);
-  if (!me?.isSuperAdmin) return NextResponse.json({ ok: false, error: 'Super admin required' }, { status: 403 });
-  return NextResponse.json({ ok: true, accounts: accounts.map(({ pwHash: _, ...rest }) => rest) });
+  if (!me) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 403 });
+  // Return own info (used by SuperAdminPanel to check super admin status)
+  if (!me?.isSuperAdmin) return NextResponse.json({ ok: true, accounts: [], isSuperAdmin: false, adminId: me.adminId, name: me.name });
+  return NextResponse.json({ ok: true, accounts: accounts.map(({ pwHash: _, ...rest }) => rest), isSuperAdmin: true, adminId: me.adminId, name: me.name });
 }
 
 /**
@@ -186,10 +186,6 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const token = req.headers.get('X-Admin-Token');
   if (token) {
-    const adminId = await verifyAdminToken(req);
-    if (adminId) {
-      unregisterAdmin(adminId);
-    }
     await revokeAdminToken(token);
   }
   return NextResponse.json({ ok: true });
