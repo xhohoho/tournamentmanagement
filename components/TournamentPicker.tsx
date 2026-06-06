@@ -60,25 +60,40 @@ export function TournamentPicker({ onSelect }: Props) {
   const [superAdminOpen, setSuperAdminOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl]   = useState<string | null>(null);
 
-  // ── Overall stats (visitor / admin counts) ──────────────────────────────────
+  // ── Live visitor / admin counts via SSE ─────────────────────────────────────
   const [totalVisitors, setTotalVisitors] = useState(0);
   const [totalAdmins, setTotalAdmins] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
-    const fetchStats = async () => {
-      try {
-        const res = await fetch('/api/stats');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setTotalVisitors(data.visitorCount ?? 0);
-        setTotalAdmins(data.activeAdminCount ?? 0);
-      } catch { /* ignore */ }
+    if (typeof EventSource === 'undefined') return;
+    let es: EventSource | null = null;
+    let closed = false;
+
+    const connect = () => {
+      es = new EventSource('/api/picker/stream?t=picker');
+      es.onopen = () => { if (!closed) console.log('[picker] SSE connected'); };
+      es.onmessage = (e) => {
+        if (closed) return;
+        try {
+          const data = JSON.parse(e.data);
+          setTotalVisitors(data.visitorCount ?? 0);
+          setTotalAdmins(data.activeAdminCount ?? 0);
+        } catch { /* ignore malformed */ }
+      };
+      es.onerror = () => {
+        if (closed) return;
+        es?.close();
+        es = null;
+        // Reconnect after 3s
+        setTimeout(() => { if (!closed) connect(); }, 3000);
+      };
     };
-    fetchStats();
-    const interval = setInterval(fetchStats, 5000);
-    return () => { cancelled = true; clearInterval(interval); };
+
+    connect();
+    return () => {
+      closed = true;
+      es?.close();
+    };
   }, []);
 
   // ── Helpers ──────────────────────────────────────────────────────────────

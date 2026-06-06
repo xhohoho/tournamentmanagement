@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
 import { listAdminAccounts, saveAdminAccount, deleteAdminAccount, updateState } from '@/lib/kv';
-import { registerAdmin, unregisterAdmin } from '@/app/api/stats/route';
+import { registerAdmin, unregisterAdmin } from '@/app/api/picker/stream/route';
 import type { AdminAccount } from '@/lib/types';
 import { randomBytes } from 'crypto';
 import {
