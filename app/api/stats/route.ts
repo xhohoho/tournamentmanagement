@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, listTournaments, updateState } from '@/lib/kv';
+import { kv } from '@vercel/kv';
 
-// ─── Global active admin tracking ────────────────────────────────────────────
-// Tracks all currently logged-in adminIds across the entire app (not per-tournament).
-// In a multi-instance deployment this would need Redis, but works for single-instance.
-const globalActiveAdmins = new Set<string>();
-
-// ─── Picker visitor tracking ─────────────────────────────────────────────────
+// ─── Picker visitor tracking (in-memory, per-instance) ────────────────────────
 // Tracks unique picker visitors by IP+UA hash (resets on deploy)
 const pickerVisitors = new Set<string>();
 
@@ -19,14 +15,30 @@ function clientKey(req: NextRequest): string {
   return `${ip}|${ua}`;
 }
 
-/** Called by auth route when admin logs in */
-export function registerAdmin(adminId: string) {
-  globalActiveAdmins.add(adminId);
+/** KV key for active admin set */
+const ACTIVE_ADMINS_KEY = 'tournament:activeAdmins';
+
+export async function registerAdmin(adminId: string) {
+  try {
+    const current = await kv.get<string[]>(ACTIVE_ADMINS_KEY) ?? [];
+    if (!current.includes(adminId)) {
+      await kv.set(ACTIVE_ADMINS_KEY, [...current, adminId]);
+    }
+  } catch { /* ignore */ }
 }
 
-/** Called by auth route when admin logs out */
-export function unregisterAdmin(adminId: string) {
-  globalActiveAdmins.delete(adminId);
+export async function unregisterAdmin(adminId: string) {
+  try {
+    const current = await kv.get<string[]>(ACTIVE_ADMINS_KEY) ?? [];
+    await kv.set(ACTIVE_ADMINS_KEY, current.filter(id => id !== adminId));
+  } catch { /* ignore */ }
+}
+
+async function getActiveAdminCount(): Promise<number> {
+  try {
+    const admins = await kv.get<string[]>(ACTIVE_ADMINS_KEY);
+    return admins?.length ?? 0;
+  } catch { return 0; }
 }
 
 export async function GET(req: NextRequest) {
@@ -57,8 +69,10 @@ export async function GET(req: NextRequest) {
     }),
   );
 
+  const activeAdminCount = await getActiveAdminCount();
+
   return NextResponse.json({
     visitorCount: pickerVisitors.size + tournamentVisitors,
-    activeAdminCount: globalActiveAdmins.size,
+    activeAdminCount,
   });
 }
