@@ -164,6 +164,8 @@ export interface ServerState {
   tickerText: string;
   stageFormats: import('./types').StageFormats;
   ffa: FFAState;
+  visitorCount: number;
+  activeAdmins: string[];
 }
 
 /**
@@ -223,6 +225,8 @@ export interface TourneyContext {
   loading: boolean;
   sseStatus: 'connecting' | 'connected' | 'polling' | 'error';
   tickerText: string;
+  visitorCount: number;
+  activeAdminCount: number;
 
   tournamentId: string;
   joinKey: string;

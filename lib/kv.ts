@@ -158,6 +158,8 @@ export function defaultState(): ServerState {
     tickerText: 'Shop : https://suddenattack.safie.cc',
     stageFormats: { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' },
     ffa: { matches: [], players: [] },
+    visitorCount: 0,
+    activeAdmins: [],
   };
 }
 

@@ -1,151 +1,120 @@
-# Tournament Management — Refactor Task Tracker
-
+# Tournament Management — Improvement Plan
+> Reanalyzed: June 2026 · All prior items resolved ✅
 > Legend: `[ ]` todo · `[x]` done · `[-]` skipped/won't fix
 > Priority: 🔴 critical · 🟠 high · 🟡 medium · 🟢 low
-> Source: Full codebase analysis — June 2026
 
 ---
 
-## 🏗️ Architecture / Structure
+## 🔒 Security
 
-- [x] 🔴 **[app/api/admin/auth/route.ts → lib/auth.ts]** Auth helpers extracted to `lib/auth.ts`.
+- [ ] 🔴 **[app/api/chat/route.ts]** Chat POST has no auth guard — anyone can post as any name. Add optional admin-only mode or at minimum a simple name-spoof check (e.g. block names that match registered admin names).
 
-- [x] 🔴 **[app/api/bracket/route.ts → lib/bracket.ts]** Bracket logic extracted to `lib/bracket.ts`.
+- [ ] 🔴 **[app/api/state/route.ts]** GET /api/state returns full client state with no rate-limiting. A public tournament can be polled indefinitely. Add a lightweight in-memory or KV-based rate limit (e.g. 60 req/min/IP).
 
-- [x] 🟠 **[lib/tournamentAccess.ts]** Import updated to `lib/auth`.
+- [ ] 🟠 **[app/api/upload/route.ts]** Verify file upload MIME type server-side (not just `accept` attribute on input). Reject non-image content-types and enforce a max file size (e.g. 5 MB) to prevent abuse of Vercel Blob storage.
 
-- [x] 🟠 **[lib/types.ts]** `TournamentState` alias replaced with `ServerState` everywhere.
+- [ ] 🟠 **[lib/auth.ts → verifyAdminToken]** Token fingerprint uses IP + Origin hash. Behind Vercel's edge, `x-forwarded-for` can be spoofed or rotate on mobile networks. Consider making fingerprint-mismatch a soft warning (log it) rather than a hard rejection, or document the trade-off clearly.
 
-- [x] 🟡 **[lib/kv.ts]** `safeState()` helper added; all routes use it.
-
-- [x] 🟡 **[app/api/ffa/route.ts]** Lazy dynamic import fixed.
+- [ ] 🟡 **[app/api/admin/route.ts (super admin panel)]** Super admin actions (delete account, toggle isSuperAdmin) should require re-authentication or a second factor (e.g. confirm current password) to prevent session-hijack escalation.
 
 ---
 
-## ♻️ Redundancy / Consistency
+## 🐛 Bug Fixes
 
-- [x] 🟠 **[lib/context.tsx]** `apiFetch` helper not extracted — ~30 fetch calls repeat Content-Type + auth header boilerplate.
+- [ ] 🔴 **[components/MapsTab.tsx → drawWheel]** `maps.length` is used for font-size calculation (`140 / maps.length`) but the wheel only shows `wheelMaps` (master pool minus used maps). Font size should scale with `wheelMaps.length` to avoid oversized text when most maps are used.
 
-- [x] 🟠 **[lib/context.tsx]** Guard field names not standardised as a const union/enum.
+- [ ] 🔴 **[components/MapsTab.tsx → spin()]** `spinning || !maps.length` guard — should be `spinning || wheelMaps.length === 0`. If all maps are in `usedMaps`, the SPIN button is incorrectly still enabled because `maps.length > 0`.
 
-- [x] 🟡 **[app/api/bracket/route.ts]** `cloneBracket` not yet extracted to `lib/bracket.ts`.
+- [ ] 🟠 **[lib/kv.ts → updateState]** Lua CAS script falls back to a non-atomic `getState` + `setState` after 5 retries. Under high write contention (many concurrent score updates) this can cause lost writes. Add a jitter-based exponential back-off before the fallback, or increase MAX_RETRIES to 8.
 
-- [x] 🟡 **[app/api/bracket/route.ts]** `propagateWinner` / `clearWinner` not yet extracted.
+- [ ] 🟠 **[app/api/bracket/route.ts → undoMatch action]** When undoing a match whose winner was propagated into the Grand Final in DE mode, the GF `p1`/`p2` is cleared but `bracket.champion` is NOT reset if the GF was already complete. This leaves a stale champion after an undo. Add `bracket.champion = null` whenever GF is touched during undo.
 
-- [x] 🟡 **[app/api/maps/route.ts + lib/context.tsx]** `removeSpinQueueItem` still fire-and-forget.
+- [ ] 🟠 **[components/BracketTab.tsx]** Third-place match is rendered in SE mode even when `teamCount < 4`. The `buildEmptySE` guard adds `thirdPlace` only for ≥ 4 teams, but the UI renders the thirdPlace section unconditionally if `bracket.thirdPlace` exists. Add a guard: only render if `bracket.upper[0].length >= 2` (i.e. ≥ 4 entrants).
 
-- [x] 🟡 **[app/page.tsx]** `<TickerEditModal>` extracted with `displayName`.
+- [ ] 🟡 **[hooks/useSSE.ts]** On `es.onerror`, the hook starts polling AND keeps the EventSource reference alive momentarily (it is closed but not nulled before the polling check `if (!pollTimer)`). If the browser fires `onerror` multiple times (e.g. repeated reconnect attempts), multiple poll intervals can be spawned. Fix: set `pollTimer` immediately before `fetchOnce()` or null-guard more carefully.
 
-- [x] 🟡 **[app/page.tsx]** Admin state deduplicated via `useAdminSession()`.
+- [ ] 🟡 **[components/MapsTab.tsx → spin tick closure]** `activeCategoryRef` and `itemCategoryRef` are read after `await appendSpinQueueRef.current(result)`. If the component unmounts during that await, refs are stale but the async continuation still runs `saveItemCategory`. Add an `isMounted` ref guard around the post-await block.
 
-- [x] 🟢 **[app/api/maps/route.ts]** `DELETE` cleans ghost `stageMaps` references.
+- [ ] 🟡 **[app/api/ffa/route.ts]** `setFFAPlayers` action replaces `ffa.players` without validating names against the existing player queue/roster. A super admin could set arbitrary strings. Add name-length and character validation consistent with the player submission rules.
 
-- [x] 🟢 **[app/api/teams/route.ts]** Unused `teamMode` destructure removed.
-
----
-
-## 🔒 Security (Remaining)
-
-- [x] 🔴 **[app/api/admin/auth/route.ts]** No brute-force protection — sliding-window rate limiter: 5 req/60s/IP via `@vercel/kv`, returns `429` + `Retry-After`. Counter cleared on successful login.
-
-- [x] 🟠 **[app/api/players/route.ts]** POST body whitelists only `{ name, joinKey }`.
-
-- [x] 🟠 **[app/api/admin/auth/route.ts]** Token has no IP/origin binding.
-
-- [x] 🟡 **[All API routes]** No CORS headers.
-
-- [x] 🟡 **[app/api/players/route.ts]** Case-insensitive dedup applied consistently.
+- [ ] 🟢 **[lib/bracket.ts → sweepBracket]** The outer `while (sweepAgain)` loop has no iteration cap. A pathological bracket state (e.g. all byes, circular reference bug) could cause an infinite loop on the server. Add a max-iterations guard (e.g. 500) with a console.error and break.
 
 ---
 
-## 🐛 Bug Fixes (Remaining)
+## ♻️ Code Quality / Refactor
 
-- [x] 🔴 **[lib/kv.ts]** `ensureDefaultAdmin` — assert `pwHash` contains `:` before saving. (`ensureDefaultAdmin` no longer exists; guard is in `saveAdminAccount`)
+- [ ] 🟠 **[components/MapsTab.tsx]** Component is ~700 lines. Extract into sub-components:
+  - `WheelPanel` (canvas, map list, add-map form)
+  - `SpinResultsPanel` (queue, categories, drag-drop)
+  - `DefaultMapsFooter`
+  - Keep `MapsTab` as a thin orchestrator. This will also make the `spin` closure and `drawWheel` easier to test.
 
-- [x] 🔴 **[app/api/state/stream/route.ts]** SSE hash dedup — only pushes on state change.
+- [ ] 🟠 **[lib/context.tsx]** Context file is very large (likely 600–900+ lines). Split into domain-specific hooks:
+  - `usePlayers()` — player/roster mutations
+  - `useTeams()` — team formation/swap/rename
+  - `useBracket()` — bracket generation/scoring/undo
+  - `useMaps()` — map/spin/stage operations
+  - `useFFAContext()` — FFA match mutations
+  - `useChat()` — chat send/clear
+  - Keep `TourneyProvider` as a composition root that aggregates them.
 
-- [x] 🟠 **[app/api/bracket/route.ts]** `sweepBracket` called unconditionally — should start from affected round `ri`.
+- [ ] 🟠 **[app/api/* routes]** Several routes (`/api/players`, `/api/teams`, `/api/bracket`, `/api/ffa`) use a large `action` switch dispatched from a single POST handler. As features grow this becomes hard to navigate. Consider splitting into sub-routes (e.g. `/api/teams/[action]/route.ts`) or a typed action-handler registry map.
 
-- [x] 🟠 **[app/api/players/route.ts]** Duplicate name check moved inside `updateState` — atomic.
+- [ ] 🟡 **[components/FFATab.tsx]** `MapInfoForm`, `ScoreTabSection`, `WinnersSection`, and `MatchCard` are all defined in the same file (~500 lines). Extract each to its own file under `components/ffa/`.
 
-- [x] 🟡 **[MapsTab.tsx]** `drawWheel` uses CSS var as canvas `fillStyle` — needs `getComputedStyle`.
+- [ ] 🟡 **[lib/types.ts]** `TourneyContext` interface is very large (~80 methods). Group into logical namespaces or split into separate `PlayerActions`, `TeamActions`, `BracketActions`, `MapActions`, `FFAActions`, `ChatActions` interfaces composed into `TourneyContext`. Improves IntelliSense discoverability.
 
-- [-] 🟡 **[lib/context.tsx]** `resetAll` doesn't reset `maps` local state. (intentional — maps persist across round resets; comment added in context.tsx)
+- [ ] 🟡 **[app/page.tsx]** `MainApp` renders all tab components simultaneously (hidden via `hidden` CSS class) rather than lazy-mounting. For large tournaments this means all tabs hydrate on load. Switch to conditional rendering with `activeTab === 'x' && <XTab />` or React.lazy/Suspense per tab.
 
-- [x] 🟡 **[TeamsTab.tsx]** `isVisible()` flash on first render after `formTeams`.
+- [ ] 🟢 **[lib/kv.ts]** `kvKey()` silently strips invalid characters. If the resulting key is empty (all-invalid id), it falls back to `'tournament:state:default'` — which would collide with the real default tournament. Add an explicit check and throw or return an error if `safe` is empty after sanitization.
 
-- [x] 🟢 **[lib/kv.ts]** `getState`/`listTournaments`/`updateState` error logging added.
-
----
-
-## 🔁 Code Quality / Types
-
-- [x] 🟠 **[app/api/bracket/route.ts]** `action === 'generate'` duplicates SE loop instead of calling `buildSE`. (resolved by buildEmptySE/buildEmptyDE delegation)
-
-- [x] 🟡 **[app/api/teams/route.ts]** HSL color generation for >8 teams.
-
-- [x] 🟡 **[lib/context.tsx]** `TourneyContext` interface still inline — move to `lib/types.ts`.
-
-- [x] 🟡 **[All components]** Missing `displayName` on anonymous components. (all components are named function declarations; no memo/forwardRef wraps exist — implicit names sufficient)
-
-- [x] 🟡 **[app/api/maps/route.ts]** Dead `updateSpinState` action.
-
-- [x] 🟢 **[next.config.ts]** Add `typedRoutes`, `output: 'standalone'`.
-
-- [x] 🟢 **[All components]** Extract `<HoverButton>` wrapper.
-
-- [x] 🟢 **[lib/kv.ts]** `updateState` retry/fallback logging.
+- [ ] 🟢 **[All API routes]** No structured logging. Add a thin `logRequest(req, action, tournamentId)` helper that logs method, path, action, tid, and adminId (redacted) in JSON format. Useful for debugging and Vercel log queries.
 
 ---
 
-## 🎨 UX / Design (Prioritised)
+## 🎨 UX / Design
 
-### Global
+- [ ] 🟠 **[components/MapsTab.tsx]** No visual feedback when a map is dragged onto a stage slot in the bracket. Implement a drag-enter highlight on stage slot drop zones (the TODO left from the prior session: "No visual feedback when map dropped onto stage slot").
 
-- [x] 🔴 **[All tabs]** Each tab must fit one viewport — `PlayersTab`, `BracketTab`, `MapsTab` overflow on 1080p.
+- [ ] 🟠 **[components/FFATab.tsx → MatchCard]** Player scores are not shown on the match card. The `FFAMatch.scores` array exists but the UI only shows map info, score-tab image, and winners. Add a compact score leaderboard section between the map info table and the Score Tab section, visible to all users.
 
-- [x] 🔴 **[context.tsx + api/state/stream/route.ts]** SSE hash dedup — real-time spectator updates.
+- [ ] 🟠 **[components/ChatPanel.tsx]** Chat is hidden behind a floating toggle and not integrated into the tab nav. Consider adding chat as a sixth tab (`TabId: 'chat'`) so spectators can find it without discovering the floating button. The `chat` TabId already exists in `lib/types.ts`.
 
-### Players Tab
+- [ ] 🟡 **[app/page.tsx → MainApp]** The SSE status indicator is hidden on mobile (`hidden sm:inline-flex`). On mobile, connection drops are silent. Show a minimal dot indicator (no label) that is always visible, or integrate it into the header title area.
 
-- [x] 🟠 **[PlayersTab.tsx]** `byAdmin` badge / role text — `Player` type has no such field; never rendered.
-- [x] 🟠 **[PlayersTab.tsx]** "Add as Admin" toggle — not present in component.
-- [x] 🟠 **[PlayersTab.tsx]** Input disabled synchronously on submit — `disabled={submitting}` + `submitLock` ref + immediate clear already handles this.
-- [x] 🟠 **[PlayersTab.tsx + api/players/route.ts]** `renamePlayer` action added — atomic across `players`, `roster`, `teams`.
+- [ ] 🟡 **[components/TournamentPicker.tsx]** No search/filter for tournaments. Once a super admin has 10+ tournaments, the picker becomes hard to navigate. Add a simple text-filter input above the grid.
 
-### Bracket Tab
+- [ ] 🟡 **[components/BracketTab.tsx]** Champion banner ("🏆 CHAMPION") has a pulse animation that runs indefinitely. Cap it at ~5 seconds using a CSS animation with `animation-iteration-count` or a `setTimeout` that removes an `animate-pulse` class.
 
-- [x] 🔴 **[BracketTab.tsx]** Format selector UI — already present and working.
-- [x] 🔴 **[BracketTab.tsx]** Ghost bracket previews — `GhostMatchCard` (pre-generate) + `GhostBracketOverlay` blur+CTA (post-generate, pre-seed).
-- [x] 🔴 **[BracketTab.tsx]** Seed/shuffle step UI — `StepIndicator` (Format→Generate→Shuffle), primary green CTA when unseeded, secondary Re-Shuffle after.
-- [x] 🟠 **[BracketTab.tsx]** SVG connector lines — implemented in `SingleElimCanvas` + `DoubleElimCanvas`.
-- [x] 🟠 **[BracketTab.tsx]** Score input — click-to-edit numeric already on `PlayerRow`.
+- [ ] 🟡 **[components/AdminModal.tsx]** On 403/401 responses after session expiry (token TTL 8h), the UI silently fails — no message shown. Detect 401/403 from admin API calls in context and either show a toast or reopen the AdminModal with an "Session expired" message.
 
-### Teams Tab
+- [ ] 🟢 **[app/globals.css or layout.tsx]** No `<meta name="theme-color">` for mobile browsers. Add dynamic theme-color meta (dark: `#0d0d0d`, light: `#f5f5f5`) matching the `t-bg` CSS variable to improve mobile chrome appearance.
 
-- [ ] 🟡 **[TeamsTab.tsx]** Review admin vs. non-admin UI layout.
-
-### Maps Tab
-
-- [x] 🔴 **[MapsTab.tsx + api/maps/route.ts]** Rework spin flow: landed map → `usedMaps` pool, not deleted from master list.
-- [x] 🟠 **[MapsTab.tsx]** Show "Current Round Map" prominently after spin.
-- [ ] 🟡 **[MapsTab.tsx]** No visual feedback when map dropped onto stage slot.
+- [ ] 🟢 **[components/BottomTicker.tsx]** Ticker text is not paused on hover/focus (accessibility). Add `animation-play-state: paused` on `:hover` and `:focus-within` so keyboard users and readers can catch the text.
 
 ---
 
-## 🚀 Enhancement (Remaining)
+## 🚀 Features / Enhancements
 
-- [x] 🟠 **[TeamsTab.tsx + api/teams/route.ts]** `swapPlayer` action — moves player between teams atomically.
-- [x] 🟡 **[PlayersTab.tsx]** No queue cap / "lock queue" toggle.
-- [x] 🟡 **[page.tsx]** No connection status indicator.
-- [x] 🟡 **[AdminModal.tsx]** No 403 session expiry feedback.
-- [x] 🟢 **[page.tsx]** Tab bar no scroll affordance on mobile.
-- [x] 🟢 **[BracketTab.tsx]** Champion banner pulse runs indefinitely.
-- [x] 🟢 **[MapsTab.tsx]** Wheel canvas fixed 260×260 — not responsive. (ResizeObserver already wired by prior session)
-- [x] 🟡 **[TeamsTab.tsx]** Review admin vs. non-admin UI layout.
+- [ ] 🟠 **[components/FFATab.tsx + app/api/ffa/route.ts]** No per-player score entry UI in the client. `FFAMatch.scores` and `updateFFAScore` / `setFFAScores` context methods exist but are never called from the UI. Build a score-entry panel inside `MatchCard` (admin only, hidden when locked) that lets the admin enter kills per player and save.
 
----
+- [ ] 🟠 **[components/BracketTab.tsx + app/api/bracket/route.ts]** No way to export the bracket as an image or PDF. Add a "Download bracket" button that uses `html-to-image` or `canvas.toBlob()` to snapshot the bracket SVG/canvas for sharing.
 
-## 🆕 Generic hooks
+- [ ] 🟡 **[app/api/tournaments/stream/route.ts (or new)]** Tournament list has no real-time updates. When a super admin creates/deletes a tournament while other admins are on the picker screen, they don't see it until refresh. Add a `/api/tournaments/stream` SSE endpoint mirroring the pattern from `/api/state/stream`.
 
-- [x] **[hooks/useSSE.ts]** Generic `useSSE<T>` hook extracted; `useTournaments` uses it.
+- [ ] 🟡 **[components/TournamentPicker.tsx → TournamentCard]** Tournament cards don't show participant count, bracket type, or current status (e.g. "In Progress", "Completed"). Add a lightweight status badge derived from `bracket.champion` (Completed) or `bracket !== null` (In Progress) by fetching a minimal state summary.
+
+- [ ] 🟡 **[lib/kv.ts]** No TTL on tournament state keys. Old abandoned tournaments accumulate in KV indefinitely. Add an optional `archiveAfterDays` field to `TournamentMeta` and a cleanup workflow/cron that deletes state keys older than the threshold (Vercel Cron or an admin-triggered endpoint).
+
+- [ ] 🟢 **[workflows/]** Only `example.md` exists. Add real workflow SOPs for the most common admin tasks:
+  - `workflows/create_tournament.md`
+  - `workflows/run_bracket.md`
+  - `workflows/run_ffa.md`
+  - `workflows/spin_maps.md`
+  These make the WAT framework actually usable as documented in `CLAUDE.md`.
+
+- [ ] 🟢 **[tools/]** No tools directory contents visible. Add at minimum:
+  - `tools/reset_tournament.py` — CLI script to wipe a tournament's KV state by ID
+  - `tools/export_bracket.py` — fetch and pretty-print bracket JSON for debugging
+
+- [ ] 🟢 **[next.config.ts]** `typedRoutes` experimental flag not enabled. Enable it to get compile-time validation of `href` props and `redirect()` calls across the app.

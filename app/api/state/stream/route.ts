@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getState, safeState } from '@/lib/kv';
+import { getState, safeState, updateState } from '@/lib/kv';
 import { createHash } from 'crypto';
 
 export const runtime = 'nodejs';
@@ -11,18 +11,63 @@ function hashState(s: ReturnType<typeof safeState>): string {
   return createHash('md5').update(JSON.stringify(s)).digest('hex');
 }
 
+// ─── In-memory connection tracking ─────────────────────────────────────────────
+// Per-tournament sets of connection keys (hashed IP+UA).
+const connections = new Map<string, Set<string>>();
+
+function connectionKey(req: NextRequest): string {
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+    req.headers.get('x-real-ip') ??
+    'unknown';
+  const ua = req.headers.get('user-agent') ?? 'unknown';
+  return createHash('sha1').update(`${ip}|${ua}`).digest('hex');
+}
+
+// Store connection key on the cleanup function so cancel() can access it.
+type CleanupFn = () => void;
+interface CleanupWithKey extends CleanupFn {
+  _connKey?: string;
+}
+
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   let closed = false;
   let pushInterval: ReturnType<typeof setInterval> | null = null;
   let kaInterval: ReturnType<typeof setInterval> | null = null;
 
-  const cleanup = () => {
+  // Register connection for visitor counting
+  const cKey = connectionKey(req);
+  if (!connections.has(tid)) connections.set(tid, new Set());
+  connections.get(tid)!.add(cKey);
+  // Immediately push new visitor count
+  updateState(
+    (s) => ({ ...s, visitorCount: connections.get(tid)?.size ?? 0 }),
+    tid,
+  ).catch(() => {});
+
+  const cleanup: CleanupWithKey = () => {
     if (closed) return;
     closed = true;
     if (pushInterval) { clearInterval(pushInterval); pushInterval = null; }
     if (kaInterval)   { clearInterval(kaInterval);   kaInterval = null;   }
+
+    // Remove this connection and update visitor count
+    const key = cleanup._connKey;
+    if (key) {
+      const set = connections.get(tid);
+      if (set) {
+        set.delete(key);
+        if (set.size === 0) connections.delete(tid);
+      }
+      // Update KV visitor count
+      updateState(
+        (s) => ({ ...s, visitorCount: (connections.get(tid)?.size ?? 0) }),
+        tid,
+      ).catch(() => {});
+    }
   };
+  cleanup._connKey = cKey;
 
   const stream = new ReadableStream({
     async start(controller) {

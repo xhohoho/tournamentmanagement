@@ -276,7 +276,7 @@ export function TeamsTab() {
   const rosterOk = roster.length >= 10 && roster.length % 5 === 0;
 
   const isVisible = (member: string) => {
-    if (!hasRevealStarted.current) return true;
+    if (!isAdmin || !hasRevealStarted.current) return true;
     const assignedIndex = revealOrderMap.current.get(member) ?? 0;
     return assignedIndex < revealCount;
   };

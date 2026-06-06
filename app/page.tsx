@@ -80,7 +80,7 @@ TickerEditModal.displayName = 'TickerEditModal';
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
-  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText, ffa, sseStatus } = useTourney();
+  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText, ffa, sseStatus, visitorCount, activeAdminCount } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
@@ -151,6 +151,10 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
             <div className="flex items-center gap-2">
               <span className="font-['DM_Mono'] text-[10px] t-muted border t-border-mid rounded px-2 py-1 uppercase tracking-widest hidden sm:inline">
                 {tournamentId}
+              </span>
+              {/* Visitor / Admin count badge */}
+              <span className="hidden sm:inline-flex items-center gap-1 font-['DM_Mono'] text-[10px] t-muted border t-border-mid rounded px-2 py-1">
+                👁 {visitorCount} visitor{visitorCount !== 1 ? 's' : ''} | 🛡 {activeAdminCount} admin{activeAdminCount !== 1 ? 's' : ''}
               </span>
               {/* SSE connection status indicator */}
               <span

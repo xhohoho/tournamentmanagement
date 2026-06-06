@@ -82,6 +82,8 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [loading, setLoading] = useState(true);
   const [sseStatus, setSseStatus] = useState<import('@/hooks/useSSE').SSEStatus>('connecting');
   const [tickerText, setTickerTextState] = useState('');
+  const [visitorCount, setVisitorCount] = useState(0);
+  const [activeAdminCount, setActiveAdminCount] = useState(0);
 
   const guard = useRef(makeGuard()).current;
   const localShuffleStartTimeRef = useRef<number | null>(null);
@@ -153,6 +155,10 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('chat'))      setChatMessages(data.chatMessages as ChatMessage[] ?? []);
     if (!fromSSE || !guard.guarded('tickerText')) setTickerTextState(data.tickerText as string ?? '');
     if (!fromSSE || !guard.guarded('ffa'))       setFFA((data.ffa as FFAState) ?? { matches: [], players: [] });
+
+    // Server-driven counts (no optimistic guard needed)
+    setVisitorCount(data.visitorCount as number ?? 0);
+    setActiveAdminCount(((data.activeAdmins as string[])?.length) ?? 0);
 
     setSpinState(data.spinState as import('@/lib/types').SpinState | null ?? null);
     setShuffleState(prev =>
@@ -682,6 +688,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       joinKey, chatMessages,
       queueCap, queueLocked,
       isAdmin: isAdmin && !previewAsUser, previewAsUser, adminToken, adminId, adminName, isSuperAdmin, loading, sseStatus, tickerText,
+      visitorCount, activeAdminCount,
       setIsAdmin, setPreviewAsUser: setPreviewAsUserState, setAdminToken: setAdminTokenPublic, setAdminInfo, refresh, setTickerText, setStageFormats,
       submitPlayer, removePlayer, renamePlayer, addToRoster, removeFromRoster,
       setRoster, clearQueue, clearRoster,
