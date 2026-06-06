@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getState, listTournaments, updateState } from '@/lib/kv';
 
-// ─── In-memory picker visitor tracking ───────────────────────────────────────
+// ─── Global active admin tracking ────────────────────────────────────────────
+// Tracks all currently logged-in adminIds across the entire app (not per-tournament).
+// In a multi-instance deployment this would need Redis, but works for single-instance.
+const globalActiveAdmins = new Set<string>();
+
+// ─── Picker visitor tracking ─────────────────────────────────────────────────
 // Tracks unique picker visitors by IP+UA hash (resets on deploy)
 const pickerVisitors = new Set<string>();
 
@@ -12,6 +17,16 @@ function clientKey(req: NextRequest): string {
     'unknown';
   const ua = req.headers.get('user-agent') ?? 'unknown';
   return `${ip}|${ua}`;
+}
+
+/** Called by auth route when admin logs in */
+export function registerAdmin(adminId: string) {
+  globalActiveAdmins.add(adminId);
+}
+
+/** Called by auth route when admin logs out */
+export function unregisterAdmin(adminId: string) {
+  globalActiveAdmins.delete(adminId);
 }
 
 export async function GET(req: NextRequest) {
@@ -28,32 +43,22 @@ export async function GET(req: NextRequest) {
 
   // ── Overall stats (picker page) ──────────────────────────────────────────
   // Register this picker visitor
-  const key = clientKey(req);
-  const isNew = !pickerVisitors.has(key);
-  pickerVisitors.add(key);
+  pickerVisitors.add(clientKey(req));
 
-  // Get per-tournament counts from KV
+  // Sum up tournament visitors from KV
   const tournaments = await listTournaments();
   let tournamentVisitors = 0;
-  const allAdmins = new Set<string>();
-
   await Promise.all(
     tournaments.map(async (t) => {
       try {
         const state = await getState(t.id);
         tournamentVisitors += state.visitorCount ?? 0;
-        for (const adminId of state.activeAdmins ?? []) {
-          allAdmins.add(adminId);
-        }
       } catch { /* ignore */ }
     }),
   );
 
-  const totalVisitors = pickerVisitors.size + tournamentVisitors;
-  const totalAdmins = allAdmins.size;
-
   return NextResponse.json({
-    visitorCount: totalVisitors,
-    activeAdminCount: totalAdmins,
+    visitorCount: pickerVisitors.size + tournamentVisitors,
+    activeAdminCount: globalActiveAdmins.size,
   });
 }

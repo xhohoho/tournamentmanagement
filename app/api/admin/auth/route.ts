@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
 import { listAdminAccounts, saveAdminAccount, deleteAdminAccount, updateState } from '@/lib/kv';
+import { registerAdmin, unregisterAdmin } from '@/app/api/stats/route';
 import type { AdminAccount } from '@/lib/types';
 import { randomBytes } from 'crypto';
 import {
@@ -12,21 +13,8 @@ import {
 } from '@/lib/auth';
 
 // ── Brute-force protection ────────────────────────────────────────────────────
-// Sliding-window rate limiter: max 5 login attempts per IP per 60 seconds.
-// Implemented directly on @vercel/kv (Upstash Redis) — no extra package needed.
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_S = 60;
-
-// ─── Active admin tracking ─────────────────────────────────────────────────────
-// In-memory sets of adminIds per tournament. In a multi-instance deployment this
-// would need Redis, but for single-instance Vercel it works correctly.
-const activeAdmins = new Map<string, Set<string>>();
-
-function syncActiveAdminsToKV(tid: string) {
-  const admins = activeAdmins.get(tid);
-  const list = admins ? [...admins] : [];
-  updateState((s) => ({ ...s, activeAdmins: list }), tid).catch(() => {});
-}
 
 async function checkRateLimit(ip: string): Promise<{ limited: boolean; retryAfter: number }> {
   const key = `ratelimit:login:${ip}`;
@@ -109,13 +97,9 @@ export async function POST(req: NextRequest) {
     await saveAdminAccount({ ...account, pwHash: await hashPassword(password) });
   }
   const token = await createAdminToken(account.adminId, req);
-  // Successful login — clear the rate-limit counter for this IP
-  await clearRateLimit(ip);
-
-  // Track active admin for visitor count
-  if (!activeAdmins.has(tournamentId)) activeAdmins.set(tournamentId, new Set());
-  activeAdmins.get(tournamentId)!.add(account.adminId);
-  syncActiveAdminsToKV(tournamentId);
+  // Successful login — clear rate limit and track active admin
+    await clearRateLimit(ip);
+    registerAdmin(account.adminId);
 
   return NextResponse.json({
     ok: true,
@@ -201,17 +185,10 @@ export async function PATCH(req: NextRequest) {
  */
 export async function DELETE(req: NextRequest) {
   const token = req.headers.get('X-Admin-Token');
-  const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   if (token) {
-    // Look up adminId from token to remove from active set
     const adminId = await verifyAdminToken(req);
     if (adminId) {
-      const set = activeAdmins.get(tid);
-      if (set) {
-        set.delete(adminId);
-        if (set.size === 0) activeAdmins.delete(tid);
-      }
-      syncActiveAdminsToKV(tid);
+      unregisterAdmin(adminId);
     }
     await revokeAdminToken(token);
   }
