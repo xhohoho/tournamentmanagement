@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getState, safeState, updateState } from '@/lib/kv';
+import { getState, safeState, updateState, getActiveAdminCount } from '@/lib/kv';
 import { createHash } from 'crypto';
 
 export const runtime = 'nodejs';
@@ -89,10 +89,13 @@ export async function GET(req: NextRequest) {
         try {
           const state = await getState(tid);
           const safe = safeState(state);
-          const hash = hashState(safe);
+          // Inject active admin count from the shared KV key (set by auth route on login/logout)
+          const activeAdminCount = await getActiveAdminCount();
+          const payload = { ...safe, activeAdminCount };
+          const hash = hashState(payload as ReturnType<typeof safeState>);
           if (hash !== lastHash) {
             lastHash = hash;
-            send(JSON.stringify(safe));
+            send(JSON.stringify(payload));
           }
         } catch { /* ignore */ }
       };

@@ -158,7 +158,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
     // Server-driven counts (no optimistic guard needed)
     setVisitorCount(data.visitorCount as number ?? 0);
-    setActiveAdminCount(((data.activeAdmins as string[])?.length) ?? 0);
+    setActiveAdminCount(data.activeAdminCount as number ?? 0);
 
     setSpinState(data.spinState as import('@/lib/types').SpinState | null ?? null);
     setShuffleState(prev =>
