@@ -343,6 +343,20 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!res.ok) return { error: data.error };
     setTeams(data.teams);
     setBracket(null);
+
+    // The Teams tab runs a per-member reveal animation after this resolves
+    // (~120ms per member). Keep the 'teams' guard alive for the full duration
+    // so a mid-animation SSE poll can't briefly wipe the just-formed teams
+    // before the reveal finishes. Re-touch repeatedly rather than once, in
+    // case a touch lands right before an SSE message is already in flight.
+    const formedTeams = (data.teams as import('@/lib/types').Team[]) ?? [];
+    const memberCount = formedTeams.reduce((sum: number, team: import('@/lib/types').Team) => sum + team.members.length, 0);
+    const animationMs = memberCount * 120 + 1000; // matches useReveal's 120ms/slot + buffer
+    const reTouchCount = Math.ceil(animationMs / GUARD_MS) + 1;
+    for (let i = 1; i <= reTouchCount; i++) {
+      setTimeout(() => guard.touch('teams'), i * (GUARD_MS - 200));
+    }
+
     return { teams: data.teams };
   };
 
