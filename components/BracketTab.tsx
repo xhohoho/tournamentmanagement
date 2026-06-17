@@ -288,39 +288,6 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
   );
 }
 
-// ─── GhostBracketOverlay — shown over the canvas when not yet seeded ─────────
-function GhostBracketOverlay({ onShuffle, seeding, isAdmin }: {
-  onShuffle: () => void; seeding: boolean; isAdmin: boolean;
-}) {
-  return (
-    <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-xl z-10"
-      style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
-    >
-      <div className="flex flex-col items-center gap-2 text-center px-6">
-        <div className="font-['Bebas_Neue'] text-2xl tracking-widest" style={{ color: 'var(--accent-green)' }}>
-          🏗️ Structure Ready
-        </div>
-        <p className="font-['DM_Mono'] text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-          {isAdmin
-            ? 'Bracket skeleton is set. Shuffle teams in to start the draw.'
-            : 'Bracket structure is ready. Waiting for admin to shuffle teams in.'}
-        </p>
-      </div>
-      {isAdmin && (
-        <button
-          onClick={onShuffle}
-          disabled={seeding}
-          className="px-6 py-2.5 font-['DM_Mono'] font-bold rounded-xl text-sm text-white transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          style={{ background: 'var(--accent-green)', boxShadow: '0 0 24px rgba(34,184,98,0.35)' }}
-        >
-          {seeding ? '🎲 Shuffling…' : '🎲 Shuffle Teams In'}
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ─── BracketTab ────────────────────────────────────────────────────────────────
 export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket } = useTourney();
@@ -596,18 +563,9 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
           </div>
         </div>
 
-        {/* Ghost overlay when bracket exists but teams not yet drawn */}
-        {!isSeeded && (
-          <GhostBracketOverlay
-            onShuffle={onShuffle}
-            seeding={seeding}
-            isAdmin={isAdmin}
-          />
-        )}
-
+        {/* Bracket canvas — always interactive, no pre-shuffle lock */}
         <div
           className="overflow-x-auto overflow-y-visible pb-4"
-          style={{ filter: isSeeded ? 'none' : 'blur(1px)', transition: 'filter 0.3s', pointerEvents: isSeeded ? 'auto' : 'none' }}
         >
           {bracket.type === 'single'
             ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin && isSeeded} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} />
