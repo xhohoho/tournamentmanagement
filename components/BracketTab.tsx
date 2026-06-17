@@ -494,8 +494,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
             onThirdPlace={updateThirdPlace}
             onUndo={undoMatch}
             isSlotRevealed={isSlotRevealed}
-            onShuffle={handleShuffle}
-            seeding={seeding}
           />
         </div>
       ) : (
@@ -537,14 +535,12 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
 }
 
 // ─── BracketDisplay — top-level router ───────────────────────────────────────
-function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onUndo, isSlotRevealed, onShuffle, seeding }: {
+function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onUndo, isSlotRevealed }: {
   bracket: Bracket; isAdmin: boolean; isSeeded: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isSlotRevealed: (slotKey: string) => boolean;
-  onShuffle: () => void;
-  seeding: boolean;
 }) {
   const typeLabel = bracket.type === 'single' ? 'Single Elim' : 'Double Elim';
 
