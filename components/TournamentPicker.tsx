@@ -60,6 +60,19 @@ export function TournamentPicker({ onSelect }: Props) {
   const [superAdminOpen, setSuperAdminOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl]   = useState<string | null>(null);
 
+  // ── Dark / light mode ───────────────────────────────────────────────────
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('darkMode');
+    if (stored === 'true') setDark(true);
+  }, []);
+
+  const toggleDark = () => setDark(prev => {
+    localStorage.setItem('darkMode', String(!prev));
+    return !prev;
+  });
+
   // ── Live visitor / admin counts via SSE ─────────────────────────────────────
   const [totalVisitors, setTotalVisitors] = useState(0);
   const [activeAdminCount, setActiveAdminCount] = useState(0);
@@ -271,7 +284,7 @@ export function TournamentPicker({ onSelect }: Props) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen w-screen t-bg overflow-auto relative flex flex-col">
+    <div className={`${dark ? 'dark' : ''} min-h-screen w-screen t-bg overflow-auto relative flex flex-col`}>
       {/* Ambient gradients */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 40% at 20% 10%, var(--grad-start) 0%, transparent 70%)' }} />
@@ -291,6 +304,15 @@ export function TournamentPicker({ onSelect }: Props) {
             <span>👁 {totalVisitors} visitor{totalVisitors !== 1 ? 's' : ''}</span>
             <span className="opacity-30">|</span>
             <span>🛡 {activeAdminCount} admin{activeAdminCount !== 1 ? 's' : ''}</span>
+          </div>
+          {/* Dark / light toggle */}
+          <div className="mt-3 flex items-center justify-center">
+            <button
+              onClick={toggleDark}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--border)] hover:t-text cursor-pointer"
+            >
+              {dark ? '☀️ Light' : '🌙 Dark'}
+            </button>
           </div>
         </div>
 
