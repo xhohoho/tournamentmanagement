@@ -156,7 +156,7 @@ export function defaultState(): ServerState {
     spinCategories: [],
     spinItemCategory: {},
     tickerText: 'Shop : https://suddenattack.safie.cc',
-    stageFormats: { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' },
+    stageFormats: { upperBracket: 'bo3', lowerBracket: 'bo1', lowerBracketFinal: 'bo3', grandFinal: 'bo5' },
     ffa: { matches: [], players: [] },
     visitorCount: 0,
     activeAdmins: [],

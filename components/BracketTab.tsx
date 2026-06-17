@@ -307,7 +307,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
     }
   // Only re-sync when the server values actually change, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, stageFormats.groupStage, stageFormats.semiFinal, stageFormats.grandFinal, elimMode]);
+  }, [loading, stageFormats.upperBracket, stageFormats.lowerBracket, stageFormats.lowerBracketFinal, stageFormats.grandFinal, elimMode]);
 
   const handleSFChange = useCallback((key: keyof typeof localSF, fmt: 'bo1' | 'bo3' | 'bo5') => {
     const next = { ...localSF, [key]: fmt };
@@ -402,12 +402,15 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
             <div className="flex flex-col gap-1.5">
               <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim mb-0.5">Match Format</div>
               {([
-                { key: 'groupStage', label: 'Group Stage' },
-                { key: 'semiFinal',  label: 'Semi Final'  },
+                { key: 'upperBracket',      label: 'Upper Bracket' },
+                ...(localElim === 'double' ? [
+                  { key: 'lowerBracket' as const,      label: 'Lower Bracket' },
+                  { key: 'lowerBracketFinal' as const, label: 'Lower Bracket Final' },
+                ] : []),
                 { key: 'grandFinal', label: 'Grand Final' },
               ] as { key: keyof typeof localSF; label: string }[]).map(({ key, label }) => (
                 <div key={key} className="flex items-center gap-2">
-                  <span className="font-['DM_Mono'] text-[10px] t-muted w-24 shrink-0">{label}</span>
+                  <span className="font-['DM_Mono'] text-[10px] t-muted w-32 shrink-0">{label}</span>
                   <div className="flex gap-1">
                     {(['bo1', 'bo3', 'bo5'] as const).map(fmt => (
                       <button

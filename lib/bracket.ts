@@ -26,16 +26,17 @@ export function resolveWinner(match: BracketMatch | GrandFinal): string | null {
  *
  * Naming convention (12-team DE example, nextPow2=16, 4 UB rounds, 6 LB rounds):
  *
- *  UB (upper_de):  R0 R1 R2  R3(UF)              → BO1 BO1 BO1 BO3
- *  LB (lower):     R0 R1 R2 R3  R4(SF) R5(LBF)    → BO1 BO1 BO1 BO1 BO3 BO5
- *  GF:             always grandFinal               → BO5
- *  SE (upper):     R0…Rn-2(SF) Rn-1(F)            → BO1…BO3 BO5
+ *  UB (upper_de):  R0 R1 R2  R3(UF)              all rounds -> upperBracket (incl. Upper Final)
+ *  LB (lower):     R0 R1 R2 R3 R4  R5(LBF)       R0-R4 -> lowerBracket, R5 (true final) -> lowerBracketFinal
+ *  GF:             always grandFinal              -> grandFinal
+ *  SE (upper):     R0...Rn-2 Rn-1(F)              all but last -> upperBracket, last -> grandFinal
  *
  * Rules:
- *  upper_de  last only       → semiFinal   (Upper Final seeds GF p1)
- *  lower     last two        → semiFinal   (LB Semi + LB Final; LB Final loser = 3rd place)
- *  upper/SE  last → grandFinal, second-to-last → semiFinal, rest → groupStage
- *  gf        always          → grandFinal
+ *  upper_de  every round (incl. Upper Final) -> upperBracket
+ *  lower     last round ONLY                 -> lowerBracketFinal (winner advances to GF)
+ *            all other rounds                -> lowerBracket
+ *  upper/SE  last -> grandFinal, rest -> upperBracket (single elim has no lower bracket)
+ *  gf        always                          -> grandFinal
  */
 export function stageFormat(
   sf: StageFormats,
@@ -46,19 +47,17 @@ export function stageFormat(
   if (section === 'gf') return sf.grandFinal;
 
   if (section === 'upper_de') {
-    if (roundIdx === totalRounds - 1) return sf.semiFinal; // Upper Final → BO3
-    return sf.groupStage;                                  // All other UB rounds → BO1
+    return sf.upperBracket; // every UB round, including the Upper Final, shares one format
   }
 
   if (section === 'lower') {
-    if (roundIdx >= totalRounds - 2) return sf.semiFinal; // LB Semi + LB Final → BO3
-    return sf.groupStage;                                 // Early LB rounds → BO1
+    if (roundIdx === totalRounds - 1) return sf.lowerBracketFinal; // true LB Final only
+    return sf.lowerBracket;                                       // every other LB round
   }
 
-  // SE upper bracket: last round IS the Grand Final, second-to-last is Semi Final.
+  // SE upper bracket: last round IS the Grand Final; everything before it is Upper Bracket.
   if (roundIdx === totalRounds - 1) return sf.grandFinal;
-  if (roundIdx === totalRounds - 2) return sf.semiFinal;
-  return sf.groupStage;
+  return sf.upperBracket;
 }
 
 // ─── Feeder resolution (for bye sweeping) ────────────────────────────────────
@@ -275,7 +274,7 @@ export function buildEmptySE(teamCount: number, sf: StageFormats): Bracket {
     prev = next;
     ri++;
   }
-  const thirdPlace = teamCount >= 4 ? emptyMatch(sf.semiFinal) : undefined;
+  const thirdPlace = teamCount >= 4 ? emptyMatch(sf.upperBracket) : undefined;
   return { type: 'single', upper: rounds, thirdPlace, champion: null };
 }
 

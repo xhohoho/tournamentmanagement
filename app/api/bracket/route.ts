@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const { elimMode, action = 'generate', stageFormats: sfBody } = body;
 
   const state = await getState(tid);
-  const storedSF: StageFormats = state.stageFormats ?? { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' };
+  const storedSF: StageFormats = state.stageFormats ?? { upperBracket: 'bo3', lowerBracket: 'bo1', lowerBracketFinal: 'bo3', grandFinal: 'bo5' };
   const sf: StageFormats = sfBody ? { ...storedSF, ...sfBody } : storedSF;
 
   if (sfBody) await updateState(s => ({ ...s, stageFormats: sf }), tid);
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     if (B.type === 'single') {
       const upperRaw = buildSE(names, sf);
-      const thirdPlace = names.length >= 4 ? emptyMatch(sf.semiFinal) : undefined;
+      const thirdPlace = names.length >= 4 ? emptyMatch(sf.upperBracket) : undefined;
       seeded = sweepBracket({ type: 'single', upper: upperRaw, thirdPlace, champion: null });
     } else {
       const { upper, lower } = buildDE(names, sf);

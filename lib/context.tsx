@@ -56,7 +56,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [roster, setRosterState] = useState<string[]>([]);
   const [teamMode, setTeamModeState] = useState<'leader' | 'random' | 'manual'>('leader');
   const [teams, setTeams] = useState<Team[]>([]);
-  const [stageFormats, setStageFormatsState] = useState<import('@/lib/types').StageFormats>({ groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' });
+  const [stageFormats, setStageFormatsState] = useState<import('@/lib/types').StageFormats>({ upperBracket: 'bo3', lowerBracket: 'bo1', lowerBracketFinal: 'bo3', grandFinal: 'bo5' });
   const [elimMode, setElimModeState] = useState<'single' | 'double'>('single');
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [maps, setMaps] = useState<string[]>([]);
@@ -136,7 +136,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('players'))   setPlayers(data.players as Player[] ?? []);
     if (!fromSSE || !guard.guarded('roster'))    setRosterState(data.roster as string[] ?? []);
     if (!fromSSE || !guard.guarded('teamMode'))  setTeamModeState((data.teamMode as 'leader' | 'random' | 'manual') ?? 'leader');
-    if (!fromSSE) setStageFormatsState((data.stageFormats as import('@/lib/types').StageFormats) ?? { groupStage: 'bo1', semiFinal: 'bo3', grandFinal: 'bo3' });
+    if (!fromSSE) setStageFormatsState((data.stageFormats as import('@/lib/types').StageFormats) ?? { upperBracket: 'bo3', lowerBracket: 'bo1', lowerBracketFinal: 'bo3', grandFinal: 'bo5' });
     if (!fromSSE) setElimModeState((data.elimMode as 'single' | 'double') ?? 'single');
     if (!fromSSE || !guard.guarded('teams'))     setTeams(data.teams as Team[] ?? []);
     if (!fromSSE || !guard.guarded('bracket'))   setBracket((data.bracket as Bracket | null) ?? null);

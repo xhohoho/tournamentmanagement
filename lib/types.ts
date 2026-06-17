@@ -184,14 +184,20 @@ export interface ManualTeamAssignment {
 
 /**
  * Per-stage match formats for the bracket.
- * - groupStage: earliest rounds (all rounds except last two in SE, UB/LB early rounds in DE)
- * - semiFinal: second-to-last round
- * - grandFinal: final / GF in DE
+ * - upperBracket: all Upper Bracket rounds (double elim) or all rounds except the
+ *   final two (single elim) — i.e. the regular Upper Bracket progression including
+ *   the Upper Final.
+ * - lowerBracket: all Lower Bracket rounds EXCEPT the final Lower Bracket round
+ *   (double elim only).
+ * - lowerBracketFinal: the single, final Lower Bracket round whose winner advances
+ *   to the Grand Final (double elim only).
+ * - grandFinal: the Grand Final (double elim) or the final round (single elim).
  */
 export interface StageFormats {
-  groupStage: 'bo1' | 'bo3' | 'bo5';
-  semiFinal:  'bo1' | 'bo3' | 'bo5';
-  grandFinal: 'bo1' | 'bo3' | 'bo5';
+  upperBracket:      'bo1' | 'bo3' | 'bo5';
+  lowerBracket:       'bo1' | 'bo3' | 'bo5';
+  lowerBracketFinal:  'bo1' | 'bo3' | 'bo5';
+  grandFinal:         'bo1' | 'bo3' | 'bo5';
 }
 
 export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'ffa' | 'chat';
