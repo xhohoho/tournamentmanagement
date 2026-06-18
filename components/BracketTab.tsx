@@ -84,11 +84,11 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
   if (teams.length === 0) return null;
   return (
     <div
-      className="t-surface border t-border rounded-2xl p-3 shrink-0"
-      style={{ background: 'var(--bg-elevated)' }}
+      className="t-surface border t-border rounded-2xl p-3 shrink-0 sticky top-0 z-20"
+      style={{ background: 'var(--bg-elevated)', backdropFilter: 'blur(8px)' }}
     >
       <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim mb-2">
-        Teams{isAdmin ? ' — drag into match slots' : ''}
+        Teams{isAdmin ? <span style={{ color: 'var(--accent)', opacity: 0.7 }}> — drag into match slots</span> : ''}
       </div>
       <div className="flex flex-wrap gap-2">
         {teams.map(team => {
@@ -106,16 +106,30 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
               }
               className="px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs select-none transition-all"
               style={{
-                borderColor: used ? 'var(--border)' : 'var(--border-mid)',
-                background: used ? 'transparent' : 'var(--bg-surface)',
+                borderColor: used ? 'var(--border)' : 'rgba(77,124,255,0.35)',
+                background: used ? 'transparent' : 'rgba(77,124,255,0.07)',
                 color: used ? 'var(--text-dim)' : 'var(--text)',
                 opacity: used ? 0.4 : 1,
                 cursor: isAdmin && !used ? 'grab' : 'default',
                 textDecoration: used ? 'line-through' : undefined,
+                boxShadow: !used ? '0 0 0 0px rgba(77,124,255,0)' : undefined,
               }}
+              onMouseEnter={isAdmin && !used ? (e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(77,124,255,0.7)';
+                (e.currentTarget as HTMLDivElement).style.background = 'rgba(77,124,255,0.13)';
+                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 8px rgba(77,124,255,0.18)';
+              } : undefined}
+              onMouseLeave={isAdmin && !used ? (e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(77,124,255,0.35)';
+                (e.currentTarget as HTMLDivElement).style.background = 'rgba(77,124,255,0.07)';
+                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 0 0px rgba(77,124,255,0)';
+              } : undefined}
               title={used ? `${team} already placed` : isAdmin ? `Drag ${team} into a match slot` : team}
             >
-              {used ? '✓ ' : ''}{team}
+              {used
+                ? <span style={{ color: 'var(--accent-green)', marginRight: 4, opacity: 0.7 }}>✓</span>
+                : <span style={{ color: 'var(--accent)', marginRight: 4, opacity: 0.6 }}>⬡</span>
+              }{team}
             </div>
           );
         })}
