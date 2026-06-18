@@ -106,22 +106,23 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
               }
               className="px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs select-none transition-all"
               style={{
-                borderColor: used ? 'var(--border)' : 'rgba(77,124,255,0.35)',
-                background: used ? 'transparent' : 'rgba(77,124,255,0.07)',
-                color: used ? 'var(--text-dim)' : 'var(--text)',
+                borderColor: used ? 'var(--border)' : 'var(--accent)',
+                background: used ? 'transparent' : 'rgba(77,124,255,0.12)',
+                color: used ? 'var(--text-dim)' : 'var(--accent)',
                 opacity: used ? 0.4 : 1,
                 cursor: isAdmin && !used ? 'grab' : 'default',
                 textDecoration: used ? 'line-through' : undefined,
+                fontWeight: used ? undefined : 700,
                 boxShadow: !used ? '0 0 0 0px rgba(77,124,255,0)' : undefined,
               }}
               onMouseEnter={isAdmin && !used ? (e) => {
-                (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(77,124,255,0.7)';
-                (e.currentTarget as HTMLDivElement).style.background = 'rgba(77,124,255,0.13)';
-                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 8px rgba(77,124,255,0.18)';
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--accent)';
+                (e.currentTarget as HTMLDivElement).style.background = 'rgba(77,124,255,0.22)';
+                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 10px rgba(77,124,255,0.25)';
               } : undefined}
               onMouseLeave={isAdmin && !used ? (e) => {
-                (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(77,124,255,0.35)';
-                (e.currentTarget as HTMLDivElement).style.background = 'rgba(77,124,255,0.07)';
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--accent)';
+                (e.currentTarget as HTMLDivElement).style.background = 'rgba(77,124,255,0.12)';
                 (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 0 0px rgba(77,124,255,0)';
               } : undefined}
               title={used ? `${team} already placed` : isAdmin ? `Drag ${team} into a match slot` : team}
