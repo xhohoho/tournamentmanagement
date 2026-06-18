@@ -32,7 +32,7 @@ function lbCardTop(colIdx: number, mi: number): number {
   return (aTop + bTop) / 2;
 }
 
-// ─── Trophy + ghost shimmer animation (injected once) ────────────────────────
+// ─── Trophy + ghost shimmer + drop glow animations (injected once) ────────────
 if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-style')) {
   const s = document.createElement('style');
   s.id = 'trophy-anim-style';
@@ -41,10 +41,14 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
     @keyframes sparkle { 0%,100% { opacity:0; transform:scale(0.4); } 50% { opacity:1; transform:scale(1); } }
     @keyframes slot-pop { 0% { opacity:0; transform:scale(0.7) translateY(4px); } 60% { transform:scale(1.08) translateY(-1px); } 100% { opacity:1; transform:scale(1) translateY(0); } }
     @keyframes ghost-pulse { 0%,100% { opacity:0.45; } 50% { opacity:0.7; } }
+    @keyframes drop-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(58,107,255,0); border-color: rgba(58,107,255,0.4); } 50% { box-shadow: 0 0 0 3px rgba(58,107,255,0.35), inset 0 0 12px rgba(58,107,255,0.12); border-color: rgba(58,107,255,0.9); } }
+    @keyframes map-drop-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(58,107,255,0); border-color: rgba(58,107,255,0.35); } 50% { box-shadow: 0 0 0 2px rgba(58,107,255,0.3), inset 0 0 8px rgba(58,107,255,0.1); border-color: rgba(58,107,255,0.8); } }
     .trophy-spin { display:inline-block; animation: trophy-spin 0.7s ease-in-out 8 alternate; }
     .sparkle { position:absolute; font-size:10px; animation: sparkle 1.2s ease-in-out 5; }
     .slot-pop { animation: slot-pop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards; }
     .ghost-card { animation: ghost-pulse 2s ease-in-out infinite; }
+    .drop-active { animation: drop-glow 0.9s ease-in-out infinite !important; }
+    .map-drop-active { animation: map-drop-glow 0.9s ease-in-out infinite !important; }
   `;
   document.head.appendChild(s);
 }
@@ -162,17 +166,36 @@ function PlayerRow({
     if (!isNaN(n) && n >= 0) onCommit?.(n);
   };
 
+  // Only accept 'text/team' — never 'text/plain' (which is map data from Spin Queue)
+  const acceptsDrop = canManualAssign && !isWinner && !isLoser;
+
   return (
     <div
-      className="flex items-center justify-between px-3 border-b t-border last:border-b-0"
-      style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : dragOver ? 'rgba(58,107,255,0.10)' : undefined, position: 'relative',
-        outline: dragOver ? '2px solid var(--accent)' : undefined, outlineOffset: '-2px', borderRadius: dragOver ? 4 : undefined }}
-      onDragOver={canManualAssign && !isWinner && !isLoser ? (e) => { e.preventDefault(); setDragOver(true); } : undefined}
-      onDragLeave={canManualAssign ? () => setDragOver(false) : undefined}
-      onDrop={canManualAssign && !isWinner && !isLoser ? (e) => {
-        e.preventDefault(); setDragOver(false);
+      className={`flex items-center justify-between px-3 border-b t-border last:border-b-0 ${acceptsDrop && dragOver ? 'drop-active' : ''}`}
+      style={{
+        height: 36,
+        background: isWinner ? 'rgba(34,184,98,0.07)' : dragOver ? 'rgba(58,107,255,0.10)' : undefined,
+        position: 'relative',
+        outline: dragOver ? '2px solid var(--accent)' : undefined,
+        outlineOffset: '-2px',
+        borderRadius: dragOver ? 4 : undefined,
+        transition: 'background 0.15s, outline 0.15s',
+      }}
+      onDragOver={acceptsDrop ? (e) => {
+        // Only allow if carrying team data, NOT map data
+        if (e.dataTransfer.types.includes('text/team')) {
+          e.preventDefault();
+          setDragOver(true);
+        }
+      } : undefined}
+      onDragLeave={acceptsDrop ? () => setDragOver(false) : undefined}
+      onDrop={acceptsDrop ? (e) => {
+        e.preventDefault();
+        setDragOver(false);
+        // Only accept team drops — guard against map drops from Spin Queue
         const team = e.dataTransfer.getData('text/team');
         if (team) onManualAssign?.(team);
+        // Ignore 'text/plain' (map data) silently
       } : undefined}
     >
       <span
@@ -222,6 +245,8 @@ function RoundHeader({ section, ri, label, matchCount, slotCount, isAdmin }: {
   section: string; ri: number; label: string; matchCount: number; slotCount: number; isAdmin: boolean;
 }) {
   const { assignStage } = useTourney();
+  const [dropSlot, setDropSlot] = useState<number | null>(null);
+
   return (
     <div className="flex items-end justify-between w-full">
       <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim">{label}</div>
@@ -230,10 +255,18 @@ function RoundHeader({ section, ri, label, matchCount, slotCount, isAdmin }: {
           {Array.from({ length: slotCount }).map((_, slotIdx) => (
             <div
               key={slotIdx}
-              className="w-[18px] h-[18px] border border-dashed t-border-mid rounded bg-[var(--bg-surface)] text-[9px] flex items-center justify-center t-dim hover:border-[var(--accent)] hover:text-[var(--accent)] hover:bg-[rgba(58,107,255,0.05)] transition-colors cursor-crosshair"
-              onDragOver={e => e.preventDefault()}
+              className={`w-[18px] h-[18px] border border-dashed t-border-mid rounded bg-[var(--bg-surface)] text-[9px] flex items-center justify-center t-dim transition-colors cursor-crosshair ${dropSlot === slotIdx ? 'map-drop-active' : 'hover:border-[var(--accent)] hover:text-[var(--accent)] hover:bg-[rgba(58,107,255,0.05)]'}`}
+              onDragOver={e => {
+                // Only accept map data ('text/plain'), not team data
+                if (e.dataTransfer.types.includes('text/plain') && !e.dataTransfer.types.includes('text/team')) {
+                  e.preventDefault();
+                  setDropSlot(slotIdx);
+                }
+              }}
+              onDragLeave={() => setDropSlot(null)}
               onDrop={async e => {
                 e.preventDefault();
+                setDropSlot(null);
                 const m = e.dataTransfer.getData('text/plain');
                 if (m) for (let mi2 = 0; mi2 < matchCount; mi2++) await assignStage(`m_${section}_${ri}_${mi2}`, m, slotIdx);
               }}
@@ -250,17 +283,32 @@ function RoundHeader({ section, ri, label, matchCount, slotCount, isAdmin }: {
 function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCount: number; isAdmin: boolean }) {
   const { stageMaps, assignStage, clearStage } = useTourney();
   const maps = parseStageMaps(stageMaps[matchKey] || '');
+  const [dropSlot, setDropSlot] = useState<number | null>(null);
+
   return (
     <div className="flex h-7 border-t t-border bg-[var(--bg-surface)] shrink-0">
       {Array.from({ length: slotCount }).map((_, slotIdx) => {
         const map = maps[slotIdx];
+        const isDropTarget = dropSlot === slotIdx;
         return (
           <div
             key={slotIdx}
-            className="flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors"
+            className={`flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors ${isAdmin && isDropTarget ? 'map-drop-active' : ''}`}
             style={{ background: map ? 'rgba(58,107,255,0.04)' : undefined, color: map ? 'var(--accent)' : 'var(--text-muted)' }}
-            onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
-            onDrop={isAdmin ? async (e) => { e.preventDefault(); const m = e.dataTransfer.getData('text/plain'); if (m) await assignStage(matchKey, m, slotIdx); } : undefined}
+            onDragOver={isAdmin ? (e) => {
+              // Only accept map data from Spin Queue ('text/plain'), not teams
+              if (e.dataTransfer.types.includes('text/plain') && !e.dataTransfer.types.includes('text/team')) {
+                e.preventDefault();
+                setDropSlot(slotIdx);
+              }
+            } : undefined}
+            onDragLeave={isAdmin ? () => setDropSlot(null) : undefined}
+            onDrop={isAdmin ? async (e) => {
+              e.preventDefault();
+              setDropSlot(null);
+              const m = e.dataTransfer.getData('text/plain');
+              if (m) await assignStage(matchKey, m, slotIdx);
+            } : undefined}
           >
             {map ? (
               <>
@@ -374,6 +422,51 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── SpinQueuePanel — admin-only floating Spin Queue ─────────────────────────
+function SpinQueuePanel({ spinResults }: { spinResults: string[] }) {
+  // Each item is a draggable map card matching MapSlot height (h-7 = 28px)
+  // The panel width is fixed at CARD_W so it visually aligns with bracket cards.
+  return (
+    <div
+      className="absolute bottom-6 right-6 t-surface border t-border rounded-xl shadow-2xl z-50 flex flex-col max-h-[50vh]"
+      style={{ width: CARD_W }}
+    >
+      {/* Header */}
+      <div
+        className="px-3 py-2 border-b t-border font-['Bebas_Neue'] text-lg tracking-widest rounded-t-xl shrink-0"
+        style={{ background: 'var(--bg-elevated)', color: 'var(--accent-gold)' }}
+      >
+        🎯 Spin Queue
+      </div>
+      {/* Hint */}
+      <div className="px-3 py-1.5 border-b t-border font-['DM_Mono'] text-[9px] t-muted shrink-0" style={{ background: 'rgba(0,0,0,0.1)' }}>
+        Drag maps into bracket slots
+      </div>
+      {/* Items — each row is 28px tall matching MapSlot drop zones */}
+      <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
+        {spinResults.map((m, i) => (
+          <div
+            key={i}
+            draggable
+            onDragStart={(e) => {
+              // Carry map data as 'text/plain' — PlayerRow only accepts 'text/team', so
+              // this is automatically blocked from being dropped onto team slots.
+              e.dataTransfer.setData('text/plain', m);
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
+            className="flex items-center gap-2 font-['DM_Mono'] border t-border-mid rounded t-elevated transition-colors cursor-grab active:cursor-grabbing hover:border-[var(--accent)] select-none"
+            style={{ height: 28, paddingLeft: 8, paddingRight: 8 }}
+            title={`Drag "${m}" into a map slot`}
+          >
+            <span className="font-['DM_Mono'] text-[9px] t-dim w-4 text-right shrink-0">#{i + 1}</span>
+            <span className="text-[11px] t-text truncate flex-1">🗺 {m}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -610,20 +703,9 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
         </div>
       )}
 
-      {/* ── Spin results panel ──────────────────────────────────────────── */}
-      {hasBracket && spinResults.length > 0 && (
-        <div className="absolute bottom-6 right-6 t-surface border t-border rounded-xl shadow-2xl w-56 z-50 flex flex-col max-h-[50vh]">
-          <div className="p-3 border-b t-border font-['Bebas_Neue'] text-lg tracking-widest bg-[var(--bg-elevated)] rounded-t-xl text-[var(--accent-gold)]">🎯 Spin Queue</div>
-          {isAdmin && <div className="p-2 border-b t-border font-['DM_Mono'] text-[9px] t-muted bg-black/10">Drag maps into bracket slots</div>}
-          <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
-            {spinResults.map((m, i) => (
-              <div key={i} draggable={isAdmin} onDragStart={isAdmin ? (e) => e.dataTransfer.setData('text/plain', m) : undefined} className={`p-2 flex items-center gap-2 text-sm font-['DM_Mono'] border t-border-mid rounded t-elevated transition-colors truncate ${isAdmin ? 'cursor-grab active:cursor-grabbing hover:border-[var(--accent)]' : 'cursor-default'}`}>
-                <span className="font-['DM_Mono'] text-[10px] t-dim w-4 text-right shrink-0">#{i + 1}</span>
-                <span className="t-text truncate">🗺 {m}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* ── Spin Queue — admin only, shown when bracket exists and queue is non-empty ── */}
+      {isAdmin && hasBracket && spinResults.length > 0 && (
+        <SpinQueuePanel spinResults={spinResults} />
       )}
     </div>
   );
@@ -639,8 +721,6 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
 }) {
-  const typeLabel = bracket.type === 'single' ? 'Single Elim' : 'Double Elim';
-
   // Compute which teams are already placed in any Round 0 slot
   const assignedTeams = new Set<string>();
   const r0 = bracket.upper[0] ?? [];
@@ -654,7 +734,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
           {bracket.type === 'single' ? 'Bracket' : 'Tournament Bracket'}
           <div className="flex gap-2">
-            <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${bracket.type === 'single' ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>{typeLabel}</span>
+            <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${bracket.type === 'single' ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>{bracket.type === 'single' ? 'Single Elim' : 'Double Elim'}</span>
             {!isSeeded && (
               <span className="text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase bg-[rgba(34,184,98,0.1)] text-[var(--accent-green)] border-[rgba(34,184,98,0.3)]">
                 PENDING DRAW
@@ -664,9 +744,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
         </div>
 
         {/* Bracket canvas — always interactive, no pre-shuffle lock */}
-        <div
-          className="overflow-x-auto overflow-y-visible pb-4"
-        >
+        <div className="overflow-x-auto overflow-y-visible pb-4">
           {bracket.type === 'single'
             ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} />
             : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} />
