@@ -455,6 +455,7 @@ export function TournamentPicker({ onSelect }: Props) {
         adminName={adminInfo?.name ?? null}
         isSuperAdmin={adminInfo?.isSuperAdmin ?? false}
         onTournamentsChanged={refresh}
+        onSessionExpired={() => { expireSession(); setSuperAdminOpen(false); }}
       />
     </div>
   );

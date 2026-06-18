@@ -24,9 +24,10 @@ interface Props {
   adminName: string | null;
   isSuperAdmin: boolean;
   onTournamentsChanged?: () => void;
+  onSessionExpired?: () => void;
 }
 
-export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, adminName: myName, isSuperAdmin, onTournamentsChanged }: Props) {
+export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, adminName: myName, isSuperAdmin, onTournamentsChanged, onSessionExpired }: Props) {
 
   const [accounts, setAccounts] = useState<AdminAccount[]>([]);
   const [tournaments, setTournaments] = useState<TournamentMeta[]>([]);
@@ -72,6 +73,11 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
       ]);
       const accData = await accRes.json();
       const tourData = await tourRes.json();
+      if (accRes.status === 403) {
+        setLoadErr('Your session has expired. Please log in again.');
+        onSessionExpired?.();
+        return;
+      }
       if (!accRes.ok) { setLoadErr(accData.error ?? 'Failed to load accounts.'); return; }
       if (!accData.isSuperAdmin) { setLoadErr('Super admin required.'); return; }
       setAccounts(accData.accounts ?? []);
@@ -81,7 +87,7 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
     } finally {
       setLoading(false);
     }
-  }, [adminToken]);
+  }, [adminToken, onSessionExpired]);
 
   useEffect(() => {
     if (open && isSuperAdmin) fetchAccounts();
@@ -102,6 +108,7 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
         body: JSON.stringify({ action: 'create', name: newName.trim(), password: newPw.trim(), isSuperAdmin: newIsSuperAdmin }),
       });
       const data = await res.json();
+      if (res.status === 403) { setCreateErr('Your session has expired. Please log in again.'); onSessionExpired?.(); return; }
       if (!res.ok) { setCreateErr(data.error ?? 'Failed to create account.'); return; }
       setAccounts(data.accounts ?? []);
       setNewName(''); setNewPw(''); setNewIsSuperAdmin(false);
@@ -122,6 +129,7 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
         body: JSON.stringify({ action: 'delete', adminId: targetId }),
       });
       const data = await res.json();
+      if (res.status === 403) { setDeleteErr('Your session has expired. Please log in again.'); onSessionExpired?.(); return; }
       if (!res.ok) { setDeleteErr(data.error ?? 'Failed to delete.'); return; }
       setAccounts(data.accounts ?? []);
       setConfirmDeleteId(null);
@@ -143,6 +151,7 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
         body: JSON.stringify({ action: 'changePassword', adminId: targetId, newPassword: changePwVal.trim() }),
       });
       const data = await res.json();
+      if (res.status === 403) { setChangePwErr('Your session has expired. Please log in again.'); onSessionExpired?.(); return; }
       if (!res.ok) { setChangePwErr(data.error ?? 'Failed to change password.'); return; }
       setChangePwOk('Password updated!');
       setChangePwVal('');
@@ -179,6 +188,7 @@ export function SuperAdminPanel({ open, onClose, adminToken, adminId: myId, admi
         body: JSON.stringify({ collaborators: next }),
       });
       const data = await res.json();
+      if (res.status === 403) { setAccessErr('Your session has expired. Please log in again.'); onSessionExpired?.(); return; }
       if (!res.ok) { setAccessErr(data.error ?? 'Failed to update access.'); return; }
       setTournaments(data.tournaments ?? []);
       setAccessOk('Access updated!');
