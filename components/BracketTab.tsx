@@ -162,15 +162,22 @@ function PlayerRow({
     >
       <span
         className={`text-xs font-['DM_Mono'] flex-1 truncate${player ? ' slot-pop' : ''}`}
+        draggable={!!(canManualAssign && player && !isWinner && !isLoser)}
+        onDragStart={canManualAssign && player && !isWinner && !isLoser ? (e) => {
+          e.dataTransfer.setData('text/team', player);
+          e.dataTransfer.effectAllowed = 'move';
+          onManualAssign?.(null);
+        } : undefined}
         style={{
           color: !player ? (canManualAssign ? 'var(--accent)' : 'var(--text-dim)') : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
           fontStyle: !player && !canManualAssign ? 'italic' : undefined,
           opacity: isLoser ? 0.5 : 1,
+          cursor: canManualAssign && player && !isWinner && !isLoser ? 'grab' : undefined,
         }}
-        title={canManualAssign && !player ? 'Drop a team here' : undefined}
+        title={canManualAssign && player && !isWinner && !isLoser ? 'Drag to remove' : canManualAssign && !player ? 'Drop a team here' : undefined}
       >
         {isWinner && '✓ '}
-        {player ?? (isLoser ? 'BYE' : canManualAssign ? '↓ drop team' : 'TBD')}
+        {player ?? (isLoser ? 'BYE' : 'TBD')}
       </span>
       {showScore && (
         editing ? (
