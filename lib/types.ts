@@ -275,6 +275,7 @@ export interface TourneyContext {
 
   generateBracket: (sf?: StageFormats) => Promise<{ error?: string }>;
   seedBracket: (sf?: StageFormats) => Promise<{ error?: string; shuffleState?: ShuffleState | null }>;
+  manualSeedSlot: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
   updateScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   undoMatch: (section: string, ri: number, mi: number) => Promise<void>;
   updateThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;

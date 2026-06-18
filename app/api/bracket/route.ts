@@ -133,6 +133,33 @@ export async function PATCH(req: NextRequest) {
   if (!B) return NextResponse.json({ error: 'No bracket' }, { status: 400 });
   const bracket = cloneBracket(B);
 
+  // ── manualSeed — admin places a team directly into a bracket slot ──────────
+  if (action === 'manualSeed') {
+    const { section: mSection, ri: mRi, mi: mMi, slot: mSlot, team: mTeam } = body;
+    // slot: 1 = p1, 2 = p2
+    if (mSection === 'upper') {
+      const match = bracket.upper[mRi]?.[mMi];
+      if (!match) return NextResponse.json({ error: 'Match not found' }, { status: 400 });
+      if (mSlot === 1) match.p1 = mTeam ?? null;
+      else match.p2 = mTeam ?? null;
+    } else if (mSection === 'lower' && bracket.lower) {
+      const match = bracket.lower[mRi]?.[mMi];
+      if (!match) return NextResponse.json({ error: 'Match not found' }, { status: 400 });
+      if (mSlot === 1) match.p1 = mTeam ?? null;
+      else match.p2 = mTeam ?? null;
+    } else if (mSection === 'thirdPlace' && bracket.thirdPlace) {
+      if (mSlot === 1) bracket.thirdPlace.p1 = mTeam ?? null;
+      else bracket.thirdPlace.p2 = mTeam ?? null;
+    } else if (mSection === 'gf' && bracket.grandFinal) {
+      if (mSlot === 1) bracket.grandFinal.p1 = mTeam ?? null;
+      else bracket.grandFinal.p2 = mTeam ?? null;
+    } else {
+      return NextResponse.json({ error: 'Invalid section' }, { status: 400 });
+    }
+    const next = await updateState(s => ({ ...s, bracket }), tid);
+    return NextResponse.json({ bracket: next.bracket });
+  }
+
   // ── undoMatch ──────────────────────────────────────────────────────────────
   if (action === 'undoMatch') {
     if (section === 'gf') {

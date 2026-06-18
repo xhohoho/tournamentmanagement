@@ -75,16 +75,87 @@ function GhostMatchCard({ slotIdx }: { slotIdx: number }) {
   );
 }
 
+// ─── TeamPickerPopover — floating dropdown to manually assign a team ────────
+function TeamPickerPopover({
+  teams, current, onPick, onClear, onClose,
+}: {
+  teams: string[];
+  current: string | null;
+  onPick: (team: string) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute z-50 rounded-xl border shadow-2xl flex flex-col overflow-hidden"
+      style={{
+        top: '100%', left: 0, minWidth: 180, maxHeight: 220,
+        background: 'var(--bg-surface)',
+        borderColor: 'var(--border)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+      }}
+    >
+      <div
+        className="px-3 py-1.5 font-['DM_Mono'] text-[9px] tracking-widest uppercase border-b"
+        style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}
+      >Assign team</div>
+      <div className="overflow-y-auto flex-1">
+        {teams.map(team => (
+          <button
+            key={team}
+            onClick={() => { onPick(team); onClose(); }}
+            className="w-full text-left px-3 py-2 font-['DM_Mono'] text-xs transition-colors cursor-pointer"
+            style={{
+              background: team === current ? 'rgba(58,107,255,0.12)' : undefined,
+              color: team === current ? 'var(--accent)' : 'var(--text)',
+            }}
+            onMouseEnter={e => { if (team !== current) (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)'; }}
+            onMouseLeave={e => { if (team !== current) (e.currentTarget as HTMLElement).style.background = ''; }}
+          >
+            {team === current && '✓ '}{team}
+          </button>
+        ))}
+      </div>
+      {current && (
+        <button
+          onClick={() => { onClear(); onClose(); }}
+          className="px-3 py-2 font-['DM_Mono'] text-[10px] border-t text-left transition-colors cursor-pointer"
+          style={{ borderColor: 'var(--border)', color: 'var(--accent-red)' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(232,41,74,0.07)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ''; }}
+        >
+          ✕ Clear slot
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── PlayerRow ────────────────────────────────────────────────────────────────
 function PlayerRow({
   player, score, isWinner, isLoser, showScore, canEdit, maxWins, onCommit,
+  canManualAssign, allTeams, onManualAssign,
 }: {
   player: string | null; score: number; isWinner: boolean; isLoser: boolean;
   showScore: boolean; canEdit?: boolean; maxWins?: number;
   onCommit?: (n: number) => void;
+  canManualAssign?: boolean;
+  allTeams?: string[];
+  onManualAssign?: (team: string | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [showPicker, setShowPicker] = useState(false);
 
   const startEdit = () => { if (!canEdit) return; setDraft(String(score)); setEditing(true); };
   const commit = () => {
@@ -96,17 +167,21 @@ function PlayerRow({
   return (
     <div
       className="flex items-center justify-between px-3 border-b t-border last:border-b-0"
-      style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : undefined }}
+      style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : undefined, position: 'relative' }}
     >
       <span
-        className={`text-xs font-['DM_Mono'] flex-1 truncate${player ? ' slot-pop' : ''}`}
+        className={`text-xs font-['DM_Mono'] flex-1 truncate${player ? ' slot-pop' : ''}${canManualAssign && !isWinner && !isLoser ? ' cursor-pointer' : ''}`}
         style={{
-          color: !player ? 'var(--text-dim)' : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
-          fontStyle: !player ? 'italic' : undefined,
+          color: !player ? (canManualAssign ? 'var(--accent)' : 'var(--text-dim)') : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
+          fontStyle: !player && !canManualAssign ? 'italic' : undefined,
           opacity: isLoser ? 0.5 : 1,
+          textDecoration: canManualAssign && !player ? 'underline dotted' : undefined,
         }}
+        onClick={() => { if (canManualAssign && !isWinner && !isLoser) setShowPicker(p => !p); }}
+        title={canManualAssign && !isWinner && !isLoser ? 'Click to assign team' : undefined}
       >
-        {isWinner && '✓ '}{player ?? (isLoser ? 'BYE' : 'TBD')}
+        {isWinner && '✓ '}
+        {player ?? (isLoser ? 'BYE' : canManualAssign ? '+ assign…' : 'TBD')}
       </span>
       {showScore && (
         editing ? (
@@ -126,6 +201,15 @@ function PlayerRow({
             onClick={startEdit}
           >{score}</span>
         )
+      )}
+      {showPicker && canManualAssign && allTeams && (
+        <TeamPickerPopover
+          teams={allTeams}
+          current={player}
+          onPick={t => onManualAssign?.(t)}
+          onClear={() => onManualAssign?.(null)}
+          onClose={() => setShowPicker(false)}
+        />
       )}
     </div>
   );

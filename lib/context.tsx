@@ -461,6 +461,15 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     return { shuffleState: data.shuffleState ?? null };
   };
 
+  const manualSeedSlot = async (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => {
+    guard.touch('bracket');
+    const res = await apiFetch(`/api/bracket?t=${t}`, 'PATCH', { action: 'manualSeed', section, ri, mi, slot, team });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error };
+    setBracket(data.bracket);
+    return {};
+  };
+
   const updateScore = async (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => {
     guard.touch('bracket');
     const res = await apiFetch(`/api/bracket?t=${t}`, 'PATCH', { section, ri, mi, p1wins, p2wins });
@@ -709,7 +718,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       setJoinKey, setQueueCap, setQueueLocked,
       sendChat, clearChat,
       formTeams, resetTeams, setTeamMode, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement, swapPlayer,
-      generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
+      generateBracket, seedBracket, manualSeedSlot, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, moveMapToUsed, restoreUsedMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       assignLeader,
       createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,
