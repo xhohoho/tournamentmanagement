@@ -75,68 +75,51 @@ function GhostMatchCard({ slotIdx }: { slotIdx: number }) {
   );
 }
 
-// ─── TeamPickerPopover — floating dropdown to manually assign a team ────────
-function TeamPickerPopover({
-  teams, current, onPick, onClear, onClose,
-}: {
+// ─── TeamPool — persistent draggable team card pool above the bracket ────────
+function TeamPool({ teams, assignedTeams, isAdmin }: {
   teams: string[];
-  current: string | null;
-  onPick: (team: string) => void;
-  onClear: () => void;
-  onClose: () => void;
+  assignedTeams: Set<string>;
+  isAdmin: boolean;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
+  if (teams.length === 0) return null;
   return (
     <div
-      ref={ref}
-      className="absolute z-50 rounded-xl border shadow-2xl flex flex-col overflow-hidden"
-      style={{
-        top: '100%', left: 0, minWidth: 180, maxHeight: 220,
-        background: 'var(--bg-surface)',
-        borderColor: 'var(--border)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
-      }}
+      className="t-surface border t-border rounded-2xl p-3 shrink-0"
+      style={{ background: 'var(--bg-elevated)' }}
     >
-      <div
-        className="px-3 py-1.5 font-['DM_Mono'] text-[9px] tracking-widest uppercase border-b"
-        style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}
-      >Assign team</div>
-      <div className="overflow-y-auto flex-1">
-        {teams.map(team => (
-          <button
-            key={team}
-            onClick={() => { onPick(team); onClose(); }}
-            className="w-full text-left px-3 py-2 font-['DM_Mono'] text-xs transition-colors cursor-pointer"
-            style={{
-              background: team === current ? 'rgba(58,107,255,0.12)' : undefined,
-              color: team === current ? 'var(--accent)' : 'var(--text)',
-            }}
-            onMouseEnter={e => { if (team !== current) (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)'; }}
-            onMouseLeave={e => { if (team !== current) (e.currentTarget as HTMLElement).style.background = ''; }}
-          >
-            {team === current && '✓ '}{team}
-          </button>
-        ))}
+      <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim mb-2">
+        Teams{isAdmin ? ' — drag into match slots' : ''}
       </div>
-      {current && (
-        <button
-          onClick={() => { onClear(); onClose(); }}
-          className="px-3 py-2 font-['DM_Mono'] text-[10px] border-t text-left transition-colors cursor-pointer"
-          style={{ borderColor: 'var(--border)', color: 'var(--accent-red)' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(232,41,74,0.07)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ''; }}
-        >
-          ✕ Clear slot
-        </button>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {teams.map(team => {
+          const used = assignedTeams.has(team);
+          return (
+            <div
+              key={team}
+              draggable={isAdmin && !used}
+              onDragStart={isAdmin && !used
+                ? (e) => {
+                    e.dataTransfer.setData('text/team', team);
+                    e.dataTransfer.effectAllowed = 'move';
+                  }
+                : undefined
+              }
+              className="px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs select-none transition-all"
+              style={{
+                borderColor: used ? 'var(--border)' : 'var(--border-mid)',
+                background: used ? 'transparent' : 'var(--bg-surface)',
+                color: used ? 'var(--text-dim)' : 'var(--text)',
+                opacity: used ? 0.4 : 1,
+                cursor: isAdmin && !used ? 'grab' : 'default',
+                textDecoration: used ? 'line-through' : undefined,
+              }}
+              title={used ? `${team} already placed` : isAdmin ? `Drag ${team} into a match slot` : team}
+            >
+              {used ? '✓ ' : ''}{team}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -155,7 +138,7 @@ function PlayerRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-  const [showPicker, setShowPicker] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const startEdit = () => { if (!canEdit) return; setDraft(String(score)); setEditing(true); };
   const commit = () => {
@@ -167,21 +150,27 @@ function PlayerRow({
   return (
     <div
       className="flex items-center justify-between px-3 border-b t-border last:border-b-0"
-      style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : undefined, position: 'relative' }}
+      style={{ height: 36, background: isWinner ? 'rgba(34,184,98,0.07)' : dragOver ? 'rgba(58,107,255,0.10)' : undefined, position: 'relative',
+        outline: dragOver ? '2px solid var(--accent)' : undefined, outlineOffset: '-2px', borderRadius: dragOver ? 4 : undefined }}
+      onDragOver={canManualAssign && !isWinner && !isLoser ? (e) => { e.preventDefault(); setDragOver(true); } : undefined}
+      onDragLeave={canManualAssign ? () => setDragOver(false) : undefined}
+      onDrop={canManualAssign && !isWinner && !isLoser ? (e) => {
+        e.preventDefault(); setDragOver(false);
+        const team = e.dataTransfer.getData('text/team');
+        if (team) onManualAssign?.(team);
+      } : undefined}
     >
       <span
-        className={`text-xs font-['DM_Mono'] flex-1 truncate${player ? ' slot-pop' : ''}${canManualAssign && !isWinner && !isLoser ? ' cursor-pointer' : ''}`}
+        className={`text-xs font-['DM_Mono'] flex-1 truncate${player ? ' slot-pop' : ''}`}
         style={{
           color: !player ? (canManualAssign ? 'var(--accent)' : 'var(--text-dim)') : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
           fontStyle: !player && !canManualAssign ? 'italic' : undefined,
           opacity: isLoser ? 0.5 : 1,
-          textDecoration: canManualAssign && !player ? 'underline dotted' : undefined,
         }}
-        onClick={() => { if (canManualAssign && !isWinner && !isLoser) setShowPicker(p => !p); }}
-        title={canManualAssign && !isWinner && !isLoser ? 'Click to assign team' : undefined}
+        title={canManualAssign && !player ? 'Drop a team here' : undefined}
       >
         {isWinner && '✓ '}
-        {player ?? (isLoser ? 'BYE' : canManualAssign ? '+ assign…' : 'TBD')}
+        {player ?? (isLoser ? 'BYE' : canManualAssign ? '↓ drop team' : 'TBD')}
       </span>
       {showScore && (
         editing ? (
@@ -201,15 +190,6 @@ function PlayerRow({
             onClick={startEdit}
           >{score}</span>
         )
-      )}
-      {showPicker && canManualAssign && allTeams && (
-        <TeamPickerPopover
-          teams={allTeams}
-          current={player}
-          onPick={t => onManualAssign?.(t)}
-          onClear={() => onManualAssign?.(null)}
-          onClose={() => setShowPicker(false)}
-        />
       )}
     </div>
   );
@@ -639,8 +619,15 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
 }) {
   const typeLabel = bracket.type === 'single' ? 'Single Elim' : 'Double Elim';
 
+  // Compute which teams are already placed in any Round 0 slot
+  const assignedTeams = new Set<string>();
+  const r0 = bracket.upper[0] ?? [];
+  r0.forEach(m => { if (m.p1) assignedTeams.add(m.p1); if (m.p2) assignedTeams.add(m.p2); });
+
   return (
     <>
+      {/* Team pool — always visible, draggable for admin */}
+      <TeamPool teams={allTeams} assignedTeams={assignedTeams} isAdmin={isAdmin} />
       <div className="t-surface border t-border rounded-xl p-5" style={{ position: 'relative' }}>
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
           {bracket.type === 'single' ? 'Bracket' : 'Tournament Bracket'}
