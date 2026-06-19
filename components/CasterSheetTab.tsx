@@ -112,9 +112,35 @@ export function CasterSheetTab({ highlightId, onHighlightHandled }: {
   onHighlightHandled?: () => void;
 } = {}) {
   const { casterSheet, setCasterSheet, isAdmin } = useTourney();
-  const matches = casterSheet?.matches ?? [];
+  const serverMatches = casterSheet?.matches ?? [];
+  const [localMatches, setLocalMatches] = useState<CasterMatch[]>(serverMatches);
   const [saving, setSaving] = useState(false);
   const highlightRef = useRef<HTMLDivElement | null>(null);
+
+  // Debounce machinery: while a field is mid-edit, ignore incoming server snapshots
+  // (avoids the input value jumping/reverting) and only flush to the server after
+  // the person pauses typing for DEBOUNCE_MS.
+  const DEBOUNCE_MS = 500;
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRef = useRef(false);
+  const latestRef = useRef<CasterMatch[]>(serverMatches);
+
+  useEffect(() => {
+    if (!pendingRef.current) {
+      setLocalMatches(serverMatches);
+      latestRef.current = serverMatches;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [casterSheet]);
+
+  useEffect(() => () => {
+    // Flush any pending edit if the tab unmounts mid-debounce.
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      if (pendingRef.current) setCasterSheet(latestRef.current);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Scroll the linked/just-created match into view when navigated here from the bracket.
   useEffect(() => {
@@ -125,21 +151,43 @@ export function CasterSheetTab({ highlightId, onHighlightHandled }: {
     }
   }, [highlightId, onHighlightHandled]);
 
-  const persist = async (next: CasterMatch[]) => {
+  const persistNow = async (next: CasterMatch[]) => {
+    pendingRef.current = false;
     setSaving(true);
     await setCasterSheet(next);
     setSaving(false);
   };
 
-  const addMatch = () => persist([...matches, emptyMatch()]);
+  const persistDebounced = (next: CasterMatch[]) => {
+    latestRef.current = next;
+    pendingRef.current = true;
+    setSaving(true);
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      debounceTimer.current = null;
+      persistNow(latestRef.current);
+    }, DEBOUNCE_MS);
+  };
+
+  const addMatch = () => {
+    const next = [...localMatches, emptyMatch()];
+    setLocalMatches(next);
+    persistNow(next);
+  };
 
   const updateMatch = (id: string, patch: Partial<CasterMatch>) => {
-    persist(matches.map(m => m.id === id ? { ...m, ...patch } : m));
+    const next = localMatches.map(m => m.id === id ? { ...m, ...patch } : m);
+    setLocalMatches(next);
+    persistDebounced(next);
   };
 
   const deleteMatch = (id: string) => {
-    persist(matches.filter(m => m.id !== id));
+    const next = localMatches.filter(m => m.id !== id);
+    setLocalMatches(next);
+    persistNow(next);
   };
+
+  const matches = localMatches;
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto py-6">
