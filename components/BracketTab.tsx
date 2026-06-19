@@ -26,21 +26,54 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
+  const [isSnapping, setIsSnapping] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
+
+  // Live refs so the mouseup listener always reads the current position, never a stale closure
+  const txRef = useRef(0);
+  const tyRef = useRef(0);
+  const scaleRef = useRef(1);
+  useEffect(() => { txRef.current = tx; }, [tx]);
+  useEffect(() => { tyRef.current = ty; }, [ty]);
+  useEffect(() => { scaleRef.current = scale; }, [scale]);
 
   // Edge slack — how far past the content's true edge you can drag before it stops
   const EDGE_SLACK = 60;
 
   const clampAxis = (val: number, containerSize: number, contentSize: number) => {
-    const lo = Math.min(0, containerSize - contentSize) - EDGE_SLACK;
-    const hi = Math.max(0, containerSize - contentSize) + EDGE_SLACK;
+    const diff = containerSize - contentSize; // positive → content smaller than the viewport
+    let lo: number, hi: number;
+    if (diff >= 0) {
+      // Content fully fits — cap white space on each side to EDGE_SLACK, centered,
+      // so zooming out doesn't let you drag the content arbitrarily far off-center.
+      const center = diff / 2;
+      lo = center - EDGE_SLACK;
+      hi = center + EDGE_SLACK;
+    } else {
+      // Content bigger than viewport — normal edge clamp with a little slack past each true edge.
+      lo = diff - EDGE_SLACK;
+      hi = EDGE_SLACK;
+    }
     return Math.min(hi, Math.max(lo, val));
   };
 
   const clampX = (val: number, s: number) => clampAxis(val, containerRef.current?.clientWidth ?? 0, (contentRef.current?.offsetWidth ?? 0) * s);
   const clampY = (val: number, s: number) => clampAxis(val, containerRef.current?.clientHeight ?? 0, (contentRef.current?.offsetHeight ?? 0) * s);
+
+  // Snap the leading edge to the nearest match-card grid line — if more than half
+  // a card/column is cut off, advance to the next one; otherwise pull back to show it in full.
+  const ROW_UNIT = CARD_H + ROW_GAP;
+  const snapAxis = (pos: number, unit: number, contentSize: number, containerSize: number, s: number) => {
+    if (contentSize * s <= containerSize) return pos; // whole axis already fits — nothing to snap
+    const leadingEdge = -pos / s;
+    if (leadingEdge <= 0) return pos; // already showing the true start
+    const unitIndex = Math.floor(leadingEdge / unit);
+    const cutFraction = (leadingEdge - unitIndex * unit) / unit;
+    const snappedEdge = cutFraction > 0.5 ? (unitIndex + 1) * unit : unitIndex * unit;
+    return -snappedEdge * s;
+  };
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     // Native listener (below) does the real work — this just blocks React's
@@ -85,6 +118,21 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
     setIsPanning(false);
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
+
+    // Snap to grid on release — read live values via refs, not closed-over state
+    const s = scaleRef.current;
+    const cw = containerRef.current?.clientWidth ?? 0;
+    const ch = containerRef.current?.clientHeight ?? 0;
+    const contentW = contentRef.current?.offsetWidth ?? 0;
+    const contentH = contentRef.current?.offsetHeight ?? 0;
+    const snappedTx = clampX(snapAxis(txRef.current, COL_W, contentW, cw, s), s);
+    const snappedTy = clampY(snapAxis(tyRef.current, ROW_UNIT, contentH, ch, s), s);
+    if (Math.abs(snappedTx - txRef.current) > 0.5 || Math.abs(snappedTy - tyRef.current) > 0.5) {
+      setIsSnapping(true);
+      setTx(snappedTx);
+      setTy(snappedTy);
+      window.setTimeout(() => setIsSnapping(false), 260);
+    }
   }, [onMouseMove]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -120,6 +168,7 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
           transformOrigin: '0 0',
           display: 'inline-block',
           willChange: 'transform',
+          transition: isSnapping ? 'transform 0.26s cubic-bezier(0.22,1,0.36,1)' : 'none',
         }}
       >
         {children}
