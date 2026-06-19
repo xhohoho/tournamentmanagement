@@ -88,6 +88,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
     tickerText, setTickerText,
     ffa, sseStatus, visitorCount, activeAdminCount,
   } = useTourney();
+  const adminSession = useAdminSession();
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
@@ -207,7 +208,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   </button>
                 </>
               )}
-              {isActuallyAdmin ? (
+              {isAdmin && (
                 <button
                   onClick={() => setPreviewAsUser(!previewAsUser)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
@@ -217,10 +218,19 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   }`}
                   title={previewAsUser ? 'Switch back to admin view' : 'Preview as regular user'}
                 >
-                  <span>{previewAsUser ? '👁' : '🔓'}</span>
-                  <span>{previewAsUser ? 'Preview (tap to exit)' : `${adminName ?? 'Admin'} ✓`}</span>
+                  {previewAsUser ? '👁 Exit Preview' : '👁 Preview as User'}
                 </button>
-              ) : (
+              )}
+              {isActuallyAdmin && (
+                <button
+                  onClick={() => { adminSession.logout(); window.location.reload(); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] cursor-pointer"
+                  title="Log out admin session (clears token)"
+                >
+                  🚪 Logout
+                </button>
+              )}
+              {!isAdmin && (
                 <button
                   onClick={() => setAdminOpen(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)] cursor-pointer"
