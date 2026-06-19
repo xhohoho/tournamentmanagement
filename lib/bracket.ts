@@ -415,3 +415,199 @@ export function undoMatchResult(
 
   return true;
 }
+
+// ─── Match numbering + feeder labels (shared by BracketTab + CasterSheetTab) ──
+
+export type MatchNumbers = {
+  upper: number[][];
+  lower: number[][];
+  thirdPlace: number | null;
+  gf: number | null;
+};
+
+export function computeMatchNumbers(bracket: Bracket): MatchNumbers {
+  const ubRounds = bracket.upper.filter(r => r.length > 0);
+  const lbRounds = (bracket.lower || []).filter(r => r.length > 0);
+  const upper: number[][] = ubRounds.map(r => new Array(r.length).fill(0));
+  const lower: number[][] = lbRounds.map(r => new Array(r.length).fill(0));
+  let n = 1;
+  const assignUpper = (colIdx: number) => { for (let mi = 0; mi < upper[colIdx].length; mi++) upper[colIdx][mi] = n++; };
+  const assignLower = (colIdx: number) => { for (let mi = 0; mi < lower[colIdx].length; mi++) lower[colIdx][mi] = n++; };
+
+  if (bracket.type === 'single') {
+    ubRounds.forEach((_, colIdx) => assignUpper(colIdx));
+    const thirdPlace = bracket.thirdPlace ? n++ : null;
+    return { upper, lower: [], thirdPlace, gf: null };
+  }
+
+  const U = ubRounds.length;
+  const L = lbRounds.length;
+  for (let i = 0; i < U - 1; i++) {
+    assignUpper(i);
+    if (i < L) assignLower(i);
+  }
+  for (let i = U - 1; i < L - 1; i++) assignLower(i);
+  if (U > 0) assignUpper(U - 1);
+  if (L > 0) assignLower(L - 1);
+  const gf = bracket.grandFinal ? n++ : null;
+
+  return { upper, lower, thirdPlace: null, gf };
+}
+
+export function feederLabel(
+  numbers: MatchNumbers,
+  section: 'upper' | 'lower' | 'gf' | 'thirdPlace',
+  colIdx: number,
+  mi: number,
+  slot: 1 | 2,
+): string | null {
+  if (section === 'upper') {
+    if (colIdx === 0) return null;
+    const prevMi = slot === 1 ? mi * 2 : mi * 2 + 1;
+    const num = numbers.upper[colIdx - 1]?.[prevMi];
+    return num ? `Winner of ${num}` : null;
+  }
+  if (section === 'lower') {
+    if (colIdx === 0) {
+      const ubMi = slot === 1 ? mi * 2 : mi * 2 + 1;
+      const num = numbers.upper[0]?.[ubMi];
+      return num ? `Loser of ${num}` : null;
+    }
+    if (colIdx % 2 === 1) {
+      if (slot === 1) {
+        const num = numbers.lower[colIdx - 1]?.[mi];
+        return num ? `Winner of ${num}` : null;
+      }
+      const ubRoundIdx = (colIdx + 1) / 2;
+      const num = numbers.upper[ubRoundIdx]?.[mi];
+      return num ? `Loser of ${num}` : null;
+    }
+    const prevMi = slot === 1 ? mi * 2 : mi * 2 + 1;
+    const num = numbers.lower[colIdx - 1]?.[prevMi];
+    return num ? `Winner of ${num}` : null;
+  }
+  if (section === 'gf') {
+    const num = slot === 1
+      ? numbers.upper[numbers.upper.length - 1]?.[0]
+      : numbers.lower[numbers.lower.length - 1]?.[0];
+    return num ? `Winner of ${num}` : null;
+  }
+  const semiColIdx = numbers.upper.length - 2;
+  const num = numbers.upper[semiColIdx]?.[slot === 1 ? 0 : 1];
+  return num ? `Loser of ${num}` : null;
+}
+
+function roundLabel(colIdx: number, totalRounds: number, roundLen: number, prefix: string): string {
+  const isFinal = colIdx === totalRounds - 1 && roundLen === 1;
+  const isSemi = colIdx === totalRounds - 2 && roundLen === 2 && totalRounds >= 3;
+  const isQuarter = colIdx === totalRounds - 3 && roundLen === 4 && totalRounds >= 4;
+  if (prefix === '') {
+    return isFinal ? 'Final' : isSemi ? 'Semi Final' : isQuarter ? 'Quarter Final' : `Round ${colIdx + 1}`;
+  }
+  return isFinal ? `${prefix} Final` : `${prefix} Round ${colIdx + 1}`;
+}
+
+/** A single bracket match slot, flattened for list display (e.g. the Caster Sheet). */
+export interface BracketSlotInfo {
+  key: string;     // e.g. "m_upper_0_0" — matches the matchKey used by BracketTab
+  number: number;  // overall match number badge
+  label: string;   // e.g. "Upper Round 1", "Grand Final"
+  p1: string;       // actual team name, feeder hint ("Winner of 3"), or "TBD"
+  p2: string;
+  isDone: boolean;
+}
+
+/** Flatten every match slot in a bracket — including ones still TBD — in match-number order. */
+export function listBracketSlots(bracket: Bracket): BracketSlotInfo[] {
+  const numbers = computeMatchNumbers(bracket);
+  const slots: BracketSlotInfo[] = [];
+  const resolve = (actual: string | null, placeholder: string | null) => actual ?? placeholder ?? 'TBD';
+
+  if (bracket.type === 'single') {
+    const rounds = bracket.upper.filter(r => r.length > 0);
+    rounds.forEach((round, colIdx) => {
+      const label = roundLabel(colIdx, rounds.length, round.length, '');
+      round.forEach((match, mi) => {
+        const number = numbers.upper[colIdx]?.[mi];
+        if (number == null) return;
+        slots.push({
+          key: `m_upper_${colIdx}_${mi}`,
+          number,
+          label,
+          p1: resolve(match.p1, feederLabel(numbers, 'upper', colIdx, mi, 1)),
+          p2: resolve(match.p2, feederLabel(numbers, 'upper', colIdx, mi, 2)),
+          isDone: !!match.winner,
+        });
+      });
+    });
+    if (bracket.thirdPlace) {
+      slots.push({
+        key: 'm_thirdPlace_0_0',
+        number: numbers.thirdPlace ?? slots.length + 1,
+        label: '3rd Place Match',
+        p1: resolve(bracket.thirdPlace.p1, null),
+        p2: resolve(bracket.thirdPlace.p2, null),
+        isDone: !!bracket.thirdPlace.winner,
+      });
+    }
+  } else {
+    const ubRounds = bracket.upper.filter(r => r.length > 0);
+    const lbRounds = (bracket.lower || []).filter(r => r.length > 0);
+
+    ubRounds.forEach((round, colIdx) => {
+      const label = roundLabel(colIdx, ubRounds.length, round.length, 'Upper');
+      round.forEach((match, mi) => {
+        const number = numbers.upper[colIdx]?.[mi];
+        if (number == null) return;
+        slots.push({
+          key: `m_upper_${colIdx}_${mi}`,
+          number,
+          label,
+          p1: resolve(match.p1, feederLabel(numbers, 'upper', colIdx, mi, 1)),
+          p2: resolve(match.p2, feederLabel(numbers, 'upper', colIdx, mi, 2)),
+          isDone: !!match.winner,
+        });
+      });
+    });
+
+    lbRounds.forEach((round, colIdx) => {
+      const label = colIdx === lbRounds.length - 1 ? 'Lower Final' : `Lower Round ${colIdx + 1}`;
+      round.forEach((match, mi) => {
+        const number = numbers.lower[colIdx]?.[mi];
+        if (number == null) return;
+        slots.push({
+          key: `m_lower_${colIdx}_${mi}`,
+          number,
+          label,
+          p1: resolve(match.p1, feederLabel(numbers, 'lower', colIdx, mi, 1)),
+          p2: resolve(match.p2, feederLabel(numbers, 'lower', colIdx, mi, 2)),
+          isDone: !!match.winner,
+        });
+      });
+    });
+
+    if (bracket.grandFinal) {
+      const gf = bracket.grandFinal;
+      slots.push({
+        key: 'm_gf_0_0',
+        number: numbers.gf ?? slots.length + 1,
+        label: 'Grand Final',
+        p1: resolve(gf.p1, feederLabel(numbers, 'gf', 0, 0, 1)),
+        p2: resolve(gf.p2, feederLabel(numbers, 'gf', 0, 0, 2)),
+        isDone: !!(gf.winner && !gf.isReset),
+      });
+      if (gf.isReset) {
+        slots.push({
+          key: 'm_gf_0_1',
+          number: (numbers.gf ?? slots.length) + 0.5,
+          label: 'Grand Final (Reset)',
+          p1: resolve(gf.p1, null),
+          p2: resolve(gf.p2, null),
+          isDone: !!gf.winner,
+        });
+      }
+    }
+  }
+
+  return slots.sort((a, b) => a.number - b.number);
+}
