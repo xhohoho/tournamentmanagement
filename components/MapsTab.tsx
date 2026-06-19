@@ -808,18 +808,18 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
       </div>
 
       {spunMap && isAdmin && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md t-surface border t-border rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-sm p-4" style={{ background: 'rgba(0,0,0,0.55)' }}>
+          <div className="w-full max-w-md t-surface border t-border rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-scale-in">
             {/* Header */}
-            <div className="text-white px-5 py-3 font-semibold text-lg tracking-wide" style={{ background: 'var(--accent-red)' }}>🎯 Current Round Map</div>
+            <div className="text-white px-5 py-3 font-['Bebas_Neue'] text-xl tracking-widest" style={{ background: 'var(--accent-red)' }}>🎯 Current Round Map</div>
 
             {/* Map name */}
-            <div className="p-10 flex items-center justify-center border-b t-border">
-              <p className="t-text text-5xl font-light tracking-wide text-center break-words">{spunMap}</p>
+            <div className="p-10 flex items-center justify-center border-b t-border t-bg">
+              <p className="font-['Bebas_Neue'] text-5xl tracking-widest t-text text-center break-words">{spunMap}</p>
             </div>
 
             {/* Subtext */}
-            <div className="px-5 pt-3 pb-1">
+            <div className="px-5 pt-3 pb-1 t-surface">
               <p className="font-['DM_Mono'] text-xs t-muted">
                 Added to spin queue.{' '}
                 {usedMaps.includes(spunMap)
@@ -829,18 +829,18 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
             </div>
 
             {/* Actions */}
-            <div className="px-5 py-4 flex items-center justify-end gap-3" style={{ background: 'var(--bg-elevated)' }}>
+            <div className="px-5 py-4 flex items-center justify-end gap-3 t-elevated border-t t-border">
               <button
-                className="text-sm t-muted hover:t-text font-medium transition-colors cursor-pointer"
+                className="font-['DM_Mono'] text-sm t-muted hover:t-text transition-colors cursor-pointer"
                 onClick={() => setSpunMap('')}
               >Close</button>
               <button
-                className="text-sm font-medium transition-colors cursor-pointer"
+                className="font-['DM_Mono'] text-sm transition-colors cursor-pointer"
                 style={{ color: 'var(--accent-red)' }}
                 onClick={() => { handleRemoveMap(spunMap); setSpunMap(''); }}
               >Delete from pool</button>
               <button
-                className="px-4 py-2 text-white text-sm font-semibold rounded shadow-sm transition-colors cursor-pointer disabled:opacity-40"
+                className="px-4 py-2 text-white font-['DM_Mono'] text-sm font-bold rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-40 hover:opacity-90"
                 style={{ background: usedMaps.includes(spunMap) ? 'var(--border-mid)' : 'var(--accent)' }}
                 disabled={usedMaps.includes(spunMap) || busy}
                 onClick={() => { handleUseMap(spunMap); setSpunMap(''); }}

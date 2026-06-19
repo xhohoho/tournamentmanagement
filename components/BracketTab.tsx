@@ -367,9 +367,9 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
               className="px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs select-none transition-all"
               style={{
                 borderColor: used ? 'var(--border)' : 'var(--accent)',
-                background: used ? 'transparent' : 'rgba(77,124,255,0.12)',
-                color: used ? 'var(--text-muted)' : 'var(--accent)',
-                opacity: used ? 0.7 : 1,
+                background: used ? 'var(--bg-hover)' : 'rgba(77,124,255,0.12)',
+                color: used ? 'var(--text-dim)' : 'var(--accent)',
+                opacity: used ? 0.85 : 1,
                 cursor: isAdmin && !used ? 'grab' : 'default',
                 textDecoration: used ? 'line-through' : undefined,
                 fontWeight: used ? undefined : 700,
@@ -430,7 +430,7 @@ function PlayerRow({
       className={`flex items-center justify-between px-3 border-b t-border last:border-b-0 ${acceptsDrop && dragOver ? 'drop-active' : ''}`}
       style={{
         height: 36,
-        background: isWinner ? 'rgba(34,184,98,0.07)' : dragOver ? 'rgba(58,107,255,0.10)' : undefined,
+        background: isWinner ? 'rgba(34,184,98,0.10)' : isLoser ? 'rgba(120,120,160,0.05)' : dragOver ? 'rgba(58,107,255,0.10)' : undefined,
         position: 'relative',
         outline: dragOver ? '2px solid var(--accent)' : undefined,
         outlineOffset: '-2px',
@@ -462,7 +462,7 @@ function PlayerRow({
         style={{
           color: !player ? (canManualAssign ? 'var(--accent)' : 'var(--text-dim)') : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-muted)' : 'var(--text)',
           fontStyle: !player && !canManualAssign ? 'italic' : undefined,
-          opacity: isLoser ? 0.85 : 1,
+          opacity: isLoser ? 1 : 1,
           cursor: canManualAssign && player && !isWinner && !isLoser ? 'grab' : undefined,
         }}
         title={canManualAssign && player && !isWinner && !isLoser ? 'Drag to remove' : canManualAssign && !player ? 'Drop a team here' : undefined}
@@ -616,14 +616,13 @@ function MatchCard({
   const p1Revealed = !p1SlotKey || !isSlotRevealed || isSlotRevealed(p1SlotKey);
   const p2Revealed = !p2SlotKey || !isSlotRevealed || isSlotRevealed(p2SlotKey);
 
-  const borderStyle = highlightBorder ? { borderColor: highlightBorder, borderWidth: 2 } : {};
   const canManualAssign = isAdmin && !isDone && !!allTeams && !!onManualAssign;
 
   return (
     <div style={{ position: 'relative' }}>
       <div
-        className="t-elevated border t-border-mid rounded-xl overflow-hidden flex flex-col shadow-sm"
-        style={{ width: CARD_W, height: CARD_H, position: 'relative', ...borderStyle }}
+        className="t-elevated border rounded-xl overflow-hidden flex flex-col shadow-sm"
+        style={{ width: CARD_W, height: CARD_H, position: 'relative', borderColor: highlightBorder ?? 'var(--border-mid)', borderWidth: highlightBorder ? 2 : 1.5 }}
       >
         <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} placeholder={p1Placeholder} />
         <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(2, team)} placeholder={p2Placeholder} />
@@ -731,7 +730,7 @@ function SpinQueuePanel({ spinResults }: { spinResults: string[] }) {
       >
         🎯 Spin Queue
       </div>
-      <div className="px-3 py-1.5 border-b t-border font-['DM_Mono'] text-[9px] t-muted shrink-0" style={{ background: 'rgba(0,0,0,0.1)' }}>
+      <div className="px-3 py-1.5 border-b t-border font-['DM_Mono'] text-[9px] t-muted shrink-0">
         Drag maps into bracket slots
       </div>
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
