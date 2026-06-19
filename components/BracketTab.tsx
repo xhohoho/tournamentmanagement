@@ -287,9 +287,11 @@ function _findNearestMapSlot(mx: number, my: number): { el: HTMLElement; matchKe
 }
 
 function _clearNearestHighlight() {
-  if (_dragState?.nearestSlot) {
-    _dragState.nearestSlot.el.classList.remove('magnetic-snap-target');
+  // Remove highlight from ALL slots (not just the tracked one)
+  document.querySelectorAll('.magnetic-snap-target').forEach(el => el.classList.remove('magnetic-snap-target'));
+  if (_dragState) {
     _dragState.nearestSlot = null;
+    _dragState.nearestMapSlot = null;
   }
 }
 
