@@ -264,32 +264,46 @@ function _onDragMouseMove(e: MouseEvent) {
   const nearest = _findNearestSlot(mx, my);
   const MAGNETIC_THRESHOLD = 60; // px to trigger magnetic pull
 
-  // Update ghost position
   const ghost = _dragState.ghostEl;
-  if (ghost) {
-    let drawX = mx;
-    let drawY = my;
+  if (!ghost) return;
 
-    if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
-      // Magnetic pull: shift ghost 30% toward slot center
-      const rect = nearest.el.getBoundingClientRect();
-      const slotCx = rect.left + rect.width / 2;
-      const slotCy = rect.top + rect.height / 2;
-      const pullStrength = 0.3;
-      drawX = mx + (slotCx - mx) * pullStrength;
-      drawY = my + (slotCy - my) * pullStrength;
-    }
+  // When in snap zone, resize ghost to match the drop slot block
+  const inSnapZone = !!(nearest && nearest.dist < MAGNETIC_THRESHOLD);
+  const snappedTo = inSnapZone ? nearest!.el : null;
 
-    ghost.style.left = `${drawX - ghost.offsetWidth / 2}px`;
-    ghost.style.top = `${drawY - ghost.offsetHeight / 2}px`;
+  if (snappedTo) {
+    // Resize ghost to match the drop slot dimensions exactly
+    const slotRect = snappedTo.getBoundingClientRect();
+    ghost.style.width = `${slotRect.width}px`;
+    ghost.style.height = `${slotRect.height}px`;
+    ghost.style.borderRadius = '4px';
+    ghost.style.padding = '0';
+    ghost.style.display = 'flex';
+    ghost.style.alignItems = 'center';
+    ghost.style.justifyContent = 'center';
+    ghost.style.transform = 'none';
+    ghost.style.left = `${slotRect.left}px`;
+    ghost.style.top = `${slotRect.top}px`;
+  } else {
+    // Restore ghost to card size (small pill)
+    ghost.style.width = '';
+    ghost.style.height = '';
+    ghost.style.borderRadius = '8px';
+    ghost.style.padding = '6px 14px';
+    ghost.style.display = '';
+    ghost.style.alignItems = '';
+    ghost.style.justifyContent = '';
+    ghost.style.transform = 'scale(1.08)';
+    ghost.style.left = `${mx - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${my - ghost.offsetHeight / 2}px`;
   }
 
   // Update nearest slot highlight
-  if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
-    if (_dragState.nearestSlot?.el !== nearest.el) {
+  if (snappedTo) {
+    if (_dragState.nearestSlot?.el !== snappedTo) {
       _clearNearestHighlight();
-      nearest.el.classList.add('magnetic-snap-target');
-      _dragState.nearestSlot = { el: nearest.el, section: nearest.section, ri: nearest.ri, mi: nearest.mi, slot: nearest.slot };
+      snappedTo.classList.add('magnetic-snap-target');
+      _dragState.nearestSlot = { el: snappedTo, section: nearest!.section, ri: nearest!.ri, mi: nearest!.mi, slot: nearest!.slot };
     }
   } else {
     _clearNearestHighlight();
