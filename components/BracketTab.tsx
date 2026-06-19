@@ -579,12 +579,13 @@ function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCoun
 }
 
 // ─── MatchCard ────────────────────────────────────────────────────────────────
-// Match number is rendered ABOVE the card (in the canvas wrapper), not inside,
-// so it never overlaps player names or gets clipped.
+// matchNumber is no longer rendered inside MatchCard.
+// It is rendered as a sibling element in the canvas wrapper divs (SingleElimCanvas /
+// DoubleElimCanvas), positioned on the output connector line at left=CARD_W, top=CARD_H/2.
 function MatchCard({
   match, matchKey, onScore, onUndo, isAdmin, highlightBorder,
   p1SlotKey, p2SlotKey, isSlotRevealed,
-  allTeams, onManualAssign, matchNumber, p1Placeholder, p2Placeholder,
+  allTeams, onManualAssign, p1Placeholder, p2Placeholder,
 }: {
   match: BracketMatch; matchKey: string;
   onScore: (p1wins: number, p2wins: number) => void;
@@ -596,7 +597,6 @@ function MatchCard({
   isSlotRevealed?: (slotKey: string) => boolean;
   allTeams?: string[];
   onManualAssign?: (slot: 1 | 2, team: string | null) => void;
-  matchNumber?: number;
   p1Placeholder?: string | null;
   p2Placeholder?: string | null;
 }) {
@@ -621,32 +621,6 @@ function MatchCard({
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* Match number badge — above the card, on the output connector line */}
-      {matchNumber != null && (
-        <div
-          className="font-['DM_Mono']"
-          style={{
-            position: 'absolute',
-            bottom: '100%',
-            right: 0,
-            marginBottom: 3,
-            height: 14,
-            paddingLeft: 5,
-            paddingRight: 5,
-            borderRadius: 4,
-            background: 'var(--bg-base)',
-            border: '1px solid var(--border-mid)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 8,
-            color: 'var(--text-dim)',
-            lineHeight: 1,
-            whiteSpace: 'nowrap',
-          }}
-          title={`Match ${matchNumber}`}
-        >M{matchNumber}</div>
-      )}
       <div
         className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col"
         style={{ width: CARD_W, height: CARD_H, position: 'relative', ...borderStyle }}
@@ -664,6 +638,42 @@ function MatchCard({
       {canUndo && !isModified && (
         <button className="font-['DM_Mono'] text-[9px] t-dim hover:text-[var(--accent-red)] cursor-pointer whitespace-nowrap" style={{ position: 'absolute', top: '50%', left: CARD_W + 6, transform: 'translateY(-50%)', zIndex: 10 }} onClick={onUndo}>↩ UNDO</button>
       )}
+    </div>
+  );
+}
+
+// ─── MatchNumberBadge ─────────────────────────────────────────────────────────
+// Rendered as a sibling of MatchCard in the canvas wrapper div.
+// Sits on the output connector line: left of CARD_W, vertically centred at CARD_H/2.
+// Floats just above the line so it doesn't cross through it.
+function MatchNumberBadge({ matchNumber }: { matchNumber: number }) {
+  return (
+    <div
+      className="font-['DM_Mono'] pointer-events-none"
+      style={{
+        position: 'absolute',
+        // Pin horizontally just past the right card edge — on the output line
+        left: CARD_W + 4,
+        // Sit just above the horizontal connector (CARD_H/2), leaving 1px gap
+        top: CARD_H / 2 - 15,
+        height: 14,
+        paddingLeft: 4,
+        paddingRight: 4,
+        borderRadius: 3,
+        background: 'var(--bg-base)',
+        border: '1px solid var(--border-mid)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 8,
+        color: 'var(--text-dim)',
+        lineHeight: 1,
+        whiteSpace: 'nowrap',
+        zIndex: 4,
+      }}
+      title={`Match ${matchNumber}`}
+    >
+      M{matchNumber}
     </div>
   );
 }
@@ -1099,6 +1109,8 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
         const isSemi = colIdx === rounds.length - 2 && round.length === 2 && rounds.length >= 3;
         const isQuarter = colIdx === rounds.length - 3 && round.length === 4 && rounds.length >= 4;
         const label = isFinal ? 'Final' : isSemi ? 'Semi Final' : isQuarter ? 'Quarter Final' : `Round ${colIdx + 1}`;
+        // Last column has no output connector — don't show badge there
+        const isLastCol = colIdx === rounds.length - 1;
         return round.map((match, mi) => (
           <div key={`se-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: ubCardTop(colIdx, mi) + OFFSET_Y, left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
@@ -1117,10 +1129,13 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               isSlotRevealed={isSlotRevealed}
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('upper', colIdx, mi, slot, team)}
-              matchNumber={numbers.upper[colIdx]?.[mi]}
               p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
             />
+            {/* Match number badge — on the output connector line, just above the wire */}
+            {!isLastCol && numbers.upper[colIdx]?.[mi] != null && (
+              <MatchNumberBadge matchNumber={numbers.upper[colIdx][mi]} />
+            )}
           </div>
         ));
       })}
@@ -1257,6 +1272,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
         const slotCount = isBo5ub ? 5 : isBo3 ? 3 : 1;
         const isFinal = colIdx === ubRounds.length - 1 && round.length === 1;
         const label = isFinal ? 'Upper Final' : `Upper Round ${colIdx + 1}`;
+        // UB final feeds into GF — still show badge (has output line)
         return round.map((match, mi) => (
           <div key={`ub-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: ubOriginY + ubCardTop(colIdx, mi), left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
@@ -1275,10 +1291,13 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               isSlotRevealed={isSlotRevealed}
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('upper', colIdx, mi, slot, team)}
-              matchNumber={numbers.upper[colIdx]?.[mi]}
               p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
             />
+            {/* Match number badge on output connector line */}
+            {numbers.upper[colIdx]?.[mi] != null && (
+              <MatchNumberBadge matchNumber={numbers.upper[colIdx][mi]} />
+            )}
           </div>
         ));
       })}
@@ -1325,10 +1344,13 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               isSlotRevealed={isSlotRevealed}
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('lower', colIdx, mi, slot, team)}
-              matchNumber={numbers.lower[colIdx]?.[mi]}
               p1Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 2)}
             />
+            {/* Match number badge on output connector line */}
+            {numbers.lower[colIdx]?.[mi] != null && (
+              <MatchNumberBadge matchNumber={numbers.lower[colIdx][mi]} />
+            )}
           </div>
         ));
       })}
@@ -1377,7 +1399,6 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
           isSlotRevealed={isSlotRevealed}
           allTeams={allTeams}
           onManualAssign={(slot, team) => onManualAssign('gf', 0, 0, slot, team)}
-          matchNumber={numbers.gf ?? undefined}
           p1Placeholder={feederLabel(numbers, 'gf', 0, 0, 1)}
           p2Placeholder={feederLabel(numbers, 'gf', 0, 0, 2)}
         />
