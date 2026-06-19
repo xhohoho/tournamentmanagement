@@ -28,20 +28,17 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
   const contentRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
 
-  // Clamp so you can't drag content fully off-screen, but allow some overscroll
-  // even when content fits (loosens the clamp when content < container)
+  // Clamp so you can't drag content off-screen (no white space visible)
   const clampX = (val: number, s: number) => {
     const cw = containerRef.current?.clientWidth ?? 0;
     const contentW = (contentRef.current?.offsetWidth ?? 0) * s;
-    if (contentW <= cw) return val; // content fits — free drag
-    const lo = cw - contentW;
+    const lo = Math.min(0, cw - contentW);
     return Math.max(lo, Math.min(0, val));
   };
   const clampY = (val: number, s: number) => {
     const ch = containerRef.current?.clientHeight ?? 0;
     const contentH = (contentRef.current?.offsetHeight ?? 0) * s;
-    if (contentH <= ch) return val; // content fits — free drag
-    const lo = ch - contentH;
+    const lo = Math.min(0, ch - contentH);
     return Math.max(lo, Math.min(0, val));
   };
 
@@ -78,12 +75,23 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
     setTy(prev => clampY(d.startTy + (e.clientY - d.startY), scale));
   }, [scale]);
 
+  // Snap to grid on release — round to nearest card boundary so content
+  // always aligns to match-card blocks (no half-visible cards at edges)
+  const snapToGrid = useCallback(() => {
+    const s = scale;
+    const snapX = CARD_W + COL_GAP; // one column width
+    const snapY = CARD_H + ROW_GAP; // one row height
+    setTx(prev => Math.round(prev / snapX) * snapX);
+    setTy(prev => Math.round(prev / snapY) * snapY);
+  }, []);
+
   const onMouseUp = useCallback(() => {
     dragRef.current = null;
     setIsPanning(false);
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
-  }, [onMouseMove]);
+    snapToGrid();
+  }, [onMouseMove, snapToGrid]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
