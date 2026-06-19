@@ -11,10 +11,20 @@ export function SpinTab() {
     spinState: liveSpin,
     spinQueue, removeSpinQueueItem,
     appendSpinQueue, clearSpinQueue,
+    spinUsedItems, spinStarredItems,
+    markSpinUsed, restoreSpinUsed, saveSpinStarred, clearSpinTab,
+    adminToken,
   } = useTourney();
 
   // ─── Items = the spin queue itself ────────────────────────────────────────────
   const items = spinQueue;
+
+  // ─── Isolated used / starred pools for Spin tab only ───────────────────────────
+  const usedItems = spinUsedItems;
+  const starredItems = spinStarredItems;
+
+  // Wheel items = queue items minus used items
+  const wheelItems = items.filter(m => !usedItems.includes(m));
 
   const [itemInput, setItemInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,7 +37,6 @@ export function SpinTab() {
   const handleDragEnter = (idx: number) => {
     const from = dragIdxRef.current;
     if (from === null || from === idx) return;
-    // Reorder locally — we commit on drag end by updating the queue
     dragOverIdxRef.current = idx;
   };
   const handleDragEnd = async () => {
@@ -36,18 +45,39 @@ export function SpinTab() {
     dragIdxRef.current = null;
     dragOverIdxRef.current = null;
     if (from === null || to === null || from === to) return;
-    // Reorder via remove + insert
     const item = items[from];
     setBusy(true);
     try {
       await removeSpinQueueItem(from);
-      // After removal, the target index shifts if needed
-      const insertAt = to > from ? to - 1 : to;
-      // Insert by appending then reordering isn't possible with current API,
-      // so we just remove and let user re-add. Simpler: just remove.
-      // Actually let's just remove and re-add at end — reorder is a nice-to-have.
       await appendSpinQueue(item);
     } finally { setBusy(false); }
+  };
+
+  // ─── Star / unstar ────────────────────────────────────────────────────────────
+  const toggleStar = (item: string) => {
+    const next = starredItems.includes(item)
+      ? starredItems.filter(m => m !== item)
+      : [...starredItems, item];
+    saveSpinStarred(next);
+  };
+
+  // ─── Mark as used / restore ────────────────────────────────────────────────────
+  const markUsed = async (item: string) => {
+    if (busy) return;
+    setBusy(true);
+    try { await markSpinUsed(item); } finally { setBusy(false); }
+  };
+
+  const restoreUsed = async (item: string) => {
+    if (busy) return;
+    setBusy(true);
+    try { await restoreSpinUsed(item); } finally { setBusy(false); }
+  };
+
+  const restoreAll = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await restoreSpinUsed(); } finally { setBusy(false); }
   };
 
   // ─── Wheel ────────────────────────────────────────────────────────────────────
@@ -59,14 +89,8 @@ export function SpinTab() {
   const rafRef = useRef<number | null>(null);
   const [spunItem, setSpunItem] = useState('');
 
-  const itemsRef = useRef(items);
-  useEffect(() => { itemsRef.current = items; }, [items]);
-
-  const appendSpinQueueRef = useRef(appendSpinQueue);
-  useEffect(() => { appendSpinQueueRef.current = appendSpinQueue; }, [appendSpinQueue]);
-
-  const spinQueueLenRef = useRef(spinQueue.length);
-  useEffect(() => { spinQueueLenRef.current = spinQueue.length; }, [spinQueue.length]);
+  const wheelItemsRef = useRef(wheelItems);
+  useEffect(() => { wheelItemsRef.current = wheelItems; }, [wheelItems]);
 
   const drawWheel = useCallback((angle: number) => {
     const canvas = canvasRef.current;
@@ -82,17 +106,17 @@ export function SpinTab() {
     const colBorderMid  = cs.getPropertyValue('--border-mid').trim()  || '#444';
     const colTextDim    = cs.getPropertyValue('--text-dim').trim()    || '#888';
     ctx.clearRect(0, 0, W, W);
-    if (!items.length) {
+    if (!wheelItems.length) {
       ctx.fillStyle = colBgElevated;
       ctx.beginPath(); ctx.arc(cx, cx, r, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = colTextDim;
       ctx.font = '14px DM Mono, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('Add items to spin', cx, cx + 5);
+      ctx.fillText(items.length > 0 ? 'All items used' : 'Add items to spin', cx, cx + 5);
       return;
     }
-    const slice = (Math.PI * 2) / items.length;
-    items.forEach((m, i) => {
+    const slice = (Math.PI * 2) / wheelItems.length;
+    wheelItems.forEach((m, i) => {
       const start = angle + i * slice, end = start + slice;
       ctx.beginPath(); ctx.moveTo(cx, cx); ctx.arc(cx, cx, r, start, end); ctx.closePath();
       ctx.fillStyle = WHEEL_COLORS[i % WHEEL_COLORS.length]; ctx.fill();
@@ -101,7 +125,7 @@ export function SpinTab() {
       ctx.translate(cx, cx); ctx.rotate(start + slice / 2);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#fff';
-      ctx.font = `bold ${Math.min(13, 140 / items.length)}px Syne, sans-serif`;
+      ctx.font = `bold ${Math.min(13, 140 / wheelItems.length)}px Syne, sans-serif`;
       ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 4;
       ctx.fillText(m.length > 14 ? m.slice(0, 13) + '…' : m, r - 8, 4);
       ctx.restore();
@@ -109,20 +133,20 @@ export function SpinTab() {
     ctx.beginPath(); ctx.arc(cx, cx, 16, 0, Math.PI * 2);
     ctx.fillStyle = colBgSurface; ctx.fill();
     ctx.strokeStyle = colBorderMid; ctx.lineWidth = 2; ctx.stroke();
-  }, [items]);
+  }, [wheelItems, items.length]);
 
-  useEffect(() => { drawWheel(angleRef.current); }, [items, drawWheel, wheelSize]);
+  useEffect(() => { drawWheel(angleRef.current); }, [wheelItems, drawWheel, wheelSize]);
 
   const broadcastSpinState = useCallback(async (state: SpinState | null) => {
     await fetch('/api/maps', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'JSON' },
+      headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
       body: JSON.stringify({ action: 'updateSpinState', spinState: state }),
     });
-  }, []);
+  }, [adminToken]);
 
   const spin = useCallback(() => {
-    if (spinning || !items.length) return;
+    if (spinning || !wheelItems.length) return;
     setSpinning(true);
     setSpunItem('');
     const extra = (5 + Math.random() * 6) * Math.PI * 2 + Math.random() * Math.PI * 2;
@@ -137,19 +161,18 @@ export function SpinTab() {
       drawWheel(angleRef.current);
       if (tAbs < 1) { rafRef.current = requestAnimationFrame(tick); return; }
       setSpinning(false);
-      const currentItems = itemsRef.current;
+      const currentItems = wheelItemsRef.current;
       if (!currentItems.length) return;
       const slice = (Math.PI * 2) / currentItems.length;
       const norm = ((-Math.PI / 2 - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const result = currentItems[Math.floor(norm / slice) % currentItems.length];
       setSpunItem(result);
-      await appendSpinQueueRef.current(result);
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
       setTimeout(() => broadcastSpinState(null), 1000);
     };
     rafRef.current = requestAnimationFrame(tick);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spinning, items.length, drawWheel, broadcastSpinState]);
+  }, [spinning, wheelItems.length, drawWheel, broadcastSpinState]);
 
   // Live spin listener (viewer side)
   const prevSpinRef = useRef<SpinState | null>(null);
@@ -223,9 +246,9 @@ export function SpinTab() {
   };
 
   const handleClearAll = async () => {
-    if (busy || items.length === 0) return;
+    if (busy || (items.length === 0 && usedItems.length === 0 && starredItems.length === 0)) return;
     setBusy(true);
-    try { await clearSpinQueue(); } finally { setBusy(false); }
+    try { await clearSpinTab(); } finally { setBusy(false); }
   };
 
   if (loading) return (
@@ -244,7 +267,7 @@ export function SpinTab() {
         <div className="shrink-0">
           <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Spin</h1>
           <p className="font-['DM_Mono'] text-xs t-muted">
-            {isAdmin ? 'Add items, spin the wheel, build a queue. Drag to reorder.' : 'Live view — spin results appear automatically'}
+            {isAdmin ? 'Add items, spin the wheel. Mark items as used to remove them from the wheel.' : 'Live view — spin results appear automatically'}
           </p>
         </div>
 
@@ -281,6 +304,55 @@ export function SpinTab() {
               </div>
             )}
 
+            {/* Item pool with stars and used status */}
+            {items.length > 0 && (
+              <div className="shrink-0 max-h-[96px] overflow-y-auto">
+                <div className="flex flex-wrap gap-2">
+                  {items.map(m => {
+                    const isUsed = usedItems.includes(m);
+                    const isStarred = starredItems.includes(m);
+                    return (
+                      <span
+                        key={m}
+                        className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm"
+                        style={{ opacity: isUsed ? 0.45 : 1, color: 'var(--text)' }}
+                      >
+                        {m}
+                        {isUsed && <span className="text-[9px] font-bold tracking-wider" style={{ color: 'var(--accent-gold)' }}>USED</span>}
+                        {isAdmin && (
+                          <>
+                            {isUsed ? (
+                              <button
+                                className={`shrink-0 transition-colors text-[10px] leading-none ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
+                                style={{ color: 'var(--text-dim)' }}
+                                title="Restore to wheel"
+                                onClick={() => !busy && restoreUsed(m)}
+                                disabled={busy}
+                              >↩</button>
+                            ) : (
+                              <button
+                                className={`shrink-0 transition-colors text-[10px] leading-none ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                                style={{ color: 'var(--text-dim)' }}
+                                title="Mark as used (remove from wheel)"
+                                onClick={() => !busy && markUsed(m)}
+                                disabled={busy}
+                              >✕</button>
+                            )}
+                            <button
+                              className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
+                              style={{ color: isStarred ? 'var(--accent-gold)' : 'var(--text-dim)' }}
+                              title={isStarred ? 'Unstar' : 'Star — keep after clear all'}
+                              onClick={() => toggleStar(m)}
+                            >★</button>
+                          </>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div ref={wheelWrapRef} className="flex-1 min-h-0 w-full overflow-hidden flex flex-col items-center justify-center gap-2">
               <span className="text-3xl rotate-90 shrink-0" style={{ color: 'var(--accent-red)' }}>▶</span>
               <canvas
@@ -295,7 +367,7 @@ export function SpinTab() {
                   className="shrink-0 px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
                   style={{ background: 'var(--accent-red)' }}
                   onClick={spin}
-                  disabled={spinning || items.length === 0}
+                  disabled={spinning || wheelItems.length === 0}
                 >{spinning ? '🌀 Spinning…' : '🌀 SPIN'}</button>
               ) : (
                 <div className="shrink-0 h-9 flex items-center">
@@ -313,13 +385,22 @@ export function SpinTab() {
             <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Queue</h2>
               {isAdmin && (
-                <button
-                  className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
-                    ${items.length === 0 || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
-                  title="Clear all items"
-                  onClick={handleClearAll}
-                  disabled={busy || items.length === 0}
-                >clear all</button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    className={`font-['DM_Mono'] text-[10px] whitespace-nowrap t-dim transition-colors
+                      ${busy || usedItems.length === 0 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
+                    title={`Restore ${usedItems.length} used item(s) back to wheel`}
+                    onClick={restoreAll}
+                    disabled={busy || usedItems.length === 0}
+                  >↩ restore pool</button>
+                  <button
+                    className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
+                      ${(items.length === 0 && usedItems.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                    title="Clear all items and restore used items to wheel"
+                    onClick={handleClearAll}
+                    disabled={busy || (items.length === 0 && usedItems.length === 0)}
+                  >clear all</button>
+                </div>
               )}
             </div>
 
@@ -327,33 +408,67 @@ export function SpinTab() {
               {items.length === 0 ? (
                 <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Add items and spin the wheel to build a queue.</p>
               ) : (
-                items.map((item, idx) => (
-                  <div
-                    key={`${idx}-${item}`}
-                    draggable={isAdmin}
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragEnter={() => handleDragEnter(idx)}
-                    onDragEnd={handleDragEnd}
-                    onDragOver={e => e.preventDefault()}
-                    className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2 transition-opacity"
-                    style={{ cursor: isAdmin ? 'grab' : 'default' }}
-                  >
-                    <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                      {isAdmin && <span className="shrink-0 t-dim text-sm leading-none select-none">⠿</span>}
-                      <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{idx + 1}</span>
-                      <span className="font-['DM_Mono'] text-sm t-text truncate">{item}</span>
+                items.map((item, idx) => {
+                  const isUsed = usedItems.includes(item);
+                  return (
+                    <div
+                      key={`${idx}-${item}`}
+                      draggable={isAdmin && !isUsed}
+                      onDragStart={() => handleDragStart(idx)}
+                      onDragEnter={() => handleDragEnter(idx)}
+                      onDragEnd={handleDragEnd}
+                      onDragOver={e => e.preventDefault()}
+                      className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2 transition-opacity"
+                      style={{ cursor: isAdmin && !isUsed ? 'grab' : 'default', opacity: isUsed ? 0.45 : 1 }}
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                        {isAdmin && !isUsed && <span className="shrink-0 t-dim text-sm leading-none select-none">⠿</span>}
+                        <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{idx + 1}</span>
+                        <span className="font-['DM_Mono'] text-sm t-text truncate">{item}</span>
+                        {isUsed && <span className="text-[9px] font-bold tracking-wider shrink-0" style={{ color: 'var(--accent-gold)' }}>USED</span>}
+                      </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isUsed ? (
+                            <button
+                              className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
+                              title="Restore to wheel"
+                              onClick={() => restoreUsed(item)}
+                              disabled={busy}
+                            >↩</button>
+                          ) : (
+                            <button
+                              className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
+                              title="Mark as used (remove from wheel)"
+                              onClick={() => markUsed(item)}
+                              disabled={busy}
+                            >✕</button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {isAdmin && (
-                      <button
-                        className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
-                        onClick={() => handleRemoveItem(idx)}
-                        disabled={busy}
-                      >✕</button>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
+
+            {/* Starred items */}
+            {starredItems.length > 0 && (
+              <div className="shrink-0">
+                <hr className="t-border my-2" />
+                <p className="font-['DM_Mono'] text-[11px] t-muted tracking-widest mb-2">★ STARRED</p>
+                <div className="flex flex-wrap gap-2">
+                  {starredItems.map(m => (
+                    <div key={m} className="t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm t-text shrink-0">
+                      <span className="truncate max-w-[150px]">{m}</span>
+                    </div>
+                  ))}
+                </div>
+                {isAdmin && (
+                  <p className="font-['DM_Mono'] text-[10px] t-dim mt-1">starred items are restored to wheel on clear all</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -367,13 +482,20 @@ export function SpinTab() {
               <p className="font-['Bebas_Neue'] text-5xl tracking-widest t-text text-center break-words">{spunItem}</p>
             </div>
             <div className="px-5 pt-3 pb-1 t-surface">
-              <p className="font-['DM_Mono'] text-xs t-muted">Added to spin queue.</p>
+              <p className="font-['DM_Mono'] text-xs t-muted">
+                Mark as used to remove it from the wheel, or close to keep spinning.
+              </p>
             </div>
             <div className="px-5 py-4 flex items-center justify-end gap-3 t-elevated border-t t-border">
               <button
                 className="font-['DM_Mono'] text-sm t-muted hover:t-text transition-colors cursor-pointer"
                 onClick={() => setSpunItem('')}
               >Close</button>
+              <button
+                className="px-4 py-2 text-white font-['DM_Mono'] text-sm font-bold rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-40 hover:opacity-90"
+                style={{ background: 'var(--accent)' }}
+                onClick={() => { markUsed(spunItem); setSpunItem(''); }}
+              >✓ Use</button>
             </div>
           </div>
         </div>

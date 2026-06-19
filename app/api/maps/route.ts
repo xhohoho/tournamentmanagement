@@ -6,11 +6,13 @@ import { checkTournamentAccess } from '@/lib/tournamentAccess';
 export async function GET(req: NextRequest) {
   const tid = req.nextUrl.searchParams.get('t') ?? 'default';
   const state = await getState(tid);
-  return NextResponse.json({ 
-    maps: state.maps, 
+  return NextResponse.json({
+    maps: state.maps,
     usedMaps: state.usedMaps ?? [],
     stageMaps: state.stageMaps,
     spinQueue: state.spinQueue || [],
+    spinUsedItems: state.spinUsedItems ?? [],
+    spinStarredItems: state.spinStarredItems ?? [],
     spinCategories: state.spinCategories || [],
     spinItemCategory: state.spinItemCategory || {},
   });
@@ -159,6 +161,49 @@ export async function PATCH(req: NextRequest) {
       return { ...s, stageMaps: sm };
     }, tid);
     return NextResponse.json({ stageMaps: next.stageMaps });
+  }
+
+  // ─── Spin tab isolated actions ────────────────────────────────────────────────
+  if (action === 'markSpinUsed') {
+    const { item } = body;
+    if (!item) return NextResponse.json({ error: 'item required' }, { status: 400 });
+    const next = await updateState(s => {
+      if ((s.spinUsedItems ?? []).includes(item)) return s;
+      return { ...s, spinUsedItems: [...(s.spinUsedItems ?? []), item] };
+    }, tid);
+    return NextResponse.json({ spinUsedItems: next.spinUsedItems ?? [] });
+  }
+
+  if (action === 'restoreSpinUsed') {
+    const { item } = body; // if omitted → restore all
+    const next = await updateState(s => ({
+      ...s,
+      spinUsedItems: item ? (s.spinUsedItems ?? []).filter(m => m !== item) : [],
+    }), tid);
+    return NextResponse.json({ spinUsedItems: next.spinUsedItems ?? [] });
+  }
+
+  if (action === 'updateSpinStarred') {
+    const { spinStarred } = body;
+    const next = await updateState(s => ({
+      ...s,
+      ...(spinStarred !== undefined ? { spinStarredItems: spinStarred } : {}),
+    }), tid);
+    return NextResponse.json({ spinStarredItems: next.spinStarredItems ?? [] });
+  }
+
+  if (action === 'clearSpinTab') {
+    const next = await updateState(s => ({
+      ...s,
+      spinQueue: [],
+      spinUsedItems: [],
+      spinStarredItems: [],
+    }), tid);
+    return NextResponse.json({
+      spinQueue: next.spinQueue ?? [],
+      spinUsedItems: next.spinUsedItems ?? [],
+      spinStarredItems: next.spinStarredItems ?? [],
+    });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

@@ -151,6 +151,8 @@ export function defaultState(): ServerState {
     chatMessages: [],
     defaultMaps: [],
     spinQueue: [],
+    spinUsedItems: [],
+    spinStarredItems: [],
     spinState: null,
     shuffleState: null,
     spinCategories: [],
