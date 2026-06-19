@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { listBracketSlots } from '@/lib/bracket';
 import { parseStageMaps } from '@/lib/utils';
-import type { BracketMatch, GrandFinal } from '@/lib/types';
+import type { BracketMatch, GrandFinal, CasterMatch } from '@/lib/types';
 
 // ─── Inject glow keyframe once ────────────────────────────────────────────────
 if (typeof document !== 'undefined' && !document.getElementById('match-info-glow-style')) {
@@ -27,17 +27,14 @@ function resolveMatch(
   bracket: NonNullable<ReturnType<typeof useTourney>['bracket']>,
   matchKey: string,
 ): BracketMatch | GrandFinal | null {
-  // matchKey format: m_<section>_<ri>_<mi>
   const parts = matchKey.split('_');
-  // parts[0] = 'm', parts[1] = section, rest = indices
   const section = parts[1];
   const ri = parseInt(parts[2] ?? '0', 10);
   const mi = parseInt(parts[3] ?? '0', 10);
-
-  if (section === 'upper') return bracket.upper[ri]?.[mi] ?? null;
-  if (section === 'lower') return (bracket.lower ?? [])[ri]?.[mi] ?? null;
+  if (section === 'upper')     return bracket.upper[ri]?.[mi] ?? null;
+  if (section === 'lower')     return (bracket.lower ?? [])[ri]?.[mi] ?? null;
   if (section === 'thirdPlace') return bracket.thirdPlace ?? null;
-  if (section === 'gf') return bracket.grandFinal ?? null;
+  if (section === 'gf')        return bracket.grandFinal ?? null;
   return null;
 }
 
@@ -48,26 +45,43 @@ function MatchInfoCard({
   maps,
   highlighted,
   cardRef,
-  note,
-  onNoteChange,
+  isAdmin,
+  savedNote,
+  onSaveNote,
 }: {
   slot: ReturnType<typeof listBracketSlots>[number];
   match: BracketMatch | GrandFinal | null;
   maps: string[];
   highlighted: boolean;
   cardRef?: React.Ref<HTMLDivElement>;
-  note: string;
-  onNoteChange: (val: string) => void;
+  isAdmin: boolean;
+  savedNote: string;
+  onSaveNote: (val: string) => Promise<void>;
 }) {
   const isDone = slot.isDone;
   const isTbd = slot.p1 === 'TBD' || slot.p2 === 'TBD';
-
   const score1 = match?.score1 ?? 0;
   const score2 = match?.score2 ?? 0;
   const winner = match?.winner ?? null;
-
   const format = (match as BracketMatch | null)?.format ?? 'bo1';
   const maxWins = format === 'bo5' ? 3 : format === 'bo3' ? 2 : 1;
+
+  // Local draft for the textarea — starts from saved value
+  const [draft, setDraft] = useState(savedNote);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Sync draft when savedNote changes from SSE (another admin edited)
+  useEffect(() => { setDraft(savedNote); }, [savedNote]);
+
+  const handleSave = async () => {
+    if (draft === savedNote) return;
+    setSaving(true);
+    await onSaveNote(draft);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  };
 
   return (
     <div
@@ -75,7 +89,7 @@ function MatchInfoCard({
       className={`t-elevated border rounded-xl flex flex-col overflow-hidden${highlighted ? ' match-info-glow' : ''}`}
       style={{ borderColor: 'var(--border-mid)', borderWidth: 1.5 }}
     >
-      {/* ── Header row: match number + label + format + status ── */}
+      {/* ── Header: number + label + format + status ── */}
       <div
         className="flex items-center gap-3 px-4 py-2.5 border-b t-border"
         style={{ background: 'var(--bg-surface)' }}
@@ -91,15 +105,10 @@ function MatchInfoCard({
         </span>
         <span
           className="font-['DM_Mono'] text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border shrink-0"
-          style={{
-            color: 'var(--accent-gold)',
-            borderColor: 'rgba(224,144,16,0.3)',
-            background: 'rgba(224,144,16,0.07)',
-          }}
+          style={{ color: 'var(--accent-gold)', borderColor: 'rgba(224,144,16,0.3)', background: 'rgba(224,144,16,0.07)' }}
         >
           {format.toUpperCase()}
         </span>
-        {/* Status — only shown when there's something to say */}
         {isDone && (
           <span
             className="font-['DM_Mono'] text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border shrink-0"
@@ -119,11 +128,10 @@ function MatchInfoCard({
       </div>
 
       {/* ── Teams + Score ── */}
-      <div className="flex items-center gap-0 px-4 py-3">
-        {/* Team 1 */}
-        <div className="flex-1 flex flex-col items-start gap-0.5 min-w-0">
+      <div className="flex items-center px-4 py-3">
+        <div className="flex-1 min-w-0">
           <span
-            className="font-['Bebas_Neue'] text-2xl tracking-wide truncate w-full"
+            className="font-['Bebas_Neue'] text-2xl tracking-wide truncate block"
             style={{
               color: winner ? (winner === slot.p1 ? 'var(--accent-green)' : 'var(--text-muted)') : slot.p1 === 'TBD' ? 'var(--text-dim)' : 'var(--text)',
               fontStyle: slot.p1 === 'TBD' ? 'italic' : undefined,
@@ -135,8 +143,7 @@ function MatchInfoCard({
           </span>
         </div>
 
-        {/* Score + vs */}
-        <div className="flex items-center gap-3 px-4 shrink-0">
+        <div className="flex items-center gap-3 px-5 shrink-0">
           <span
             className="font-['Bebas_Neue'] text-4xl tabular-nums"
             style={{ color: winner === slot.p1 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center' }}
@@ -152,10 +159,9 @@ function MatchInfoCard({
           </span>
         </div>
 
-        {/* Team 2 */}
-        <div className="flex-1 flex flex-col items-end gap-0.5 min-w-0">
+        <div className="flex-1 min-w-0 text-right">
           <span
-            className="font-['Bebas_Neue'] text-2xl tracking-wide truncate w-full text-right"
+            className="font-['Bebas_Neue'] text-2xl tracking-wide truncate block"
             style={{
               color: winner ? (winner === slot.p2 ? 'var(--accent-green)' : 'var(--text-muted)') : slot.p2 === 'TBD' ? 'var(--text-dim)' : 'var(--text)',
               fontStyle: slot.p2 === 'TBD' ? 'italic' : undefined,
@@ -168,7 +174,7 @@ function MatchInfoCard({
         </div>
       </div>
 
-      {/* Best-of indicator */}
+      {/* Best-of pips */}
       {isDone && (
         <div className="flex items-center justify-center gap-1.5 pb-2 px-4">
           {Array.from({ length: maxWins * 2 - 1 }).map((_, i) => {
@@ -208,19 +214,52 @@ function MatchInfoCard({
         </div>
       )}
 
-      {/* ── Notes / description area ── */}
-      <div className="border-t t-border px-4 py-3">
-        <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">
-          Notes
-        </label>
-        <textarea
-          className="w-full t-elevated border t-border-mid rounded-lg px-3 py-2 font-['DM_Mono'] text-xs t-text outline-none focus:border-[var(--accent)] transition-colors resize-none"
-          rows={2}
-          placeholder="Add caster notes, context, callouts…"
-          value={note}
-          onChange={e => onNoteChange(e.target.value)}
-        />
-      </div>
+      {/* ── Notes — admin edit / public read-only ── */}
+      {(isAdmin || savedNote) && (
+        <div className="border-t t-border px-4 py-3">
+          {isAdmin ? (
+            <>
+              <label className="block font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">
+                🎙 Caster Notes
+              </label>
+              <textarea
+                className="w-full t-elevated border t-border-mid rounded-lg px-3 py-2 font-['DM_Mono'] text-xs t-text outline-none focus:border-[var(--accent)] transition-colors resize-none"
+                rows={2}
+                placeholder="Add caster notes, context, callouts…"
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave(); }}
+              />
+              <div className="flex items-center justify-between mt-1.5">
+                <span className="font-['DM_Mono'] text-[10px] t-dim">
+                  {saved ? <span style={{ color: 'var(--accent-green)' }}>✓ Saved</span> : 'Cmd/Ctrl+Enter to save'}
+                </span>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || draft === savedNote}
+                  className="font-['DM_Mono'] text-[11px] font-bold px-3 py-1 rounded-lg border transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                  style={{
+                    color: 'var(--accent)',
+                    borderColor: 'rgba(77,124,255,0.3)',
+                    background: 'rgba(77,124,255,0.07)',
+                  }}
+                >
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-['DM_Mono'] text-[10px] t-muted uppercase tracking-widest mb-1.5">
+                🎙 Caster Notes
+              </div>
+              <p className="font-['DM_Mono'] text-xs t-text whitespace-pre-wrap leading-relaxed">
+                {savedNote}
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -230,17 +269,44 @@ export function CasterSheetTab({ highlightMatchKey, onHighlightHandled }: {
   highlightMatchKey?: string | null;
   onHighlightHandled?: () => void;
 } = {}) {
-  const { bracket, stageMaps } = useTourney();
+  const { bracket, stageMaps, isAdmin, casterSheet, setCasterSheet } = useTourney();
   const highlightRef = useRef<HTMLDivElement | null>(null);
-
-  // Per-card notes stored locally (keyed by matchKey)
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const setNote = (key: string, val: string) =>
-    setNotes(prev => ({ ...prev, [key]: val }));
 
   const slots = bracket ? listBracketSlots(bracket) : [];
 
-  // Scroll highlighted card into view whenever highlightMatchKey changes
+  // Build a lookup: matchKey → saved note from casterSheet
+  const notesByKey: Record<string, string> = {};
+  for (const cm of (casterSheet?.matches ?? [])) {
+    if (cm.linkedMatchKey) notesByKey[cm.linkedMatchKey] = cm.notes ?? '';
+  }
+
+  // Save a note for a specific matchKey into casterSheet.matches
+  const handleSaveNote = useCallback(async (matchKey: string, note: string) => {
+    const existing = (casterSheet?.matches ?? []).find(m => m.linkedMatchKey === matchKey);
+    let next: CasterMatch[];
+    if (existing) {
+      next = (casterSheet.matches).map(m =>
+        m.linkedMatchKey === matchKey ? { ...m, notes: note } : m
+      );
+    } else {
+      const newEntry: CasterMatch = {
+        id: `ci_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        matchNo: matchKey,
+        team1: '',
+        team2: '',
+        maps: '',
+        side: '',
+        notes: note,
+        result: '',
+        createdAt: Date.now(),
+        linkedMatchKey: matchKey,
+      };
+      next = [...(casterSheet?.matches ?? []), newEntry];
+    }
+    await setCasterSheet(next);
+  }, [casterSheet, setCasterSheet]);
+
+  // Scroll highlighted card into view
   useEffect(() => {
     if (highlightMatchKey && highlightRef.current) {
       highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -268,8 +334,8 @@ export function CasterSheetTab({ highlightMatchKey, onHighlightHandled }: {
         <div className="flex flex-col gap-4">
           {slots.map(slot => {
             const match = bracket ? resolveMatch(bracket, slot.key) : null;
-            const rawMaps = parseStageMaps(stageMaps[slot.key] ?? '');
-            const maps = rawMaps.filter(Boolean);
+            const maps = parseStageMaps(stageMaps[slot.key] ?? '').filter(Boolean);
+            const savedNote = notesByKey[slot.key] ?? '';
 
             return (
               <MatchInfoCard
@@ -279,8 +345,9 @@ export function CasterSheetTab({ highlightMatchKey, onHighlightHandled }: {
                 maps={maps}
                 highlighted={slot.key === highlightMatchKey}
                 cardRef={slot.key === highlightMatchKey ? highlightRef : undefined}
-                note={notes[slot.key] ?? ''}
-                onNoteChange={val => setNote(slot.key, val)}
+                isAdmin={isAdmin}
+                savedNote={savedNote}
+                onSaveNote={note => handleSaveNote(slot.key, note)}
               />
             );
           })}
