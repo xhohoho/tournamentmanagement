@@ -39,31 +39,41 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   useEffect(() => { tyRef.current = ty; }, [ty]);
   useEffect(() => { scaleRef.current = scale; }, [scale]);
 
-  // No rubber-band overshoot allowed on any axis — even a small overshoot here let a
-  // drag introduce whitespace that wasn't there before (e.g. dragging down exposed a gap
-  // at the top even though the bracket was already flush against it).
+  // No rubber-band overshoot allowed on the leading (left/top) edge — even a small
+  // overshoot here let a drag introduce whitespace that wasn't there before (e.g.
+  // dragging down exposed a gap at the top even though the bracket was already flush
+  // against it).
   const EDGE_SLACK = 0;
 
-  const clampAxis = (val: number, containerSize: number, contentSize: number) => {
+  // Extra trailing (right-side) pan room, horizontal only. Columns that sit pinned
+  // almost flush against the true right edge of the content (e.g. the Grand Final
+  // card in a double-elim bracket) would otherwise be unreachable on the left/middle
+  // of the screen, since panning is clamped to never go past the true edge. This only
+  // ever reveals blank canvas on the right — it can never produce left-side whitespace.
+  const TRAILING_SLACK_X = 480;
+
+  const clampAxis = (val: number, containerSize: number, contentSize: number, trailingSlack = 0) => {
     const diff = containerSize - contentSize; // positive → content smaller than the viewport
     let lo: number, hi: number;
     if (diff >= 0) {
-      // Content fully fits this axis — allow sliding between flush-start (val=0) and
-      // flush-end (val=diff) ONLY. No slack here: any extra slack would let a drag push
-      // the content past its true edge and manufacture whitespace that wasn't there before
-      // (e.g. bracket already flush against the right/top — dragging must not be able to
-      // pull it away from that edge and expose empty space).
+      // Content fully fits this axis — lock flush to the start (val=0). A positive val
+      // here would shift content right/down and manufacture whitespace on the left/top,
+      // which must never happen. Any leftover space from the aspect-ratio mismatch stays
+      // on the right/bottom only, so this axis isn't draggable at all in this case.
       lo = 0;
-      hi = diff;
+      hi = 0;
     } else {
-      // Content bigger than viewport — normal edge clamp with a little slack past each true edge.
-      lo = diff - EDGE_SLACK;
+      // Content bigger than viewport — edge clamp. trailingSlack extends only the
+      // far/left-pan limit (lo), letting the view scroll a bit past the true right
+      // edge so right-pinned content can be pulled toward the middle/left. The near
+      // edge (hi) keeps zero slack, so the left/top can never show whitespace.
+      lo = diff - trailingSlack;
       hi = EDGE_SLACK;
     }
     return Math.min(hi, Math.max(lo, val));
   };
 
-  const clampX = (val: number, s: number) => clampAxis(val, containerRef.current?.clientWidth ?? 0, (contentRef.current?.offsetWidth ?? 0) * s);
+  const clampX = (val: number, s: number) => clampAxis(val, containerRef.current?.clientWidth ?? 0, (contentRef.current?.offsetWidth ?? 0) * s, TRAILING_SLACK_X);
   const clampY = (val: number, s: number) => clampAxis(val, containerRef.current?.clientHeight ?? 0, (contentRef.current?.offsetHeight ?? 0) * s);
 
   // Dynamic zoom-out floor — never let the bracket shrink past the point where it
