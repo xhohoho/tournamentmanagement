@@ -303,23 +303,19 @@ function _onDragMouseMove(e: MouseEvent) {
   const snappedEl = inSnapZone ? nearest!.el : null;
 
   if (snappedEl) {
-    // Resize ghost to match the drop slot dimensions — with a minimum visible size
+    // Snap ghost to match the drop slot position and dimensions exactly
     const slotRect = snappedEl.getBoundingClientRect();
-    const minW = 80;
-    const minH = 28;
-    const w = Math.max(slotRect.width, minW);
-    const h = Math.max(slotRect.height, minH);
-    ghost.style.width = `${w}px`;
-    ghost.style.height = `${h}px`;
-    ghost.style.borderRadius = '4px';
-    ghost.style.padding = '2px 6px';
+    ghost.style.width = `${slotRect.width}px`;
+    ghost.style.height = `${slotRect.height}px`;
+    ghost.style.borderRadius = '3px';
+    ghost.style.padding = '0';
     ghost.style.display = 'flex';
     ghost.style.alignItems = 'center';
     ghost.style.justifyContent = 'center';
-    ghost.style.transform = 'scale(1.05)';
-    // Center ghost on the slot
-    ghost.style.left = `${slotRect.left + slotRect.width / 2 - w / 2}px`;
-    ghost.style.top = `${slotRect.top + slotRect.height / 2 - h / 2}px`;
+    ghost.style.transform = 'none';
+    // Position ghost exactly over the slot (top-left alignment)
+    ghost.style.left = `${slotRect.left}px`;
+    ghost.style.top = `${slotRect.top}px`;
     ghost.style.fontSize = '9px';
   } else {
     // Restore ghost to card size (small pill)
