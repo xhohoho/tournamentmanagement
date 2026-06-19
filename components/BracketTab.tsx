@@ -185,6 +185,8 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
     @keyframes drop-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(58,107,255,0); border-color: rgba(58,107,255,0.4); } 50% { box-shadow: 0 0 0 3px rgba(58,107,255,0.35), inset 0 0 12px rgba(58,107,255,0.12); border-color: rgba(58,107,255,0.9); } }
     @keyframes map-drop-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(58,107,255,0); border-color: rgba(58,107,255,0.35); } 50% { box-shadow: 0 0 0 2px rgba(58,107,255,0.3), inset 0 0 8px rgba(58,107,255,0.1); border-color: rgba(58,107,255,0.8); } }
     @keyframes match-card-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(77,124,255,0), 0 2px 8px rgba(0,0,0,0.12); } 50% { box-shadow: 0 0 0 3px rgba(77,124,255,0.28), 0 0 20px rgba(77,124,255,0.18), 0 2px 8px rgba(0,0,0,0.18); } }
+    @keyframes magnetic-drag-glow { 0%,100% { box-shadow: 0 4px 20px rgba(77,124,255,0.3), 0 0 0 1px rgba(77,124,255,0.5); } 50% { box-shadow: 0 8px 32px rgba(77,124,255,0.5), 0 0 0 2px rgba(77,124,255,0.7); } }
+    @keyframes magnetic-snap-highlight { 0%,100% { box-shadow: 0 0 0 0 rgba(77,124,255,0.2), inset 0 0 0 rgba(77,124,255,0); border-color: rgba(77,124,255,0.4); background: rgba(77,124,255,0.04); } 50% { box-shadow: 0 0 12px 3px rgba(77,124,255,0.35), inset 0 0 16px rgba(77,124,255,0.08); border-color: rgba(77,124,255,0.9); background: rgba(77,124,255,0.1); } }
     .trophy-spin { display:inline-block; animation: trophy-spin 0.7s ease-in-out 8 alternate; }
     .sparkle { position:absolute; font-size:10px; animation: sparkle 1.2s ease-in-out 5; }
     .slot-pop { animation: slot-pop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards; }
@@ -192,8 +194,205 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
     .drop-active { animation: drop-glow 0.9s ease-in-out infinite !important; }
     .map-drop-active { animation: map-drop-glow 0.9s ease-in-out infinite !important; }
     .match-card-glow { animation: match-card-glow 2.4s ease-in-out infinite; }
+    .magnetic-drag-ghost { animation: magnetic-drag-glow 1.2s ease-in-out infinite; pointer-events: none; }
+    .magnetic-snap-target { animation: magnetic-snap-highlight 0.7s ease-in-out infinite !important; }
   `;
   document.head.appendChild(s);
+}
+
+// ─── Magnetic Drag System ─────────────────────────────────────────────────────
+// Shared state so TeamPool and PlayerRow can participate in the same drag.
+// We use a module-level ref-like pattern via a custom event on `window`.
+
+interface DragState {
+  team: string;
+  source: 'pool' | 'slot';
+  sourceSection?: string;
+  sourceRi?: number;
+  sourceMi?: number;
+  sourceSlot?: 1 | 2;
+  ghostEl: HTMLElement | null;
+  nearestSlot: { el: HTMLElement; section: string; ri: number; mi: number; slot: 1 | 2 } | null;
+  mouseX: number;
+  mouseY: number;
+}
+
+let _dragState: DragState | null = null;
+
+function _getDropSlots(): { el: HTMLElement; section: string; ri: number; mi: number; slot: 1 | 2 }[] {
+  const slots: { el: HTMLElement; section: string; ri: number; mi: number; slot: 1 | 2 }[] = [];
+  const els = document.querySelectorAll<HTMLElement>('[data-drop-slot]');
+  els.forEach(el => {
+    const section = el.getAttribute('data-section') || '';
+    const ri = parseInt(el.getAttribute('data-ri') || '-1', 10);
+    const mi = parseInt(el.getAttribute('data-mi') || '-1', 10);
+    const slot = parseInt(el.getAttribute('data-slot') || '0', 10) as 1 | 2;
+    if (section && ri >= 0 && mi >= 0 && (slot === 1 || slot === 2)) {
+      slots.push({ el, section, ri, mi, slot });
+    }
+  });
+  return slots;
+}
+
+function _findNearestSlot(mx: number, my: number): { el: HTMLElement; section: string; ri: number; mi: number; slot: 1 | 2; dist: number } | null {
+  const slots = _getDropSlots();
+  let best: { el: HTMLElement; section: string; ri: number; mi: number; slot: 1 | 2; dist: number } | null = null;
+  for (const s of slots) {
+    const rect = s.el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2);
+    if (!best || dist < best.dist) best = { ...s, dist };
+  }
+  return best;
+}
+
+function _clearNearestHighlight() {
+  if (_dragState?.nearestSlot) {
+    _dragState.nearestSlot.el.classList.remove('magnetic-snap-target');
+    _dragState.nearestSlot = null;
+  }
+}
+
+function _onDragMouseMove(e: MouseEvent) {
+  if (!_dragState) return;
+  _dragState.mouseX = e.clientX;
+  _dragState.mouseY = e.clientY;
+
+  const mx = e.clientX;
+  const my = e.clientY;
+  const nearest = _findNearestSlot(mx, my);
+  const MAGNETIC_THRESHOLD = 60; // px to trigger magnetic pull
+
+  // Update ghost position
+  const ghost = _dragState.ghostEl;
+  if (ghost) {
+    let drawX = mx;
+    let drawY = my;
+
+    if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
+      // Magnetic pull: shift ghost 30% toward slot center
+      const rect = nearest.el.getBoundingClientRect();
+      const slotCx = rect.left + rect.width / 2;
+      const slotCy = rect.top + rect.height / 2;
+      const pullStrength = 0.3;
+      drawX = mx + (slotCx - mx) * pullStrength;
+      drawY = my + (slotCy - my) * pullStrength;
+    }
+
+    ghost.style.left = `${drawX - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${drawY - ghost.offsetHeight / 2}px`;
+  }
+
+  // Update nearest slot highlight
+  if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
+    if (_dragState.nearestSlot?.el !== nearest.el) {
+      _clearNearestHighlight();
+      nearest.el.classList.add('magnetic-snap-target');
+      _dragState.nearestSlot = { el: nearest.el, section: nearest.section, ri: nearest.ri, mi: nearest.mi, slot: nearest.slot };
+    }
+  } else {
+    _clearNearestHighlight();
+  }
+}
+
+function _onDragMouseUp(e: MouseEvent) {
+  if (!_dragState) return;
+
+  const nearest = _findNearestSlot(e.clientX, e.clientY);
+  const MAGNETIC_THRESHOLD = 60;
+
+  if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
+    // Dispatch custom event so BracketDisplay can handle the assignment
+    const detail: {
+      team: string;
+      source: 'pool' | 'slot';
+      targetSection: string;
+      targetRi: number;
+      targetMi: number;
+      targetSlot: 1 | 2;
+      sourceSection?: string;
+      sourceRi?: number;
+      sourceMi?: number;
+      sourceSlot?: 1 | 2;
+    } = {
+      team: _dragState.team,
+      source: _dragState.source,
+      targetSection: nearest.section,
+      targetRi: nearest.ri,
+      targetMi: nearest.mi,
+      targetSlot: nearest.slot,
+    };
+    if (_dragState.source === 'slot') {
+      detail.sourceSection = _dragState.sourceSection;
+      detail.sourceRi = _dragState.sourceRi;
+      detail.sourceMi = _dragState.sourceMi;
+      detail.sourceSlot = _dragState.sourceSlot;
+    }
+    window.dispatchEvent(new CustomEvent('magnetic-drop', { detail }));
+  }
+
+  _cleanupDrag();
+}
+
+function _cleanupDrag() {
+  _clearNearestHighlight();
+  if (_dragState?.ghostEl) {
+    _dragState.ghostEl.remove();
+  }
+  _dragState = null;
+  window.removeEventListener('mousemove', _onDragMouseMove);
+  window.removeEventListener('mouseup', _onDragMouseUp);
+}
+
+function startMagneticDrag(
+  e: React.MouseEvent,
+  team: string,
+  source: 'pool' | 'slot',
+  opts?: { section?: string; ri?: number; mi?: number; slot?: 1 | 2 },
+) {
+  if (_dragState) _cleanupDrag();
+
+  // Create ghost element
+  const ghost = document.createElement('div');
+  ghost.className = 'magnetic-drag-ghost';
+  ghost.textContent = team;
+  Object.assign(ghost.style, {
+    position: 'fixed',
+    left: `${e.clientX - 50}px`,
+    top: `${e.clientY - 16}px`,
+    zIndex: '9999',
+    padding: '6px 14px',
+    borderRadius: '8px',
+    border: '2px solid var(--accent)',
+    background: 'rgba(77,124,255,0.18)',
+    color: 'var(--accent)',
+    fontFamily: "'DM_Mono', monospace",
+    fontSize: '12px',
+    fontWeight: '700',
+    pointerEvents: 'none',
+    userSelect: 'none',
+    whiteSpace: 'nowrap',
+    transform: 'scale(1.08)',
+    backdropFilter: 'blur(4px)',
+  } as CSSStyleDeclaration);
+  document.body.appendChild(ghost);
+
+  _dragState = {
+    team,
+    source,
+    sourceSection: opts?.section,
+    sourceRi: opts?.ri,
+    sourceMi: opts?.mi,
+    sourceSlot: opts?.slot,
+    ghostEl: ghost,
+    nearestSlot: null,
+    mouseX: e.clientX,
+    mouseY: e.clientY,
+  };
+
+  window.addEventListener('mousemove', _onDragMouseMove);
+  window.addEventListener('mouseup', _onDragMouseUp);
 }
 
 // ─── GhostMatchCard ───────────────────────────────────────────────────────────
@@ -243,14 +442,11 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
           return (
             <div
               key={team}
-              draggable={isAdmin}
-              onDragStart={isAdmin
-                ? (e) => {
-                    e.dataTransfer.setData('text/team', team);
-                    e.dataTransfer.effectAllowed = 'move';
-                  }
-                : undefined
-              }
+              onMouseDown={isAdmin ? (e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                startMagneticDrag(e, team, 'pool');
+              } : undefined}
               className="px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs select-none transition-all"
               style={{
                 borderColor: used ? 'var(--accent-green)' : 'var(--accent)',
@@ -290,6 +486,7 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
 function PlayerRow({
   player, score, isWinner, isLoser, showScore, canEdit, maxWins, onCommit,
   canManualAssign, allTeams, onManualAssign, placeholder,
+  section, ri, mi, slot,
 }: {
   player: string | null; score: number; isWinner: boolean; isLoser: boolean;
   showScore: boolean; canEdit?: boolean; maxWins?: number;
@@ -298,6 +495,10 @@ function PlayerRow({
   allTeams?: string[];
   onManualAssign?: (team: string | null) => void;
   placeholder?: string | null;
+  section?: string;
+  ri?: number;
+  mi?: number;
+  slot?: 1 | 2;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -311,6 +512,8 @@ function PlayerRow({
   };
 
   const acceptsDrop = canManualAssign && !isWinner && !isLoser;
+  const canDragOut = canManualAssign && !!player && !isWinner && !isLoser;
+  const hasDropMeta = !!(section && ri !== undefined && mi !== undefined && slot);
 
   return (
     <div
@@ -324,6 +527,11 @@ function PlayerRow({
         borderRadius: dragOver ? 4 : undefined,
         transition: 'background 0.15s, outline 0.15s',
       }}
+      data-drop-slot={acceptsDrop && hasDropMeta ? 'true' : undefined}
+      data-section={acceptsDrop && hasDropMeta ? section : undefined}
+      data-ri={acceptsDrop && hasDropMeta ? String(ri) : undefined}
+      data-mi={acceptsDrop && hasDropMeta ? String(mi) : undefined}
+      data-slot={acceptsDrop && hasDropMeta ? String(slot) : undefined}
       onDragOver={acceptsDrop ? (e) => {
         if (e.dataTransfer.types.includes('text/team')) {
           e.preventDefault();
@@ -340,19 +548,21 @@ function PlayerRow({
     >
       <span
         className={`text-xs font-['DM_Mono'] flex-1 truncate${player ? ' slot-pop' : ''}`}
-        draggable={!!(canManualAssign && player && !isWinner && !isLoser)}
-        onDragStart={canManualAssign && player && !isWinner && !isLoser ? (e) => {
-          e.dataTransfer.setData('text/team', player);
-          e.dataTransfer.effectAllowed = 'move';
+        onMouseDown={canDragOut ? (e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          // Remove from current slot first, then start drag
           onManualAssign?.(null);
+          startMagneticDrag(e, player!, 'slot', { section, ri, mi, slot });
         } : undefined}
         style={{
           color: !player ? (canManualAssign ? 'var(--accent)' : 'var(--text-dim)') : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-muted)' : 'var(--text)',
           fontStyle: !player && !canManualAssign ? 'italic' : undefined,
           opacity: isLoser ? 1 : 1,
-          cursor: canManualAssign && player && !isWinner && !isLoser ? 'grab' : undefined,
+          cursor: canDragOut ? 'grab' : undefined,
         }}
-        title={canManualAssign && player && !isWinner && !isLoser ? 'Drag to remove' : canManualAssign && !player ? 'Drop a team here' : undefined}
+        title={canDragOut ? 'Drag to remove' : canManualAssign && !player ? 'Drop a team here' : undefined}
       >
         {isWinner && '✓ '}
         {player ?? (isLoser ? 'BYE' : (placeholder ?? 'TBD'))}
@@ -475,6 +685,7 @@ function MatchCard({
   p1SlotKey, p2SlotKey, isSlotRevealed,
   allTeams, onManualAssign, p1Placeholder, p2Placeholder,
   onCardClick,
+  section, ri, mi,
 }: {
   match: BracketMatch; matchKey: string;
   onScore: (p1wins: number, p2wins: number) => void;
@@ -489,6 +700,9 @@ function MatchCard({
   p1Placeholder?: string | null;
   p2Placeholder?: string | null;
   onCardClick?: () => void;
+  section?: string;
+  ri?: number;
+  mi?: number;
 }) {
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
@@ -516,8 +730,8 @@ function MatchCard({
         onClick={onCardClick}
         title={onCardClick ? 'Click to view match details' : undefined}
       >
-        <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} placeholder={p1Placeholder} />
-        <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(2, team)} placeholder={p2Placeholder} />
+        <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} placeholder={p1Placeholder} section={section} ri={ri} mi={mi} slot={1} />
+        <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(2, team)} placeholder={p2Placeholder} section={section} ri={ri} mi={mi} slot={2} />
         <MapSlots matchKey={matchKey} slotCount={slotCount} isAdmin={isAdmin} />
       </div>
       {isModified && (
@@ -897,6 +1111,29 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
   const r0 = bracket.upper[0] ?? [];
   r0.forEach(m => { if (m.p1) assignedTeams.add(m.p1); if (m.p2) assignedTeams.add(m.p2); });
 
+  // Listen for magnetic-drop custom events from the drag system
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        team: string;
+        source: 'pool' | 'slot';
+        targetSection: string;
+        targetRi: number;
+        targetMi: number;
+        targetSlot: 1 | 2;
+        sourceSection?: string;
+        sourceRi?: number;
+        sourceMi?: number;
+        sourceSlot?: 1 | 2;
+      };
+      // If dragging from a slot, the source removal was already handled by PlayerRow's onMouseDown.
+      // We just need to assign to the target.
+      await onManualAssign(detail.targetSection, detail.targetRi, detail.targetMi, detail.targetSlot, detail.team);
+    };
+    window.addEventListener('magnetic-drop', handler);
+    return () => window.removeEventListener('magnetic-drop', handler);
+  }, [onManualAssign]);
+
   return (
     <>
       <TeamPool teams={allTeams} assignedTeams={assignedTeams} isAdmin={isAdmin} />
@@ -948,6 +1185,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('thirdPlace', 0, 0, slot, team)}
               onCardClick={onCardClick ? () => onCardClick('m_thirdPlace_0_0') : undefined}
+              section="thirdPlace" ri={0} mi={0}
             />
           </div>
         );
@@ -1032,6 +1270,7 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
               onCardClick={onCardClick ? () => onCardClick(`m_upper_${colIdx}_${mi}`) : undefined}
+              section="upper" ri={colIdx} mi={mi}
             />
             {/* Match number badge — on the output connector line, just above the wire */}
             {!isLastCol && numbers.upper[colIdx]?.[mi] != null && (
@@ -1196,6 +1435,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
               onCardClick={onCardClick ? () => onCardClick(`m_upper_${colIdx}_${mi}`) : undefined}
+              section="upper" ri={colIdx} mi={mi}
             />
             {/* Match number badge on output connector line */}
             {numbers.upper[colIdx]?.[mi] != null && (
@@ -1250,6 +1490,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               p1Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 2)}
               onCardClick={onCardClick ? () => onCardClick(`m_lower_${colIdx}_${mi}`) : undefined}
+              section="lower" ri={colIdx} mi={mi}
             />
             {/* Match number badge on output connector line */}
             {numbers.lower[colIdx]?.[mi] != null && (
@@ -1307,6 +1548,7 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
           p1Placeholder={feederLabel(numbers, 'gf', 0, 0, 1)}
           p2Placeholder={feederLabel(numbers, 'gf', 0, 0, 2)}
           onCardClick={onCardClick ? () => onCardClick('m_gf_0_0') : undefined}
+          section="gf" ri={0} mi={0}
         />
         {gf.isReset && (
           <div className="mt-1 px-3 py-1 rounded-lg text-center" style={{ background: 'rgba(58,107,255,0.06)', border: '1px solid rgba(58,107,255,0.2)' }}>
@@ -1331,6 +1573,7 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
             allTeams={allTeams}
             onManualAssign={(slot, team) => onManualAssign('gf', 0, 0, slot, team)}
             onCardClick={onCardClick ? () => onCardClick('m_gf_0_1') : undefined}
+            section="gf" ri={0} mi={0}
             />
         </div>
       )}
