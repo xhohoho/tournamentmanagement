@@ -80,6 +80,33 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
     return Math.max(ZOOM_MIN_ABS, Math.min(fit, ZOOM_MAX));
   };
 
+  // Fit the whole bracket inside the box with NO scrollbar/overflow, anchored to the
+  // top-right (Grand Final lives top-right of a double-elim bracket, so that's what should
+  // stay in view by default). Any leftover space from the aspect-ratio mismatch goes on the
+  // left (and/or bottom), never on the right/top.
+  const fitTopRight = useCallback(() => {
+    const cw = containerRef.current?.clientWidth ?? 0;
+    const ch = containerRef.current?.clientHeight ?? 0;
+    const contentW = contentRef.current?.offsetWidth ?? 0;
+    const contentH = contentRef.current?.offsetHeight ?? 0;
+    if (!cw || !ch || !contentW || !contentH) return;
+    const fit = Math.max(ZOOM_MIN_ABS, Math.min(Math.min(cw / contentW, ch / contentH), ZOOM_MAX));
+    const diffX = cw - contentW * fit; // leftover horizontal space (>=0) — goes on the left
+    setScale(fit);
+    setTx(diffX); // flush right
+    setTy(0);     // flush top
+  }, []);
+
+  // Land on the fitted top-right view as soon as the bracket has its real size measured.
+  useEffect(() => {
+    fitTopRight();
+    const ro = new ResizeObserver(() => fitTopRight());
+    if (containerRef.current) ro.observe(containerRef.current);
+    if (contentRef.current) ro.observe(contentRef.current);
+    return () => ro.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Snap the leading edge to the nearest match-card grid line — if more than half
   // a card/column is cut off, advance to the next one; otherwise pull back to show it in full.
   const ROW_UNIT = CARD_H + ROW_GAP;
@@ -115,6 +142,12 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
       setScale(prevScale => {
         const minScale = getMinScale();
         const newScale = Math.min(ZOOM_MAX, Math.max(minScale, prevScale * (1 + dir * 0.12)));
+        if (dir === -1 && newScale <= minScale + 0.0001) {
+          // Bottomed out on zoom-out — snap straight to the top-right fit instead of
+          // wherever the cursor-anchored math would otherwise land it.
+          fitTopRight();
+          return newScale;
+        }
         const ratio = newScale / prevScale;
         setTx(prevTx => clampX(cx - (cx - prevTx) * ratio, newScale));
         setTy(prevTy => clampY(cy - (cy - prevTy) * ratio, newScale));
@@ -170,7 +203,7 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
     window.removeEventListener('mouseup', onMouseUp);
   }, [onMouseMove, onMouseUp]);
 
-  const resetView = () => { setScale(1); setTx(0); setTy(0); };
+  const resetView = () => fitTopRight();
 
   return (
     <div
