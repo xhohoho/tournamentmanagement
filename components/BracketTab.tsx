@@ -185,17 +185,28 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
     @keyframes drop-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(58,107,255,0); border-color: rgba(58,107,255,0.4); } 50% { box-shadow: 0 0 0 3px rgba(58,107,255,0.35), inset 0 0 12px rgba(58,107,255,0.12); border-color: rgba(58,107,255,0.9); } }
     @keyframes map-drop-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(58,107,255,0); border-color: rgba(58,107,255,0.35); } 50% { box-shadow: 0 0 0 2px rgba(58,107,255,0.3), inset 0 0 8px rgba(58,107,255,0.1); border-color: rgba(58,107,255,0.8); } }
     @keyframes match-card-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(77,124,255,0), 0 2px 8px rgba(0,0,0,0.12); } 50% { box-shadow: 0 0 0 3px rgba(77,124,255,0.28), 0 0 20px rgba(77,124,255,0.18), 0 2px 8px rgba(0,0,0,0.18); } }
-    @keyframes magnetic-drag-glow { 0%,100% { box-shadow: 0 4px 20px rgba(77,124,255,0.3), 0 0 0 1px rgba(77,124,255,0.5); } 50% { box-shadow: 0 8px 32px rgba(77,124,255,0.5), 0 0 0 2px rgba(77,124,255,0.7); } }
-    @keyframes magnetic-snap-highlight { 0%,100% { box-shadow: 0 0 0 0 rgba(77,124,255,0.2), inset 0 0 0 rgba(77,124,255,0); border-color: rgba(77,124,255,0.4); background: rgba(77,124,255,0.04); } 50% { box-shadow: 0 0 12px 3px rgba(77,124,255,0.35), inset 0 0 16px rgba(77,124,255,0.08); border-color: rgba(77,124,255,0.9); background: rgba(77,124,255,0.1); } }
+    @keyframes magnetic-drag-glow {
+      0%,100% { box-shadow: 0 4px 20px rgba(77,124,255,0.3); }
+      50% { box-shadow: 0 8px 32px rgba(77,124,255,0.5); }
+    }
+    @keyframes magnetic-snap-highlight {
+      0%,100% { box-shadow: 0 0 0 0 rgba(77,124,255,0); }
+      50% { box-shadow: 0 0 12px 4px rgba(77,124,255,0.4); }
+    }
     .trophy-spin { display:inline-block; animation: trophy-spin 0.7s ease-in-out 8 alternate; }
     .sparkle { position:absolute; font-size:10px; animation: sparkle 1.2s ease-in-out 5; }
     .slot-pop { animation: slot-pop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards; }
     .ghost-card { animation: ghost-pulse 2s ease-in-out infinite; }
-    .drop-active { animation: drop-glow 0.9s ease-in-out infinite !important; }
-    .map-drop-active { animation: map-drop-glow 0.9s ease-in-out infinite !important; }
+    .drop-active { animation: drop-glow 0.9s ease-in-out infinite; }
+    .map-drop-active { animation: map-drop-glow 0.9s ease-in-out infinite; }
     .match-card-glow { animation: match-card-glow 2.4s ease-in-out infinite; }
     .magnetic-drag-ghost { animation: magnetic-drag-glow 1.2s ease-in-out infinite; pointer-events: none; }
-    .magnetic-snap-target { animation: magnetic-snap-highlight 0.7s ease-in-out infinite !important; }
+    .magnetic-snap-target {
+      animation: magnetic-snap-highlight 0.8s ease-in-out infinite;
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+      border-radius: 4px;
+    }
   `;
   document.head.appendChild(s);
 }
