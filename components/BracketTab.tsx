@@ -39,42 +39,23 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   useEffect(() => { tyRef.current = ty; }, [ty]);
   useEffect(() => { scaleRef.current = scale; }, [scale]);
 
-  // No rubber-band overshoot allowed on the leading (left/top) edge — even a small
-  // overshoot here let a drag introduce whitespace that wasn't there before (e.g.
-  // dragging down exposed a gap at the top even though the bracket was already flush
-  // against it).
-  const EDGE_SLACK = 0;
-
-  // Extra trailing (right-side) pan room, horizontal only. Columns that sit pinned
-  // almost flush against the true right edge of the content (e.g. the Grand Final
-  // card in a double-elim bracket) would otherwise be unreachable on the left/middle
-  // of the screen, since panning is clamped to never go past the true edge. This only
-  // ever reveals blank canvas on the right — it can never produce left-side whitespace.
-  const TRAILING_SLACK_X = 480;
-
-  const clampAxis = (val: number, containerSize: number, contentSize: number, trailingSlack = 0) => {
-    const diff = containerSize - contentSize; // positive → content smaller than the viewport
-    let lo: number, hi: number;
-    if (diff >= 0) {
-      // Content fully fits this axis — lock flush to the start (val=0). A positive val
-      // here would shift content right/down and manufacture whitespace on the left/top,
-      // which must never happen. Any leftover space from the aspect-ratio mismatch stays
-      // on the right/bottom only, so this axis isn't draggable at all in this case.
-      lo = 0;
-      hi = 0;
-    } else {
-      // Content bigger than viewport — edge clamp. trailingSlack extends only the
-      // far/left-pan limit (lo), letting the view scroll a bit past the true right
-      // edge so right-pinned content can be pulled toward the middle/left. The near
-      // edge (hi) keeps zero slack, so the left/top can never show whitespace.
-      lo = diff - trailingSlack;
-      hi = EDGE_SLACK;
-    }
+  // The only thing that must never happen is blank space appearing on the left/top.
+  // That happens exactly when tx (or ty) is positive — so hi is always 0. On the other
+  // side, you can pan as far left/up as you want (negative tx/ty) without ever exposing
+  // left/top blank, right up until the content's far edge reaches the screen's near edge
+  // (tx = -contentSize). Past that point the screen's near edge would show nothing, which
+  // IS blank — so that's the one true floor. Within [-contentSize, 0], dragging is always
+  // free to push earlier columns out of view and pull later ones (e.g. Upper Round 2, the
+  // Upper Final, or the Grand Final) all the way to the left/top edge, at any zoom level.
+  // Extra blank on the right/bottom is fine — it's just never permitted on the left/top.
+  const clampAxis = (val: number, contentSize: number) => {
+    const lo = -contentSize;
+    const hi = 0;
     return Math.min(hi, Math.max(lo, val));
   };
 
-  const clampX = (val: number, s: number) => clampAxis(val, containerRef.current?.clientWidth ?? 0, (contentRef.current?.offsetWidth ?? 0) * s, TRAILING_SLACK_X);
-  const clampY = (val: number, s: number) => clampAxis(val, containerRef.current?.clientHeight ?? 0, (contentRef.current?.offsetHeight ?? 0) * s);
+  const clampX = (val: number, s: number) => clampAxis(val, (contentRef.current?.offsetWidth ?? 0) * s);
+  const clampY = (val: number, s: number) => clampAxis(val, (contentRef.current?.offsetHeight ?? 0) * s);
 
   // Dynamic zoom-out floor — never let the bracket shrink past the point where it
   // exactly fills the container on its limiting axis. Without this, zooming out kept
@@ -118,10 +99,9 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   // Snap the leading edge to the nearest match-card grid line — if more than half
   // a card/column is cut off, advance to the next one; otherwise pull back to show it in full.
   const ROW_UNIT = CARD_H + ROW_GAP;
-  const snapAxis = (pos: number, unit: number, contentSize: number, containerSize: number, s: number) => {
-    if (contentSize * s <= containerSize) return pos; // whole axis already fits — nothing to snap
+  const snapAxis = (pos: number, unit: number, s: number) => {
     const leadingEdge = -pos / s;
-    if (leadingEdge <= 0) return pos; // already showing the true start
+    if (leadingEdge <= 0) return pos; // already showing the true start — nothing to snap
     const unitIndex = Math.floor(leadingEdge / unit);
     const cutFraction = (leadingEdge - unitIndex * unit) / unit;
     const snappedEdge = cutFraction > 0.5 ? (unitIndex + 1) * unit : unitIndex * unit;
@@ -181,12 +161,8 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
 
     // Snap to grid on release — read live values via refs, not closed-over state
     const s = scaleRef.current;
-    const cw = containerRef.current?.clientWidth ?? 0;
-    const ch = containerRef.current?.clientHeight ?? 0;
-    const contentW = contentRef.current?.offsetWidth ?? 0;
-    const contentH = contentRef.current?.offsetHeight ?? 0;
-    const snappedTx = clampX(snapAxis(txRef.current, COL_W, contentW, cw, s), s);
-    const snappedTy = clampY(snapAxis(tyRef.current, ROW_UNIT, contentH, ch, s), s);
+    const snappedTx = clampX(snapAxis(txRef.current, COL_W, s), s);
+    const snappedTy = clampY(snapAxis(tyRef.current, ROW_UNIT, s), s);
     if (Math.abs(snappedTx - txRef.current) > 0.5 || Math.abs(snappedTy - tyRef.current) > 0.5) {
       setIsSnapping(true);
       setTx(snappedTx);
