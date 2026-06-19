@@ -897,8 +897,8 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
   return (
     <>
       <TeamPool teams={allTeams} assignedTeams={assignedTeams} isAdmin={isAdmin} />
-      <div className="t-surface border t-border rounded-xl p-5" style={{ position: 'relative' }}>
-        <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
+      <div className="t-surface border t-border rounded-xl p-5 flex flex-col" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6 shrink-0">
           {bracket.type === 'single' ? 'Bracket' : 'Tournament Bracket'}
           <div className="flex gap-2">
             <span className={`text-[10px] font-['DM_Mono'] px-2.5 py-1 rounded-md border font-bold tracking-widest uppercase ${bracket.type === 'single' ? 'bg-[rgba(232,41,74,0.12)] text-[var(--accent-red)] border-[rgba(232,41,74,0.3)]' : 'bg-[rgba(58,107,255,0.12)] text-[var(--accent)] border-[rgba(58,107,255,0.3)]'}`}>{bracket.type === 'single' ? 'Single Elim' : 'Double Elim'}</span>
