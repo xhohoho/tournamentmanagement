@@ -18,7 +18,7 @@ function colSpacing(colIdx: number): number {
 }
 
 // ─── PanZoomCanvas — drag with mouse to pan, scroll wheel to zoom ────────────
-const ZOOM_MIN_ABS = 0.1; // absolute sanity floor — the real floor is the dynamic fit-scale below
+const ZOOM_MIN_ABS = 0.1;
 const ZOOM_MAX = 2;
 
 function PanZoomCanvas({ children }: { children: React.ReactNode }) {
@@ -31,7 +31,6 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
 
-  // Live refs so the mouseup listener always reads the current position, never a stale closure
   const txRef = useRef(0);
   const tyRef = useRef(0);
   const scaleRef = useRef(1);
@@ -310,7 +309,7 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
   document.head.appendChild(s);
 }
 
-// ─── GhostMatchCard — shown when bracket exists but teams not yet shuffled in ─
+// ─── GhostMatchCard ───────────────────────────────────────────────────────────
 function GhostMatchCard({ slotIdx }: { slotIdx: number }) {
   return (
     <div
@@ -336,7 +335,7 @@ function GhostMatchCard({ slotIdx }: { slotIdx: number }) {
   );
 }
 
-// ─── TeamPool — persistent draggable team card pool above the bracket ────────
+// ─── TeamPool ─────────────────────────────────────────────────────────────────
 function TeamPool({ teams, assignedTeams, isAdmin }: {
   teams: string[];
   assignedTeams: Set<string>;
@@ -580,6 +579,8 @@ function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCoun
 }
 
 // ─── MatchCard ────────────────────────────────────────────────────────────────
+// The match number badge is rendered INSIDE the card (top-left corner overlay)
+// so it never escapes the card's bounding box and can't be clipped by the canvas.
 function MatchCard({
   match, matchKey, onScore, onUndo, isAdmin, highlightBorder,
   p1SlotKey, p2SlotKey, isSlotRevealed,
@@ -620,22 +621,26 @@ function MatchCard({
 
   return (
     <div style={{ position: 'relative' }}>
-      {matchNumber != null && (
-        <div
-          className="font-['DM_Mono']"
-          style={{
-            position: 'absolute', top: -9, left: -9, width: 18, height: 18, borderRadius: 9,
-            background: 'var(--bg-elevated)', border: '1px solid var(--border-mid)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 9, color: 'var(--text-dim)', zIndex: 5,
-          }}
-          title={`Match ${matchNumber}`}
-        >{matchNumber}</div>
-      )}
       <div
         className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col"
-        style={{ width: CARD_W, height: CARD_H, ...borderStyle }}
+        style={{ width: CARD_W, height: CARD_H, position: 'relative', ...borderStyle }}
       >
+        {/* Match number badge — inside the card, top-left corner, so it's never clipped */}
+        {matchNumber != null && (
+          <div
+            className="font-['DM_Mono']"
+            style={{
+              position: 'absolute', top: 4, left: 4,
+              width: 16, height: 16, borderRadius: 8,
+              background: 'var(--bg-base)',
+              border: '1px solid var(--border-mid)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 8, color: 'var(--text-dim)', zIndex: 5,
+              lineHeight: 1,
+            }}
+            title={`Match ${matchNumber}`}
+          >{matchNumber}</div>
+        )}
         <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} placeholder={p1Placeholder} />
         <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(2, team)} placeholder={p2Placeholder} />
         <MapSlots matchKey={matchKey} slotCount={slotCount} isAdmin={isAdmin} />
@@ -653,7 +658,7 @@ function MatchCard({
   );
 }
 
-// ─── StepIndicator — shows Generate → Shuffle progress bar ──────────────────
+// ─── StepIndicator ───────────────────────────────────────────────────────────
 function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
   const steps = [
     { n: 1, label: 'Format' },
@@ -693,7 +698,7 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
   );
 }
 
-// ─── SpinQueuePanel — admin-only floating Spin Queue ─────────────────────────
+// ─── SpinQueuePanel ───────────────────────────────────────────────────────────
 function SpinQueuePanel({ spinResults }: { spinResults: string[] }) {
   return (
     <div
@@ -960,7 +965,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   );
 }
 
-// ─── BracketDisplay — top-level router ───────────────────────────────────────
+// ─── BracketDisplay ───────────────────────────────────────────────────────────
 function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onUndo, isSlotRevealed, allTeams, onManualAssign }: {
   bracket: Bracket; isAdmin: boolean; isSeeded: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
@@ -1285,7 +1290,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
         <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold absolute" style={{ top: lbOriginY - HEADER_H, left: 0, color: 'var(--accent)', opacity: 0.7 }}>Lower Bracket</div>
       )}
 
-      {/* LB cards — consistent naming: Lower Round N / Lower Final */}
+      {/* LB cards */}
       {lbRounds.map((round, colIdx) => {
         const isBo3lb = round[0]?.format === 'bo3';
         const isBo5lb = round[0]?.format === 'bo5';
