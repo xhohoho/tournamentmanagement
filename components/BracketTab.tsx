@@ -18,113 +18,60 @@ function colSpacing(colIdx: number): number {
   return (CARD_H + ROW_GAP) * Math.pow(2, colIdx);
 }
 
-// ─── PanZoomCanvas — drag with mouse to pan, scroll wheel to zoom ────────────
-const ZOOM_MIN_ABS = 0.1;
-const ZOOM_MAX = 2;
-
-function PanZoomCanvas({ children }: { children: React.ReactNode }) {
+// ─── FitCanvas — auto-zoom to fit everything on screen, drag to pan ───────────
+function FitCanvas({ children }: { children: React.ReactNode }) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
-  const [isSnapping, setIsSnapping] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
 
-  const txRef = useRef(0);
-  const tyRef = useRef(0);
-  const scaleRef = useRef(1);
-  useEffect(() => { txRef.current = tx; }, [tx]);
-  useEffect(() => { tyRef.current = ty; }, [ty]);
-  useEffect(() => { scaleRef.current = scale; }, [scale]);
-
-  const clampAxis = (val: number, contentSize: number) => {
-    const lo = -contentSize;
-    const hi = 0;
-    return Math.min(hi, Math.max(lo, val));
-  };
-
-  const clampX = (val: number, s: number) => clampAxis(val, (contentRef.current?.offsetWidth ?? 0) * s);
-  const clampY = (val: number, s: number) => clampAxis(val, (contentRef.current?.offsetHeight ?? 0) * s);
-
-  const getMinScale = () => {
+  const clampX = (val: number, s: number) => {
     const cw = containerRef.current?.clientWidth ?? 0;
+    const contentW = (contentRef.current?.offsetWidth ?? 0) * s;
+    const lo = Math.min(0, cw - contentW);
+    return Math.max(lo, Math.min(0, val));
+  };
+  const clampY = (val: number, s: number) => {
     const ch = containerRef.current?.clientHeight ?? 0;
-    const contentW = contentRef.current?.offsetWidth ?? 0;
-    const contentH = contentRef.current?.offsetHeight ?? 0;
-    if (!cw || !ch || !contentW || !contentH) return ZOOM_MIN_ABS;
-    const fit = Math.min(cw / contentW, ch / contentH);
-    return Math.max(ZOOM_MIN_ABS, Math.min(fit, ZOOM_MAX));
+    const contentH = (contentRef.current?.offsetHeight ?? 0) * s;
+    const lo = Math.min(0, ch - contentH);
+    return Math.max(lo, Math.min(0, val));
   };
 
-  const fitTopLeft = useCallback(() => {
+  const fitToScreen = useCallback(() => {
     const cw = containerRef.current?.clientWidth ?? 0;
     const ch = containerRef.current?.clientHeight ?? 0;
     const contentW = contentRef.current?.offsetWidth ?? 0;
     const contentH = contentRef.current?.offsetHeight ?? 0;
     if (!cw || !ch || !contentW || !contentH) return;
-    const fit = Math.max(ZOOM_MIN_ABS, Math.min(Math.min(cw / contentW, ch / contentH), ZOOM_MAX));
+    const fit = Math.min(cw / contentW, ch / contentH);
     setScale(fit);
     setTx(0);
     setTy(0);
   }, []);
 
   useEffect(() => {
-    fitTopLeft();
-    const ro = new ResizeObserver(() => fitTopLeft());
-    if (containerRef.current) ro.observe(containerRef.current);
-    if (contentRef.current) ro.observe(contentRef.current);
-    return () => ro.disconnect();
+    // Fit after children render (which updates contentRef dimensions)
+    const timer = requestAnimationFrame(fitToScreen);
+    return () => cancelAnimationFrame(timer);
+  // Re-fit whenever children change (bracket data, match count, etc.)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const ROW_UNIT = CARD_H + ROW_GAP;
-  const snapAxis = (pos: number, unit: number, s: number) => {
-    const leadingEdge = -pos / s;
-    if (leadingEdge <= 0) return pos;
-    const unitIndex = Math.floor(leadingEdge / unit);
-    const cutFraction = (leadingEdge - unitIndex * unit) / unit;
-    const snappedEdge = cutFraction > 0.5 ? (unitIndex + 1) * unit : unitIndex * unit;
-    return -snappedEdge * s;
-  };
-
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-  }, []);
+  }, [children]);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const handler = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const rect = el.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      const dir = e.deltaY > 0 ? -1 : 1;
-      setScale(prevScale => {
-        const minScale = getMinScale();
-        const newScale = Math.min(ZOOM_MAX, Math.max(minScale, prevScale * (1 + dir * 0.12)));
-        if (dir === -1 && newScale <= minScale + 0.0001) {
-          fitTopLeft();
-          return newScale;
-        }
-        const ratio = newScale / prevScale;
-        setTx(prevTx => clampX(cx - (cx - prevTx) * ratio, newScale));
-        setTy(prevTy => clampY(cy - (cy - prevTy) * ratio, newScale));
-        return newScale;
-      });
-    };
-    el.addEventListener('wheel', handler, { passive: false });
-    return () => el.removeEventListener('wheel', handler);
-  }, []);
+    const ro = new ResizeObserver(fitToScreen);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [fitToScreen]);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     const d = dragRef.current;
     if (!d) return;
-    setTx(clampX(d.startTx + (e.clientX - d.startX), scale));
-    setTy(clampY(d.startTy + (e.clientY - d.startY), scale));
+    setTx(prev => clampX(d.startTx + (e.clientX - d.startX), scale));
+    setTy(prev => clampY(d.startTy + (e.clientY - d.startY), scale));
   }, [scale]);
 
   const onMouseUp = useCallback(() => {
@@ -132,16 +79,6 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
     setIsPanning(false);
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
-
-    const s = scaleRef.current;
-    const snappedTx = clampX(snapAxis(txRef.current, COL_W, s), s);
-    const snappedTy = clampY(snapAxis(tyRef.current, ROW_UNIT, s), s);
-    if (Math.abs(snappedTx - txRef.current) > 0.5 || Math.abs(snappedTy - tyRef.current) > 0.5) {
-      setIsSnapping(true);
-      setTx(snappedTx);
-      setTy(snappedTy);
-      window.setTimeout(() => setIsSnapping(false), 260);
-    }
   }, [onMouseMove]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -159,15 +96,12 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
     window.removeEventListener('mouseup', onMouseUp);
   }, [onMouseMove, onMouseUp]);
 
-  const resetView = () => fitTopLeft();
-
   return (
     <div
       ref={containerRef}
-      onWheel={onWheel}
       onMouseDown={onMouseDown}
       className="relative overflow-hidden rounded-lg select-none"
-      style={{ height: '68vh', minHeight: 420, cursor: isPanning ? 'grabbing' : 'grab', touchAction: 'none', overscrollBehavior: 'contain', background: 'var(--bg)' }}
+      style={{ flex: 1, minHeight: 0, cursor: isPanning ? 'grabbing' : 'grab', touchAction: 'none', overscrollBehavior: 'contain', background: 'var(--bg)' }}
     >
       <div
         ref={contentRef}
@@ -176,20 +110,9 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
           transformOrigin: '0 0',
           display: 'inline-block',
           willChange: 'transform',
-          transition: isSnapping ? 'transform 0.26s cubic-bezier(0.22,1,0.36,1)' : 'none',
         }}
       >
         {children}
-      </div>
-      <div className="absolute bottom-2 right-2 flex items-center gap-2 font-['DM_Mono'] text-[10px] t-dim z-10 pointer-events-none">
-        <span className="px-2 py-1 rounded t-elevated border t-border-mid">{Math.round(scale * 100)}%</span>
-        <button
-          onClick={(e) => { e.stopPropagation(); resetView(); }}
-          className="px-2 py-1 rounded border t-border-mid t-elevated hover:border-[var(--accent)] transition-colors pointer-events-auto"
-          style={{ cursor: 'pointer' }}
-        >
-          Reset View
-        </button>
       </div>
     </div>
   );
@@ -951,12 +874,12 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
           </div>
         </div>
 
-        <PanZoomCanvas>
+        <FitCanvas>
           {bracket.type === 'single'
             ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} onCardClick={onCardClick} />
             : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} onCardClick={onCardClick} />
           }
-        </PanZoomCanvas>
+        </FitCanvas>
       </div>
 
       {isSeeded && bracket.type === 'single' && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (() => {
