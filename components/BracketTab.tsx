@@ -28,7 +28,7 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
   const contentRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
 
-  // Clamp so you can't drag content off-screen (no white space visible)
+  // Clamp so you can't drag content fully off-screen
   const clampX = (val: number, s: number) => {
     const cw = containerRef.current?.clientWidth ?? 0;
     const contentW = (contentRef.current?.offsetWidth ?? 0) * s;
@@ -67,6 +67,29 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, [fitToScreen]);
+
+  // Mouse wheel zoom
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const dir = e.deltaY > 0 ? -1 : 1;
+      setScale(prev => {
+        const newScale = Math.max(0.1, Math.min(2, prev * (1 + dir * 0.12)));
+        const ratio = newScale / prev;
+        setTx(t => clampX(cx - (cx - t) * ratio, newScale));
+        setTy(t => clampY(cy - (cy - t) * ratio, newScale));
+        return newScale;
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [clampX, clampY]);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     const d = dragRef.current;
