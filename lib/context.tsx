@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Player, Team, Bracket, ChatMessage, FFAState, FFAMapInfo, FFAPlayerScore, FFAWinner } from '@/lib/types';
+import type { Player, Team, Bracket, ChatMessage, FFAState, FFAMapInfo, FFAPlayerScore, FFAWinner, CasterSheet, CasterMatch } from '@/lib/types';
 
 import type { TourneyContext } from '@/lib/types';
 
@@ -37,7 +37,7 @@ const GUARD_MS = 1500;
 const GUARD_FIELDS = [
   'players', 'roster', 'teamMode', 'teams', 'bracket', 'stageMaps',
   'maps', 'usedMaps', 'spinQueue', 'spinCategories', 'defaultMaps',
-  'joinKey', 'queueCap', 'queueLocked', 'chat', 'tickerText', 'ffa',
+  'joinKey', 'queueCap', 'queueLocked', 'chat', 'tickerText', 'ffa', 'casterSheet',
 ] as const;
 type GuardField = typeof GUARD_FIELDS[number];
 
@@ -73,6 +73,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [queueLocked, setQueueLockedState] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [ffa, setFFA] = useState<FFAState>({ matches: [], players: [] });
+  const [casterSheet, setCasterSheetState] = useState<CasterSheet>({ matches: [] });
   const [isAdmin, setIsAdminState] = useState(!!initialAdminToken);
   const [previewAsUser, setPreviewAsUserState] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(initialAdminToken ?? null);
@@ -155,6 +156,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('chat'))      setChatMessages(data.chatMessages as ChatMessage[] ?? []);
     if (!fromSSE || !guard.guarded('tickerText')) setTickerTextState(data.tickerText as string ?? '');
     if (!fromSSE || !guard.guarded('ffa'))       setFFA((data.ffa as FFAState) ?? { matches: [], players: [] });
+    if (!fromSSE || !guard.guarded('casterSheet')) setCasterSheetState((data.casterSheet as CasterSheet) ?? { matches: [] });
 
     // Server-driven counts (no optimistic guard needed)
     setVisitorCount(data.visitorCount as number ?? 0);
@@ -684,6 +686,20 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     await ffaPatch({ action: 'setWinners', matchId, winners });
   };
 
+  // ── Caster Sheet ──────────────────────────────────────────────────────────
+  const setCasterSheet = async (matches: CasterMatch[]) => {
+    guard.touch('casterSheet');
+    setCasterSheetState({ matches });
+    try {
+      const res = await apiFetch(`/api/caster?t=${t}`, 'PUT', { matches });
+      if (res.ok) {
+        const data = await res.json();
+        guard.touch('casterSheet');
+        if (data.casterSheet) setCasterSheetState(data.casterSheet);
+      }
+    } catch { /* keep optimistic update */ }
+  };
+
   const resetAll = async () => {
     (['players','roster','teams','bracket','maps','usedMaps','stageMaps','joinKey','queueCap','queueLocked','chat','spinQueue','spinCategories','defaultMaps','ffa'] as const satisfies readonly GuardField[]).forEach(f => guard.touch(f));
     await apiFetch(`/api/reset?t=${t}`, 'DELETE');
@@ -706,7 +722,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   return (
     <Ctx.Provider value={{
       players, roster, teamMode, teams, elimMode, bracket, maps, usedMaps, stageMaps, spinState, shuffleState, spinQueue,
-      spinCategories, spinItemCategory, defaultMaps, stageFormats, ffa,
+      spinCategories, spinItemCategory, defaultMaps, stageFormats, ffa, casterSheet,
       tournamentId,
       joinKey, chatMessages,
       queueCap, queueLocked,
@@ -724,6 +740,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,
       deleteFFAMatch, lockFFAMatch, updateFFAMapInfo, setFFAMatchImage, setFFAMatchScoreImage,
       setFFAMatchWinners,
+      setCasterSheet,
       resetAll,
     }}>
       {children}

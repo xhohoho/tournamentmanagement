@@ -114,6 +114,27 @@ export interface FFAWinner {
 }
 
 /** A single FFA match/round. */
+// ─── Caster Sheet ────────────────────────────────────────────────────────────
+
+/** A single match entry on the caster sheet. */
+export interface CasterMatch {
+  id: string;           // uuid-style, generated client-side
+  matchNo: string;      // e.g. "Match 1", "UB R1 M2"
+  team1: string;
+  team2: string;
+  maps: string;         // free-text, e.g. "DR, CC, OT"
+  side: string;         // free-text, e.g. "Coin spin — winner picks"
+  notes: string;        // any extra caster notes
+  result: string;       // e.g. "LMKY 2-1"
+  createdAt: number;
+  /** Optional binding to a bracket match card (e.g. "m_upper_0_0"), set when created via the bracket's 🎙 button. */
+  linkedMatchKey?: string;
+}
+
+export interface CasterSheet {
+  matches: CasterMatch[];
+}
+
 export interface FFAMatch {
   id: string;
   createdAt: number;
@@ -164,6 +185,7 @@ export interface ServerState {
   tickerText: string;
   stageFormats: import('./types').StageFormats;
   ffa: FFAState;
+  casterSheet: import('./types').CasterSheet;
   visitorCount: number;
   activeAdmins: string[];
 }
@@ -200,7 +222,7 @@ export interface StageFormats {
   grandFinal:         'bo1' | 'bo3' | 'bo5';
 }
 
-export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'ffa' | 'chat';
+export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'ffa' | 'chat' | 'caster';
 
 // ─── Context shape ─────────────────────────────────────────────────────────────
 // Exported so components can import the type without pulling in the full context module.
@@ -222,6 +244,7 @@ export interface TourneyContext {
   defaultMaps: string[];
   stageFormats: StageFormats;
   ffa: FFAState;
+  casterSheet: CasterSheet;
   isAdmin: boolean;
   previewAsUser: boolean;
   adminToken: string | null;
@@ -306,6 +329,8 @@ export interface TourneyContext {
   setFFAMatchImage: (matchId: string, imageUrl: string) => Promise<void>;
   setFFAMatchScoreImage: (matchId: string, scoreImageUrl: string) => Promise<void>;
   setFFAMatchWinners: (matchId: string, winners: FFAWinner[]) => Promise<void>;
+
+  setCasterSheet: (matches: import('./types').CasterMatch[]) => Promise<void>;
 
   resetAll: () => Promise<void>;
 }

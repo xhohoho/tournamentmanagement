@@ -9,6 +9,7 @@ import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
 import { MapsTab } from '@/components/MapsTab';
 import { FFATab } from '@/components/FFATab';
+import { CasterSheetTab } from '@/components/CasterSheetTab';
 import { ChatPanel } from '@/components/ChatPanel';
 import BottomTicker from '@/components/BottomTicker';
 import { useTourney } from '@/lib/context';
@@ -19,6 +20,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'players', icon: '👥', label: 'Players' },
   { id: 'teams',   icon: '🛡',  label: 'Teams'   },
   { id: 'bracket', icon: '🏆', label: 'Bracket'  },
+  { id: 'caster',  icon: '🎙', label: 'Caster'   },
   { id: 'maps',    icon: '🗺',  label: 'Maps'     },
   { id: 'ffa',     icon: '🎮', label: 'FFA'      },
 ];
@@ -80,8 +82,9 @@ TickerEditModal.displayName = 'TickerEditModal';
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
-  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText, ffa, sseStatus, visitorCount, activeAdminCount } = useTourney();
+  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText, ffa, sseStatus, visitorCount, activeAdminCount, casterSheet, setCasterSheet } = useTourney();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [highlightCasterId, setHighlightCasterId] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
     ? spinQueue.filter((_, i) => spinItemCategory[i] === activeCategory)
@@ -108,6 +111,32 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
     if (!resetConfirm) { setResetConfirm(true); setTimeout(() => setResetConfirm(false), 3000); return; }
     await resetAll();
     setResetConfirm(false);
+  };
+
+  // Click a 🎙 button on a bracket match card — jump to Caster tab, creating
+  // (or just selecting) the caster entry bound to that match via linkedMatchKey.
+  const handleOpenCaster = (matchKey: string, label: string, p1: string | null, p2: string | null) => {
+    const existing = casterSheet?.matches?.find(m => m.linkedMatchKey === matchKey);
+    if (existing) {
+      setHighlightCasterId(existing.id);
+    } else if (isAdmin) {
+      const id = `caster_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const next = {
+        id,
+        matchNo: label,
+        team1: p1 ?? '',
+        team2: p2 ?? '',
+        maps: '',
+        side: '',
+        notes: '',
+        result: '',
+        createdAt: Date.now(),
+        linkedMatchKey: matchKey,
+      };
+      setCasterSheet([...(casterSheet?.matches ?? []), next]);
+      setHighlightCasterId(id);
+    }
+    setActiveTab('caster');
   };
 
   // isAdmin from context is already (rawAdmin && !previewAsUser) — false during preview.
@@ -259,7 +288,8 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
           <div className="flex-1 min-h-0 flex flex-col px-8">
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={filteredSpinResults} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={filteredSpinResults} onOpenCaster={handleOpenCaster} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'caster'  ? '' : 'hidden'}`}><CasterSheetTab highlightId={highlightCasterId} onHighlightHandled={() => setHighlightCasterId(null)} /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab activeCategory={activeCategory} setActiveCategory={setActiveCategory} /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'ffa'     ? '' : 'hidden'}`}><FFATab /></div>
           </div>

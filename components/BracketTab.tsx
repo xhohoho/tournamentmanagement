@@ -586,6 +586,7 @@ function MatchCard({
   match, matchKey, onScore, onUndo, isAdmin, highlightBorder,
   p1SlotKey, p2SlotKey, isSlotRevealed,
   allTeams, onManualAssign, p1Placeholder, p2Placeholder,
+  onOpenCaster,
 }: {
   match: BracketMatch; matchKey: string;
   onScore: (p1wins: number, p2wins: number) => void;
@@ -599,6 +600,7 @@ function MatchCard({
   onManualAssign?: (slot: 1 | 2, team: string | null) => void;
   p1Placeholder?: string | null;
   p2Placeholder?: string | null;
+  onOpenCaster?: () => void;
 }) {
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
@@ -624,6 +626,13 @@ function MatchCard({
         className="t-elevated border rounded-xl overflow-hidden flex flex-col shadow-sm"
         style={{ width: CARD_W, height: CARD_H, position: 'relative', borderColor: highlightBorder ?? 'var(--border-mid)', borderWidth: highlightBorder ? 2 : 1.5 }}
       >
+        {onOpenCaster && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenCaster(); }}
+            className="absolute top-1 right-1 z-10 w-5 h-5 rounded flex items-center justify-center text-[10px] bg-[var(--bg-elevated)] border t-border-mid hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer transition-colors"
+            title="Open caster sheet for this match"
+          >🎙</button>
+        )}
         <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} placeholder={p1Placeholder} />
         <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(2, team)} placeholder={p2Placeholder} />
         <MapSlots matchKey={matchKey} slotCount={slotCount} isAdmin={isAdmin} />
@@ -756,7 +765,7 @@ function SpinQueuePanel({ spinResults }: { spinResults: string[] }) {
 }
 
 // ─── BracketTab ────────────────────────────────────────────────────────────────
-export function BracketTab({ spinResults }: { spinResults: string[] }) {
+export function BracketTab({ spinResults, onOpenCaster }: { spinResults: string[]; onOpenCaster?: (matchKey: string, label: string, p1: string | null, p2: string | null) => void }) {
   const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, manualSeedSlot } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -958,6 +967,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
             isSlotRevealed={isSlotRevealed}
             allTeams={teams.map(t => t.customName || t.name)}
             onManualAssign={manualSeedSlot}
+            onOpenCaster={onOpenCaster}
           />
         </div>
       ) : (
@@ -985,7 +995,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
 }
 
 // ─── BracketDisplay ───────────────────────────────────────────────────────────
-function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onUndo, isSlotRevealed, allTeams, onManualAssign }: {
+function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onUndo, isSlotRevealed, allTeams, onManualAssign, onOpenCaster }: {
   bracket: Bracket; isAdmin: boolean; isSeeded: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onThirdPlace: (p1wins: number, p2wins: number) => Promise<void>;
@@ -993,6 +1003,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
   isSlotRevealed: (slotKey: string) => boolean;
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
+  onOpenCaster?: (matchKey: string, label: string, p1: string | null, p2: string | null) => void;
 }) {
   const assignedTeams = new Set<string>();
   const r0 = bracket.upper[0] ?? [];
@@ -1016,8 +1027,8 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
 
         <PanZoomCanvas>
           {bracket.type === 'single'
-            ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} />
-            : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} />
+            ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} onOpenCaster={onOpenCaster} />
+            : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} onOpenCaster={onOpenCaster} />
           }
         </PanZoomCanvas>
       </div>
@@ -1048,6 +1059,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
               isSlotRevealed={isSlotRevealed}
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('thirdPlace', 0, 0, slot, team)}
+              onOpenCaster={onOpenCaster ? () => onOpenCaster('m_thirdPlace_0_0', '3rd Place Match', tp.p1, tp.p2) : undefined}
             />
           </div>
         );
@@ -1057,13 +1069,14 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
 }
 
 // ─── SingleElimCanvas ─────────────────────────────────────────────────────────
-function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, allTeams, onManualAssign }: {
+function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, allTeams, onManualAssign, onOpenCaster }: {
   bracket: Bracket; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isSlotRevealed: (slotKey: string) => boolean;
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
+  onOpenCaster?: (matchKey: string, label: string, p1: string | null, p2: string | null) => void;
 }) {
   const rounds = bracket.upper.filter(r => r.length > 0);
   if (rounds.length === 0) return null;
@@ -1130,6 +1143,7 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               onManualAssign={(slot, team) => onManualAssign('upper', colIdx, mi, slot, team)}
               p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
+              onOpenCaster={onOpenCaster ? () => onOpenCaster(`m_upper_${colIdx}_${mi}`, `${label} — Match ${numbers.upper[colIdx]?.[mi] ?? ''}`, match.p1, match.p2) : undefined}
             />
             {/* Match number badge — on the output connector line, just above the wire */}
             {!isLastCol && numbers.upper[colIdx]?.[mi] != null && (
@@ -1143,13 +1157,14 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
 }
 
 // ─── DoubleElimCanvas ─────────────────────────────────────────────────────────
-function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, allTeams, onManualAssign }: {
+function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, allTeams, onManualAssign, onOpenCaster }: {
   bracket: Bracket; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isSlotRevealed: (slotKey: string) => boolean;
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
+  onOpenCaster?: (matchKey: string, label: string, p1: string | null, p2: string | null) => void;
 }) {
   const ubRounds = bracket.upper.filter(r => r.length > 0);
   const lbRounds = (bracket.lower || []).filter(r => r.length > 0);
@@ -1292,6 +1307,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               onManualAssign={(slot, team) => onManualAssign('upper', colIdx, mi, slot, team)}
               p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
+              onOpenCaster={onOpenCaster ? () => onOpenCaster(`m_upper_${colIdx}_${mi}`, `${label} — Match ${numbers.upper[colIdx]?.[mi] ?? ''}`, match.p1, match.p2) : undefined}
             />
             {/* Match number badge on output connector line */}
             {numbers.upper[colIdx]?.[mi] != null && (
@@ -1308,7 +1324,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
         return (
           <div style={{ position: 'absolute', top: gfTopGF1 - HEADER_H, left: gfColX }}>
             <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold mb-1.5" style={{ color: 'var(--accent)' }}>Grand Final</div>
-            <GrandFinalCards gf={gf} lbFinalLoser={lbFinalLoser} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} numbers={numbers} />
+            <GrandFinalCards gf={gf} lbFinalLoser={lbFinalLoser} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} numbers={numbers} onOpenCaster={onOpenCaster} />
           </div>
         );
       })()}
@@ -1345,6 +1361,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               onManualAssign={(slot, team) => onManualAssign('lower', colIdx, mi, slot, team)}
               p1Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 2)}
+              onOpenCaster={onOpenCaster ? () => onOpenCaster(`m_lower_${colIdx}_${mi}`, `${label} — Match ${numbers.lower[colIdx]?.[mi] ?? ''}`, match.p1, match.p2) : undefined}
             />
             {/* Match number badge on output connector line */}
             {numbers.lower[colIdx]?.[mi] != null && (
@@ -1358,7 +1375,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
 }
 
 // ─── GrandFinalCards ─────────────────────────────────────────────────────────
-function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRevealed, allTeams, onManualAssign, numbers }: {
+function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRevealed, allTeams, onManualAssign, numbers, onOpenCaster }: {
   gf: GrandFinal; lbFinalLoser: string | null; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
@@ -1366,6 +1383,7 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
   numbers: MatchNumbers;
+  onOpenCaster?: (matchKey: string, label: string, p1: string | null, p2: string | null) => void;
 }) {
   const gf1: BracketMatch = {
     p1: gf.p1, p2: gf.p2, format: gf.format,
@@ -1400,6 +1418,7 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
           onManualAssign={(slot, team) => onManualAssign('gf', 0, 0, slot, team)}
           p1Placeholder={feederLabel(numbers, 'gf', 0, 0, 1)}
           p2Placeholder={feederLabel(numbers, 'gf', 0, 0, 2)}
+          onOpenCaster={onOpenCaster ? () => onOpenCaster('m_gf_0_0', 'Grand Final', gf1.p1, gf1.p2) : undefined}
         />
         {gf.isReset && (
           <div className="mt-1 px-3 py-1 rounded-lg text-center" style={{ background: 'rgba(58,107,255,0.06)', border: '1px solid rgba(58,107,255,0.2)' }}>
@@ -1423,6 +1442,7 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
             isSlotRevealed={isSlotRevealed}
             allTeams={allTeams}
             onManualAssign={(slot, team) => onManualAssign('gf', 0, 0, slot, team)}
+            onOpenCaster={onOpenCaster ? () => onOpenCaster('m_gf_0_1', 'Grand Final (Reset)', gf2.p1, gf2.p2) : undefined}
           />
         </div>
       )}
