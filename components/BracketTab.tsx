@@ -19,7 +19,7 @@ function colSpacing(colIdx: number): number {
 }
 
 // ─── FitCanvas — auto-zoom to fit everything on screen, drag to pan ───────────
-function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unknown[] }) {
+function FitCanvas({ children, bracket, teamCount }: { children: React.ReactNode; bracket: Bracket | null; teamCount: number }) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
@@ -55,15 +55,16 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
     setTy(0);
   }, []);
 
-  // Fit on mount and when bracket structure changes (rounds added/removed, type change)
-  // NOT on score updates or team assignments — those don't change dimensions
-  const fitKey = deps ? JSON.stringify(deps) : '';
+  // Fit on mount and when bracket structure genuinely changes dimensions.
+  // Use a stable signature (round counts + type) — NOT the bracket object itself
+  // which changes on every score update.
+  const fitSignature = `${bracket?.type ?? ''}-${bracket?.upper?.length ?? 0}-${(bracket?.lower?.length ?? 0)}-${teamCount}`;
   useLayoutEffect(() => {
     // Triple RAF to ensure all nested absolutely-positioned content has rendered
     const id = requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(fitToScreen)));
     return () => cancelAnimationFrame(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitKey]);
+  }, [fitSignature]);
 
   useEffect(() => {
     const ro = new ResizeObserver(fitToScreen);
@@ -912,7 +913,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
           </div>
         </div>
 
-        <FitCanvas deps={[bracket, allTeams.length]}>
+        <FitCanvas bracket={bracket} teamCount={allTeams.length}>
           {bracket.type === 'single'
             ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} onCardClick={onCardClick} />
             : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} onCardClick={onCardClick} />
