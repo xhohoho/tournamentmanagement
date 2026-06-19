@@ -39,18 +39,22 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   useEffect(() => { tyRef.current = ty; }, [ty]);
   useEffect(() => { scaleRef.current = scale; }, [scale]);
 
-  // Edge slack — how far past the content's true edge you can drag before it stops
-  const EDGE_SLACK = 60;
+  // No rubber-band overshoot allowed on any axis — even a small overshoot here let a
+  // drag introduce whitespace that wasn't there before (e.g. dragging down exposed a gap
+  // at the top even though the bracket was already flush against it).
+  const EDGE_SLACK = 0;
 
   const clampAxis = (val: number, containerSize: number, contentSize: number) => {
     const diff = containerSize - contentSize; // positive → content smaller than the viewport
     let lo: number, hi: number;
     if (diff >= 0) {
-      // Content fully fits — cap white space on each side to EDGE_SLACK, centered,
-      // so zooming out doesn't let you drag the content arbitrarily far off-center.
-      const center = diff / 2;
-      lo = center - EDGE_SLACK;
-      hi = center + EDGE_SLACK;
+      // Content fully fits this axis — allow sliding between flush-start (val=0) and
+      // flush-end (val=diff) ONLY. No slack here: any extra slack would let a drag push
+      // the content past its true edge and manufacture whitespace that wasn't there before
+      // (e.g. bracket already flush against the right/top — dragging must not be able to
+      // pull it away from that edge and expose empty space).
+      lo = 0;
+      hi = diff;
     } else {
       // Content bigger than viewport — normal edge clamp with a little slack past each true edge.
       lo = diff - EDGE_SLACK;
