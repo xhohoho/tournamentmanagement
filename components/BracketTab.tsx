@@ -205,14 +205,16 @@ if (typeof document !== 'undefined' && !document.getElementById('trophy-anim-sty
 // We use a module-level ref-like pattern via a custom event on `window`.
 
 interface DragState {
+  type: 'team' | 'map';
   team: string;
-  source: 'pool' | 'slot';
+  source: 'pool' | 'slot' | 'spinqueue';
   sourceSection?: string;
   sourceRi?: number;
   sourceMi?: number;
   sourceSlot?: 1 | 2;
   ghostEl: HTMLElement | null;
   nearestSlot: { el: HTMLElement; section: string; ri: number; mi: number; slot: 1 | 2 } | null;
+  nearestMapSlot: { el: HTMLElement; matchKey: string; slotIdx: number; roundSlot?: boolean } | null;
   mouseX: number;
   mouseY: number;
 }
@@ -234,9 +236,35 @@ function _getDropSlots(): { el: HTMLElement; section: string; ri: number; mi: nu
   return slots;
 }
 
+function _getMapDropSlots(): { el: HTMLElement; matchKey: string; slotIdx: number; roundSlot?: boolean }[] {
+  const slots: { el: HTMLElement; matchKey: string; slotIdx: number; roundSlot?: boolean }[] = [];
+  document.querySelectorAll<HTMLElement>('[data-drop-map]').forEach(el => {
+    const matchKey = el.getAttribute('data-match-key') || '';
+    const slotIdx = parseInt(el.getAttribute('data-slot-idx') || '-1', 10);
+    const roundSlot = el.getAttribute('data-round-slot') === 'true';
+    if (matchKey && slotIdx >= 0) {
+      slots.push({ el, matchKey, slotIdx, roundSlot });
+    }
+  });
+  return slots;
+}
+
 function _findNearestSlot(mx: number, my: number): { el: HTMLElement; section: string; ri: number; mi: number; slot: 1 | 2; dist: number } | null {
   const slots = _getDropSlots();
   let best: { el: HTMLElement; section: string; ri: number; mi: number; slot: 1 | 2; dist: number } | null = null;
+  for (const s of slots) {
+    const rect = s.el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2);
+    if (!best || dist < best.dist) best = { ...s, dist };
+  }
+  return best;
+}
+
+function _findNearestMapSlot(mx: number, my: number): { el: HTMLElement; matchKey: string; slotIdx: number; roundSlot?: boolean; dist: number } | null {
+  const slots = _getMapDropSlots();
+  let best: { el: HTMLElement; matchKey: string; slotIdx: number; roundSlot?: boolean; dist: number } | null = null;
   for (const s of slots) {
     const rect = s.el.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
@@ -261,19 +289,22 @@ function _onDragMouseMove(e: MouseEvent) {
 
   const mx = e.clientX;
   const my = e.clientY;
-  const nearest = _findNearestSlot(mx, my);
-  const MAGNETIC_THRESHOLD = 60; // px to trigger magnetic pull
+  const MAGNETIC_THRESHOLD = 60;
 
   const ghost = _dragState.ghostEl;
   if (!ghost) return;
 
-  // When in snap zone, resize ghost to match the drop slot block
-  const inSnapZone = !!(nearest && nearest.dist < MAGNETIC_THRESHOLD);
-  const snappedTo = inSnapZone ? nearest!.el : null;
+  // Find nearest appropriate drop target based on drag type
+  const nearestTeam = _findNearestSlot(mx, my);
+  const nearestMap = _findNearestMapSlot(mx, my);
+  const nearest = _dragState.type === 'map' ? nearestMap : nearestTeam;
 
-  if (snappedTo) {
+  const inSnapZone = !!(nearest && nearest.dist < MAGNETIC_THRESHOLD);
+  const snappedEl = inSnapZone ? nearest!.el : null;
+
+  if (snappedEl) {
     // Resize ghost to match the drop slot dimensions exactly
-    const slotRect = snappedTo.getBoundingClientRect();
+    const slotRect = snappedEl.getBoundingClientRect();
     ghost.style.width = `${slotRect.width}px`;
     ghost.style.height = `${slotRect.height}px`;
     ghost.style.borderRadius = '4px';
@@ -299,11 +330,18 @@ function _onDragMouseMove(e: MouseEvent) {
   }
 
   // Update nearest slot highlight
-  if (snappedTo) {
-    if (_dragState.nearestSlot?.el !== snappedTo) {
+  if (snappedEl) {
+    const prevEl = _dragState.type === 'map' ? _dragState.nearestMapSlot?.el : _dragState.nearestSlot?.el;
+    if (prevEl !== snappedEl) {
       _clearNearestHighlight();
-      snappedTo.classList.add('magnetic-snap-target');
-      _dragState.nearestSlot = { el: snappedTo, section: nearest!.section, ri: nearest!.ri, mi: nearest!.mi, slot: nearest!.slot };
+      snappedEl.classList.add('magnetic-snap-target');
+      if (_dragState.type === 'map' && nearestMap && nearestMap.dist < MAGNETIC_THRESHOLD) {
+        _dragState.nearestMapSlot = { el: snappedEl, matchKey: nearestMap.matchKey, slotIdx: nearestMap.slotIdx, roundSlot: nearestMap.roundSlot };
+        _dragState.nearestSlot = null;
+      } else if (nearestTeam && nearestTeam.dist < MAGNETIC_THRESHOLD) {
+        _dragState.nearestSlot = { el: snappedEl, section: nearestTeam.section, ri: nearestTeam.ri, mi: nearestTeam.mi, slot: nearestTeam.slot };
+        _dragState.nearestMapSlot = null;
+      }
     }
   } else {
     _clearNearestHighlight();
@@ -313,37 +351,51 @@ function _onDragMouseMove(e: MouseEvent) {
 function _onDragMouseUp(e: MouseEvent) {
   if (!_dragState) return;
 
-  const nearest = _findNearestSlot(e.clientX, e.clientY);
   const MAGNETIC_THRESHOLD = 60;
+  const nearestTeam = _findNearestSlot(e.clientX, e.clientY);
+  const nearestMap = _findNearestMapSlot(e.clientX, e.clientY);
+  const nearest = _dragState.type === 'map' ? nearestMap : nearestTeam;
 
   if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
-    // Dispatch custom event so BracketDisplay can handle the assignment
-    const detail: {
-      team: string;
-      source: 'pool' | 'slot';
-      targetSection: string;
-      targetRi: number;
-      targetMi: number;
-      targetSlot: 1 | 2;
-      sourceSection?: string;
-      sourceRi?: number;
-      sourceMi?: number;
-      sourceSlot?: 1 | 2;
-    } = {
-      team: _dragState.team,
-      source: _dragState.source,
-      targetSection: nearest.section,
-      targetRi: nearest.ri,
-      targetMi: nearest.mi,
-      targetSlot: nearest.slot,
-    };
-    if (_dragState.source === 'slot') {
-      detail.sourceSection = _dragState.sourceSection;
-      detail.sourceRi = _dragState.sourceRi;
-      detail.sourceMi = _dragState.sourceMi;
-      detail.sourceSlot = _dragState.sourceSlot;
+    if (_dragState.type === 'map' && nearestMap) {
+      // Map drop — dispatch with map-specific details
+      window.dispatchEvent(new CustomEvent('magnetic-drop-map', {
+        detail: {
+          map: _dragState.team,
+          matchKey: nearestMap.matchKey,
+          slotIdx: nearestMap.slotIdx,
+          roundSlot: !!nearestMap.roundSlot,
+        },
+      }));
+    } else if (_dragState.type === 'team' && nearestTeam) {
+      // Team drop
+      const detail: {
+        team: string;
+        source: 'pool' | 'slot' | 'spinqueue';
+        targetSection: string;
+        targetRi: number;
+        targetMi: number;
+        targetSlot: 1 | 2;
+        sourceSection?: string;
+        sourceRi?: number;
+        sourceMi?: number;
+        sourceSlot?: 1 | 2;
+      } = {
+        team: _dragState.team,
+        source: _dragState.source,
+        targetSection: nearestTeam.section,
+        targetRi: nearestTeam.ri,
+        targetMi: nearestTeam.mi,
+        targetSlot: nearestTeam.slot,
+      };
+      if (_dragState.source === 'slot') {
+        detail.sourceSection = _dragState.sourceSection;
+        detail.sourceRi = _dragState.sourceRi;
+        detail.sourceMi = _dragState.sourceMi;
+        detail.sourceSlot = _dragState.sourceSlot;
+      }
+      window.dispatchEvent(new CustomEvent('magnetic-drop', { detail }));
     }
-    window.dispatchEvent(new CustomEvent('magnetic-drop', { detail }));
   }
 
   _cleanupDrag();
@@ -362,10 +414,12 @@ function _cleanupDrag() {
 function startMagneticDrag(
   e: React.MouseEvent,
   team: string,
-  source: 'pool' | 'slot',
-  opts?: { section?: string; ri?: number; mi?: number; slot?: 1 | 2 },
+  source: 'pool' | 'slot' | 'spinqueue',
+  opts?: { section?: string; ri?: number; mi?: number; slot?: 1 | 2; type?: 'team' | 'map' },
 ) {
   if (_dragState) _cleanupDrag();
+
+  const type = opts?.type ?? 'team';
 
   // Create ghost element
   const ghost = document.createElement('div');
@@ -379,8 +433,8 @@ function startMagneticDrag(
     padding: '6px 14px',
     borderRadius: '8px',
     border: '2px solid var(--accent)',
-    background: 'rgba(77,124,255,0.18)',
-    color: 'var(--accent)',
+    background: type === 'map' ? 'rgba(224,144,16,0.18)' : 'rgba(77,124,255,0.18)',
+    color: type === 'map' ? 'var(--accent-gold)' : 'var(--accent)',
     fontFamily: "'DM_Mono', monospace",
     fontSize: '12px',
     fontWeight: '700',
@@ -393,6 +447,7 @@ function startMagneticDrag(
   document.body.appendChild(ghost);
 
   _dragState = {
+    type,
     team,
     source,
     sourceSection: opts?.section,
@@ -401,6 +456,7 @@ function startMagneticDrag(
     sourceSlot: opts?.slot,
     ghostEl: ghost,
     nearestSlot: null,
+    nearestMapSlot: null,
     mouseX: e.clientX,
     mouseY: e.clientY,
   };
@@ -621,6 +677,10 @@ function RoundHeader({ section, ri, label, matchCount, slotCount, isAdmin }: {
             <div
               key={slotIdx}
               className={`w-[18px] h-[18px] border border-dashed t-border-mid rounded bg-[var(--bg-surface)] text-[9px] flex items-center justify-center t-dim transition-colors cursor-crosshair ${dropSlot === slotIdx ? 'map-drop-active' : 'hover:border-[var(--accent)] hover:text-[var(--accent)] hover:bg-[rgba(58,107,255,0.05)]'}`}
+              data-drop-map="true"
+              data-match-key={`m_${section}_${ri}_*`}
+              data-slot-idx={slotIdx}
+              data-round-slot="true"
               onDragOver={e => {
                 if (e.dataTransfer.types.includes('text/plain') && !e.dataTransfer.types.includes('text/team')) {
                   e.preventDefault();
@@ -659,6 +719,9 @@ function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCoun
             key={slotIdx}
             className={`flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors ${isAdmin && isDropTarget ? 'map-drop-active' : ''}`}
             style={{ background: map ? 'rgba(58,107,255,0.04)' : undefined, color: map ? 'var(--accent)' : 'var(--text-muted)' }}
+            data-drop-map="true"
+            data-match-key={matchKey}
+            data-slot-idx={slotIdx}
             onDragOver={isAdmin ? (e) => {
               if (e.dataTransfer.types.includes('text/plain') && !e.dataTransfer.types.includes('text/team')) {
                 e.preventDefault();
@@ -1121,16 +1184,17 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
   onCardClick?: (matchKey: string) => void;
 }) {
+  const { assignStage } = useTourney();
   const assignedTeams = new Set<string>();
   const r0 = bracket.upper[0] ?? [];
   r0.forEach(m => { if (m.p1) assignedTeams.add(m.p1); if (m.p2) assignedTeams.add(m.p2); });
 
-  // Listen for magnetic-drop custom events from the drag system
+  // Listen for magnetic-drop (team) and magnetic-drop-map (map) custom events
   useEffect(() => {
-    const handler = async (e: Event) => {
+    const teamHandler = async (e: Event) => {
       const detail = (e as CustomEvent).detail as {
         team: string;
-        source: 'pool' | 'slot';
+        source: 'pool' | 'slot' | 'spinqueue';
         targetSection: string;
         targetRi: number;
         targetMi: number;
@@ -1140,12 +1204,38 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
         sourceMi?: number;
         sourceSlot?: 1 | 2;
       };
-      // If dragging from a slot, the source removal was already handled by PlayerRow's onMouseDown.
-      // We just need to assign to the target.
       await onManualAssign(detail.targetSection, detail.targetRi, detail.targetMi, detail.targetSlot, detail.team);
     };
-    window.addEventListener('magnetic-drop', handler);
-    return () => window.removeEventListener('magnetic-drop', handler);
+    const mapHandler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        map: string;
+        matchKey: string;
+        slotIdx: number;
+        roundSlot: boolean;
+      };
+      if (detail.roundSlot) {
+        // Round header drop — matchKey is "m_{section}_{ri}_*"
+        // Extract section and ri, apply to all matches in that round
+        const parts = detail.matchKey.split('_');
+        const section = parts[1];
+        const ri = parseInt(parts[2] ?? '0', 10);
+        const matchCount = section === 'upper' ? (bracket?.upper[ri]?.length ?? 0)
+          : section === 'lower' ? (bracket?.lower?.[ri]?.length ?? 0)
+          : section === 'gf' ? 1 : 0;
+        for (let mi = 0; mi < matchCount; mi++) {
+          await assignStage(`m_${section}_${ri}_${mi}`, detail.map, detail.slotIdx);
+        }
+      } else {
+        // Per-match drop
+        await assignStage(detail.matchKey, detail.map, detail.slotIdx);
+      }
+    };
+    window.addEventListener('magnetic-drop', teamHandler);
+    window.addEventListener('magnetic-drop-map', mapHandler);
+    return () => {
+      window.removeEventListener('magnetic-drop', teamHandler);
+      window.removeEventListener('magnetic-drop-map', mapHandler);
+    };
   }, [onManualAssign]);
 
   return (
