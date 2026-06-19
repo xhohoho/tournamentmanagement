@@ -687,17 +687,27 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   // ── Caster Sheet ──────────────────────────────────────────────────────────
+  // Returns normally on success, throws on network/server error so the UI can
+  // show a "Save failed" warning instead of silently losing data.
   const setCasterSheet = async (matches: CasterMatch[]) => {
     guard.touch('casterSheet');
-    setCasterSheetState({ matches });
+    setCasterSheetState({ matches }); // optimistic update
+    let res: Response;
     try {
-      const res = await apiFetch(`/api/caster?t=${t}`, 'PUT', { matches });
-      if (res.ok) {
-        const data = await res.json();
-        guard.touch('casterSheet');
-        if (data.casterSheet) setCasterSheetState(data.casterSheet);
-      }
-    } catch { /* keep optimistic update */ }
+      res = await apiFetch(`/api/caster?t=${t}`, 'PUT', { matches });
+    } catch (err) {
+      // Network failure — roll back optimistic update so SSE restores real state
+      guard.clear('casterSheet');
+      throw new Error('Network error — note not saved. Check your connection.');
+    }
+    if (!res.ok) {
+      guard.clear('casterSheet');
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body as { error?: string }).error ?? `Server error ${res.status} — note not saved.`);
+    }
+    const data = await res.json();
+    guard.touch('casterSheet');
+    if (data.casterSheet) setCasterSheetState(data.casterSheet);
   };
 
   const resetAll = async () => {

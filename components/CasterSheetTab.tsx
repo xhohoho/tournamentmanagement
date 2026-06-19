@@ -69,7 +69,8 @@ function MatchInfoCard({
   // Local draft for the textarea — starts from saved value
   const [draft, setDraft] = useState(savedNote);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [saveError, setSaveError] = useState('');
 
   // Sync draft when savedNote changes from SSE (another admin edited)
   useEffect(() => { setDraft(savedNote); }, [savedNote]);
@@ -77,10 +78,19 @@ function MatchInfoCard({
   const handleSave = async () => {
     if (draft === savedNote) return;
     setSaving(true);
-    await onSaveNote(draft);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1800);
+    setSaveStatus('idle');
+    setSaveError('');
+    try {
+      await onSaveNote(draft);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 1800);
+    } catch (err) {
+      setSaveStatus('error');
+      setSaveError(err instanceof Error ? err.message : 'Save failed — try again.');
+      setTimeout(() => { setSaveStatus('idle'); setSaveError(''); }, 5000);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -231,8 +241,16 @@ function MatchInfoCard({
                 onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave(); }}
               />
               <div className="flex items-center justify-between mt-1.5">
-                <span className="font-['DM_Mono'] text-[10px] t-dim">
-                  {saved ? <span style={{ color: 'var(--accent-green)' }}>✓ Saved</span> : 'Cmd/Ctrl+Enter to save'}
+                <span className="font-['DM_Mono'] text-[10px]">
+                  {saveStatus === 'saved' && (
+                    <span style={{ color: 'var(--accent-green)' }}>✓ Saved to database</span>
+                  )}
+                  {saveStatus === 'error' && (
+                    <span style={{ color: 'var(--accent-red, #e05555)' }}>⚠ {saveError}</span>
+                  )}
+                  {saveStatus === 'idle' && (
+                    <span className="t-dim">Cmd/Ctrl+Enter to save</span>
+                  )}
                 </span>
                 <button
                   onClick={handleSave}
@@ -303,6 +321,7 @@ export function CasterSheetTab({ highlightMatchKey, onHighlightHandled }: {
       };
       next = [...(casterSheet?.matches ?? []), newEntry];
     }
+    // Propagate throws so MatchInfoCard can show the error
     await setCasterSheet(next);
   }, [casterSheet, setCasterSheet]);
 
