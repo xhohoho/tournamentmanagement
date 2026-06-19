@@ -73,10 +73,15 @@ function MatchInfoCard({
   // Local score drafts — allow editing before saving
   const [s1, setS1] = useState(score1);
   const [s2, setS2] = useState(score2);
+  const [editing, setEditing] = useState(false);
   useEffect(() => { setS1(score1); setS2(score2); }, [score1, score2]);
   const isModified = s1 !== score1 || s2 !== score2;
   const canEdit = isAdmin && !!match?.p1 && !!match?.p2 && !isDone && !isTbd;
   const canUndo = isAdmin && isDone;
+
+  const startEdit = () => { if (!canEdit) return; setS1(score1); setS2(score2); setEditing(true); };
+  const cancelEdit = () => { setS1(score1); setS2(score2); setEditing(false); };
+  const commitEdit = () => { setEditing(false); onScore(s1, s2); };
 
   // Local draft for the textarea — starts from saved value
   const [draft, setDraft] = useState(savedNote);
@@ -166,13 +171,14 @@ function MatchInfoCard({
         </div>
 
         <div className="flex items-center gap-3 px-5 shrink-0">
-          {canEdit && isModified ? (
+          {editing ? (
             <>
               <input
+                autoFocus
                 type="number" min={0} max={maxWins}
                 value={s1}
                 onChange={e => setS1(Math.max(0, Math.min(maxWins, parseInt(e.target.value, 10) || 0)))}
-                onKeyDown={e => { if (e.key === 'Enter') onScore(s1, s2); if (e.key === 'Escape') { setS1(score1); setS2(score2); } }}
+                onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit(); }}
                 className="w-10 text-center font-['Bebas_Neue'] text-4xl rounded border bg-transparent focus:outline-none tabular-nums"
                 style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}
               />
@@ -181,7 +187,7 @@ function MatchInfoCard({
                 type="number" min={0} max={maxWins}
                 value={s2}
                 onChange={e => setS2(Math.max(0, Math.min(maxWins, parseInt(e.target.value, 10) || 0)))}
-                onKeyDown={e => { if (e.key === 'Enter') onScore(s1, s2); if (e.key === 'Escape') { setS1(score1); setS2(score2); } }}
+                onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit(); }}
                 className="w-10 text-center font-['Bebas_Neue'] text-4xl rounded border bg-transparent focus:outline-none tabular-nums"
                 style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}
               />
@@ -190,16 +196,16 @@ function MatchInfoCard({
             <>
               <span
                 className="font-['Bebas_Neue'] text-4xl tabular-nums"
-                style={{ color: winner === slot.p1 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default' }}
-                onClick={() => { if (canEdit) { setS1(score1); setS2(score2); } }}
+                style={{ color: winner === slot.p1 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default', outline: canEdit ? '1px dashed var(--border-mid)' : 'none' }}
+                onClick={startEdit}
               >
                 {isDone ? score1 : '–'}
               </span>
               <span className="font-['DM_Mono'] text-sm t-muted">:</span>
               <span
                 className="font-['Bebas_Neue'] text-4xl tabular-nums"
-                style={{ color: winner === slot.p2 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default' }}
-                onClick={() => { if (canEdit) { setS1(score1); setS2(score2); } }}
+                style={{ color: winner === slot.p2 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default', outline: canEdit ? '1px dashed var(--border-mid)' : 'none' }}
+                onClick={startEdit}
               >
                 {isDone ? score2 : '–'}
               </span>
@@ -223,23 +229,23 @@ function MatchInfoCard({
       </div>
 
       {/* Score action buttons (edit mode) */}
-      {canEdit && isModified && (
+      {editing && (
         <div className="flex items-center justify-center gap-2 pb-2 px-4">
           <button
             className="font-['DM_Mono'] text-[11px] font-bold px-3 py-1 rounded-lg border transition-all cursor-pointer"
             style={{ color: 'var(--accent-green)', borderColor: 'rgba(34,184,98,0.3)', background: 'rgba(34,184,98,0.08)' }}
-            onClick={() => onScore(s1, s2)}
+            onClick={commitEdit}
           >✓ SAVE</button>
           <button
             className="font-['DM_Mono'] text-[11px] px-3 py-1 rounded-lg border transition-all cursor-pointer"
             style={{ color: 'var(--text-dim)', borderColor: 'var(--border-mid)' }}
-            onClick={() => { setS1(score1); setS2(score2); }}
+            onClick={cancelEdit}
           >✕ CANCEL</button>
         </div>
       )}
 
       {/* Undo button */}
-      {canUndo && !isModified && (
+      {canUndo && !editing && (
         <div className="flex items-center justify-center pb-2 px-4">
           <button
             className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors"

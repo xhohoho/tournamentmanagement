@@ -403,6 +403,7 @@ function PlayerRow({
             onChange={e => setDraft(e.target.value)}
             onBlur={commit}
             onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+            onClick={e => e.stopPropagation()}
             className="w-8 text-center font-['Bebas_Neue'] text-base rounded border bg-transparent focus:outline-none"
             style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
           />
@@ -410,7 +411,7 @@ function PlayerRow({
           <span
             className="font-['Bebas_Neue'] text-base ml-2 shrink-0 rounded px-1"
             style={{ color: isWinner ? 'var(--accent-green)' : 'var(--text-dim)', cursor: canEdit ? 'text' : 'default', outline: canEdit ? '1px dashed var(--border-mid)' : 'none', minWidth: 20, textAlign: 'center' }}
-            onClick={startEdit}
+            onClick={e => { e.stopPropagation(); startEdit(); }}
           >{score}</span>
         )
       )}
