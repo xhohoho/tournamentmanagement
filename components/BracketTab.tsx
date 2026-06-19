@@ -27,31 +27,58 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   const [ty, setTy] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
 
+  // Edge slack — how far past the content's true edge you can drag before it stops
+  const EDGE_SLACK = 60;
+
+  const clampAxis = (val: number, containerSize: number, contentSize: number) => {
+    const lo = Math.min(0, containerSize - contentSize) - EDGE_SLACK;
+    const hi = Math.max(0, containerSize - contentSize) + EDGE_SLACK;
+    return Math.min(hi, Math.max(lo, val));
+  };
+
+  const clampX = (val: number, s: number) => clampAxis(val, containerRef.current?.clientWidth ?? 0, (contentRef.current?.offsetWidth ?? 0) * s);
+  const clampY = (val: number, s: number) => clampAxis(val, containerRef.current?.clientHeight ?? 0, (contentRef.current?.offsetHeight ?? 0) * s);
+
   const onWheel = useCallback((e: React.WheelEvent) => {
+    // Native listener (below) does the real work — this just blocks React's
+    // synthetic bubble path so nothing above us tries to scroll too.
     e.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const dir = e.deltaY > 0 ? -1 : 1;
-    setScale(prevScale => {
-      const newScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prevScale * (1 + dir * 0.12)));
-      const ratio = newScale / prevScale;
-      // keep the point under the cursor stationary while zooming
-      setTx(prevTx => cx - (cx - prevTx) * ratio);
-      setTy(prevTy => cy - (cy - prevTy) * ratio);
-      return newScale;
-    });
+  }, []);
+
+  // React's onWheel is attached passively internally, so preventDefault() there
+  // doesn't actually stop the page from scrolling. Attach a real, non-passive
+  // native listener so wheel-over-canvas ONLY zooms and never scrolls anything.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const dir = e.deltaY > 0 ? -1 : 1;
+      setScale(prevScale => {
+        const newScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prevScale * (1 + dir * 0.12)));
+        const ratio = newScale / prevScale;
+        setTx(prevTx => clampX(cx - (cx - prevTx) * ratio, newScale));
+        setTy(prevTy => clampY(cy - (cy - prevTy) * ratio, newScale));
+        return newScale;
+      });
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
   }, []);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     const d = dragRef.current;
     if (!d) return;
-    setTx(d.startTx + (e.clientX - d.startX));
-    setTy(d.startTy + (e.clientY - d.startY));
-  }, []);
+    setTx(clampX(d.startTx + (e.clientX - d.startX), scale));
+    setTy(clampY(d.startTy + (e.clientY - d.startY), scale));
+  }, [scale]);
 
   const onMouseUp = useCallback(() => {
     dragRef.current = null;
@@ -84,9 +111,10 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
       onWheel={onWheel}
       onMouseDown={onMouseDown}
       className="relative overflow-hidden rounded-lg select-none"
-      style={{ height: '68vh', minHeight: 420, cursor: isPanning ? 'grabbing' : 'grab', touchAction: 'none', background: 'var(--bg-base)' }}
+      style={{ height: '68vh', minHeight: 420, cursor: isPanning ? 'grabbing' : 'grab', touchAction: 'none', overscrollBehavior: 'contain', background: 'var(--bg-base)' }}
     >
       <div
+        ref={contentRef}
         style={{
           transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
           transformOrigin: '0 0',
