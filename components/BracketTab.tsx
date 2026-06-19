@@ -55,13 +55,15 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
     setTy(0);
   }, []);
 
-  // Fit on mount and after content changes (useLayoutEffect runs after DOM mutations)
+  // Fit on mount and when bracket structure changes (rounds added/removed, type change)
+  // NOT on score updates or team assignments — those don't change dimensions
+  const fitKey = deps ? JSON.stringify(deps) : '';
   useLayoutEffect(() => {
     // Triple RAF to ensure all nested absolutely-positioned content has rendered
     const id = requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(fitToScreen)));
     return () => cancelAnimationFrame(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [fitKey]);
 
   useEffect(() => {
     const ro = new ResizeObserver(fitToScreen);
