@@ -196,18 +196,18 @@ function MatchInfoCard({
             <>
               <span
                 className="font-['Bebas_Neue'] text-4xl tabular-nums"
-                style={{ color: winner === slot.p1 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default', outline: canEdit ? '1px dashed var(--border-mid)' : 'none' }}
+                style={{ color: winner === slot.p1 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default', outline: canEdit ? '1px dashed var(--border-mid)' : 'none' }}
                 onClick={startEdit}
               >
-                {isDone ? score1 : '–'}
+                {score1}
               </span>
               <span className="font-['DM_Mono'] text-sm t-muted">:</span>
               <span
                 className="font-['Bebas_Neue'] text-4xl tabular-nums"
-                style={{ color: winner === slot.p2 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default', outline: canEdit ? '1px dashed var(--border-mid)' : 'none' }}
+                style={{ color: winner === slot.p2 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default', outline: canEdit ? '1px dashed var(--border-mid)' : 'none' }}
                 onClick={startEdit}
               >
-                {isDone ? score2 : '–'}
+                {score2}
               </span>
             </>
           )}
@@ -254,8 +254,8 @@ function MatchInfoCard({
         </div>
       )}
 
-      {/* Best-of pips */}
-      {isDone && (
+      {/* Best-of pips — show when match has any score or is done */}
+      {(isDone || score1 > 0 || score2 > 0) && (
         <div className="flex items-center justify-center gap-1.5 pb-2 px-4">
           {Array.from({ length: maxWins * 2 - 1 }).map((_, i) => {
             const isP1Win = i < score1;
