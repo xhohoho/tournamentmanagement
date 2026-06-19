@@ -31,13 +31,13 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
   // Clamp so you can't drag content fully off-screen
   const clampX = (val: number, s: number) => {
     const cw = containerRef.current?.clientWidth ?? 0;
-    const contentW = (contentRef.current?.offsetWidth ?? 0) * s;
+    const contentW = (contentRef.current?.scrollWidth ?? contentRef.current?.offsetWidth ?? 0) * s;
     const lo = Math.min(0, cw - contentW);
     return Math.max(lo, Math.min(0, val));
   };
   const clampY = (val: number, s: number) => {
     const ch = containerRef.current?.clientHeight ?? 0;
-    const contentH = (contentRef.current?.offsetHeight ?? 0) * s;
+    const contentH = (contentRef.current?.scrollHeight ?? contentRef.current?.offsetHeight ?? 0) * s;
     const lo = Math.min(0, ch - contentH);
     return Math.max(lo, Math.min(0, val));
   };
@@ -45,8 +45,9 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
   const fitToScreen = useCallback(() => {
     const cw = containerRef.current?.clientWidth ?? 0;
     const ch = containerRef.current?.clientHeight ?? 0;
-    const contentW = contentRef.current?.offsetWidth ?? 0;
-    const contentH = contentRef.current?.offsetHeight ?? 0;
+    // Use scrollHeight to capture absolutely-positioned children
+    const contentW = contentRef.current?.scrollWidth ?? contentRef.current?.offsetWidth ?? 0;
+    const contentH = contentRef.current?.scrollHeight ?? contentRef.current?.offsetHeight ?? 0;
     if (!cw || !ch || !contentW || !contentH) return;
     const fit = Math.min(cw / contentW, ch / contentH);
     setScale(fit);
@@ -56,8 +57,8 @@ function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unkno
 
   // Fit on mount and after content changes (useLayoutEffect runs after DOM mutations)
   useLayoutEffect(() => {
-    // Double RAF to ensure all nested content has rendered and been measured
-    const id = requestAnimationFrame(() => requestAnimationFrame(fitToScreen));
+    // Triple RAF to ensure all nested absolutely-positioned content has rendered
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(fitToScreen)));
     return () => cancelAnimationFrame(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -239,8 +240,8 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
           return (
             <div
               key={team}
-              draggable={isAdmin && !used}
-              onDragStart={isAdmin && !used
+              draggable={isAdmin}
+              onDragStart={isAdmin
                 ? (e) => {
                     e.dataTransfer.setData('text/team', team);
                     e.dataTransfer.effectAllowed = 'move';
@@ -249,29 +250,29 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
               }
               className="px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs select-none transition-all"
               style={{
-                borderColor: used ? 'var(--border)' : 'var(--accent)',
-                background: used ? 'var(--bg-hover)' : 'rgba(77,124,255,0.12)',
-                color: used ? 'var(--text-dim)' : 'var(--accent)',
-                opacity: used ? 0.85 : 1,
-                cursor: isAdmin && !used ? 'grab' : 'default',
+                borderColor: used ? 'var(--accent-green)' : 'var(--accent)',
+                background: used ? 'rgba(34,184,98,0.10)' : 'rgba(77,124,255,0.12)',
+                color: used ? 'var(--accent-green)' : 'var(--accent)',
+                opacity: 1,
+                cursor: isAdmin ? 'grab' : 'default',
                 textDecoration: undefined,
-                fontWeight: used ? undefined : 700,
+                fontWeight: 700,
                 boxShadow: !used ? '0 0 0 0px rgba(77,124,255,0)' : undefined,
               }}
-              onMouseEnter={isAdmin && !used ? (e) => {
+              onMouseEnter={isAdmin ? (e) => {
                 (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--accent)';
                 (e.currentTarget as HTMLDivElement).style.background = 'rgba(77,124,255,0.22)';
                 (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 10px rgba(77,124,255,0.25)';
               } : undefined}
-              onMouseLeave={isAdmin && !used ? (e) => {
-                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--accent)';
-                (e.currentTarget as HTMLDivElement).style.background = 'rgba(77,124,255,0.12)';
+              onMouseLeave={isAdmin ? (e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor = used ? 'var(--accent-green)' : 'var(--accent)';
+                (e.currentTarget as HTMLDivElement).style.background = used ? 'rgba(34,184,98,0.10)' : 'rgba(77,124,255,0.12)';
                 (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 0 0px rgba(77,124,255,0)';
               } : undefined}
-              title={used ? `${team} already placed` : isAdmin ? `Drag ${team} into a match slot` : team}
+              title={isAdmin ? `Drag ${team} into a match slot${used ? ' (already placed)' : ''}` : team}
             >
               {used
-                ? <span style={{ color: 'var(--accent-green)', marginRight: 4, opacity: 0.7 }}>✓</span>
+                ? <span style={{ marginRight: 4, opacity: 0.8 }}>✓</span>
                 : <span style={{ color: 'var(--accent)', marginRight: 4, opacity: 0.6 }}>⬡</span>
               }{team}
             </div>
