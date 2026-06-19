@@ -18,7 +18,7 @@ function colSpacing(colIdx: number): number {
 }
 
 // ─── PanZoomCanvas — drag with mouse to pan, scroll wheel to zoom ────────────
-const ZOOM_MIN = 0.35;
+const ZOOM_MIN_ABS = 0.1; // absolute sanity floor — the real floor is the dynamic fit-scale below
 const ZOOM_MAX = 2;
 
 function PanZoomCanvas({ children }: { children: React.ReactNode }) {
@@ -62,6 +62,20 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   const clampX = (val: number, s: number) => clampAxis(val, containerRef.current?.clientWidth ?? 0, (contentRef.current?.offsetWidth ?? 0) * s);
   const clampY = (val: number, s: number) => clampAxis(val, containerRef.current?.clientHeight ?? 0, (contentRef.current?.offsetHeight ?? 0) * s);
 
+  // Dynamic zoom-out floor — never let the bracket shrink past the point where it
+  // exactly fills the container on its limiting axis. Without this, zooming out kept
+  // shrinking the content while the (fixed-size) container stayed put, producing
+  // ever-growing empty space on every side.
+  const getMinScale = () => {
+    const cw = containerRef.current?.clientWidth ?? 0;
+    const ch = containerRef.current?.clientHeight ?? 0;
+    const contentW = contentRef.current?.offsetWidth ?? 0;
+    const contentH = contentRef.current?.offsetHeight ?? 0;
+    if (!cw || !ch || !contentW || !contentH) return ZOOM_MIN_ABS;
+    const fit = Math.min(cw / contentW, ch / contentH);
+    return Math.max(ZOOM_MIN_ABS, Math.min(fit, ZOOM_MAX));
+  };
+
   // Snap the leading edge to the nearest match-card grid line — if more than half
   // a card/column is cut off, advance to the next one; otherwise pull back to show it in full.
   const ROW_UNIT = CARD_H + ROW_GAP;
@@ -95,7 +109,8 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
       const cy = e.clientY - rect.top;
       const dir = e.deltaY > 0 ? -1 : 1;
       setScale(prevScale => {
-        const newScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prevScale * (1 + dir * 0.12)));
+        const minScale = getMinScale();
+        const newScale = Math.min(ZOOM_MAX, Math.max(minScale, prevScale * (1 + dir * 0.12)));
         const ratio = newScale / prevScale;
         setTx(prevTx => clampX(cx - (cx - prevTx) * ratio, newScale));
         setTy(prevTy => clampY(cy - (cy - prevTy) * ratio, newScale));
