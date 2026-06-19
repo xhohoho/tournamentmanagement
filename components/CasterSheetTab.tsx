@@ -48,6 +48,8 @@ function MatchInfoCard({
   isAdmin,
   savedNote,
   onSaveNote,
+  onScore,
+  onUndo,
 }: {
   slot: ReturnType<typeof listBracketSlots>[number];
   match: BracketMatch | GrandFinal | null;
@@ -57,6 +59,8 @@ function MatchInfoCard({
   isAdmin: boolean;
   savedNote: string;
   onSaveNote: (val: string) => Promise<void>;
+  onScore: (p1wins: number, p2wins: number) => void;
+  onUndo: () => void;
 }) {
   const isDone = slot.isDone;
   const isTbd = slot.p1 === 'TBD' || slot.p2 === 'TBD';
@@ -65,6 +69,14 @@ function MatchInfoCard({
   const winner = match?.winner ?? null;
   const format = (match as BracketMatch | null)?.format ?? 'bo1';
   const maxWins = format === 'bo5' ? 3 : format === 'bo3' ? 2 : 1;
+
+  // Local score drafts — allow editing before saving
+  const [s1, setS1] = useState(score1);
+  const [s2, setS2] = useState(score2);
+  useEffect(() => { setS1(score1); setS2(score2); }, [score1, score2]);
+  const isModified = s1 !== score1 || s2 !== score2;
+  const canEdit = isAdmin && !!match?.p1 && !!match?.p2 && !isDone && !isTbd;
+  const canUndo = isAdmin && isDone;
 
   // Local draft for the textarea — starts from saved value
   const [draft, setDraft] = useState(savedNote);
@@ -154,19 +166,45 @@ function MatchInfoCard({
         </div>
 
         <div className="flex items-center gap-3 px-5 shrink-0">
-          <span
-            className="font-['Bebas_Neue'] text-4xl tabular-nums"
-            style={{ color: winner === slot.p1 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center' }}
-          >
-            {isDone ? score1 : '–'}
-          </span>
-          <span className="font-['DM_Mono'] text-sm t-muted">:</span>
-          <span
-            className="font-['Bebas_Neue'] text-4xl tabular-nums"
-            style={{ color: winner === slot.p2 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center' }}
-          >
-            {isDone ? score2 : '–'}
-          </span>
+          {canEdit && isModified ? (
+            <>
+              <input
+                type="number" min={0} max={maxWins}
+                value={s1}
+                onChange={e => setS1(Math.max(0, Math.min(maxWins, parseInt(e.target.value, 10) || 0)))}
+                onKeyDown={e => { if (e.key === 'Enter') onScore(s1, s2); if (e.key === 'Escape') { setS1(score1); setS2(score2); } }}
+                className="w-10 text-center font-['Bebas_Neue'] text-4xl rounded border bg-transparent focus:outline-none tabular-nums"
+                style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}
+              />
+              <span className="font-['DM_Mono'] text-sm t-muted">:</span>
+              <input
+                type="number" min={0} max={maxWins}
+                value={s2}
+                onChange={e => setS2(Math.max(0, Math.min(maxWins, parseInt(e.target.value, 10) || 0)))}
+                onKeyDown={e => { if (e.key === 'Enter') onScore(s1, s2); if (e.key === 'Escape') { setS1(score1); setS2(score2); } }}
+                className="w-10 text-center font-['Bebas_Neue'] text-4xl rounded border bg-transparent focus:outline-none tabular-nums"
+                style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}
+              />
+            </>
+          ) : (
+            <>
+              <span
+                className="font-['Bebas_Neue'] text-4xl tabular-nums"
+                style={{ color: winner === slot.p1 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default' }}
+                onClick={() => { if (canEdit) { setS1(score1); setS2(score2); } }}
+              >
+                {isDone ? score1 : '–'}
+              </span>
+              <span className="font-['DM_Mono'] text-sm t-muted">:</span>
+              <span
+                className="font-['Bebas_Neue'] text-4xl tabular-nums"
+                style={{ color: winner === slot.p2 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text-dim)', minWidth: 28, textAlign: 'center', cursor: canEdit ? 'text' : 'default' }}
+                onClick={() => { if (canEdit) { setS1(score1); setS2(score2); } }}
+              >
+                {isDone ? score2 : '–'}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="flex-1 min-w-0 text-right">
@@ -183,6 +221,32 @@ function MatchInfoCard({
           </span>
         </div>
       </div>
+
+      {/* Score action buttons (edit mode) */}
+      {canEdit && isModified && (
+        <div className="flex items-center justify-center gap-2 pb-2 px-4">
+          <button
+            className="font-['DM_Mono'] text-[11px] font-bold px-3 py-1 rounded-lg border transition-all cursor-pointer"
+            style={{ color: 'var(--accent-green)', borderColor: 'rgba(34,184,98,0.3)', background: 'rgba(34,184,98,0.08)' }}
+            onClick={() => onScore(s1, s2)}
+          >✓ SAVE</button>
+          <button
+            className="font-['DM_Mono'] text-[11px] px-3 py-1 rounded-lg border transition-all cursor-pointer"
+            style={{ color: 'var(--text-dim)', borderColor: 'var(--border-mid)' }}
+            onClick={() => { setS1(score1); setS2(score2); }}
+          >✕ CANCEL</button>
+        </div>
+      )}
+
+      {/* Undo button */}
+      {canUndo && !isModified && (
+        <div className="flex items-center justify-center pb-2 px-4">
+          <button
+            className="font-['DM_Mono'] text-[10px] t-dim hover:text-[var(--accent-red)] cursor-pointer transition-colors"
+            onClick={onUndo}
+          >↩ UNDO</button>
+        </div>
+      )}
 
       {/* Best-of pips */}
       {isDone && (
@@ -287,7 +351,7 @@ export function CasterSheetTab({ highlightMatchKey, onHighlightHandled }: {
   highlightMatchKey?: string | null;
   onHighlightHandled?: () => void;
 } = {}) {
-  const { bracket, stageMaps, isAdmin, casterSheet, setCasterSheet } = useTourney();
+  const { bracket, stageMaps, isAdmin, casterSheet, setCasterSheet, updateScore, undoMatch } = useTourney();
   const highlightRef = useRef<HTMLDivElement | null>(null);
 
   const slots = bracket ? listBracketSlots(bracket) : [];
@@ -325,6 +389,17 @@ export function CasterSheetTab({ highlightMatchKey, onHighlightHandled }: {
     await setCasterSheet(next);
   }, [casterSheet, setCasterSheet]);
 
+  // Parse matchKey → (section, ri, mi) for updateScore / undoMatch
+  const parseMatchKey = (matchKey: string): { section: string; ri: number; mi: number } | null => {
+    const parts = matchKey.split('_');
+    if (parts.length < 4) return null;
+    const section = parts[1];
+    const ri = parseInt(parts[2], 10);
+    const mi = parseInt(parts[3], 10);
+    if (isNaN(ri) || isNaN(mi)) return null;
+    return { section, ri, mi };
+  };
+
   // Scroll highlighted card into view
   useEffect(() => {
     if (highlightMatchKey && highlightRef.current) {
@@ -356,6 +431,7 @@ export function CasterSheetTab({ highlightMatchKey, onHighlightHandled }: {
             const maps = parseStageMaps(stageMaps[slot.key] ?? '').filter(Boolean);
             const savedNote = notesByKey[slot.key] ?? '';
 
+            const parsed = parseMatchKey(slot.key);
             return (
               <MatchInfoCard
                 key={slot.key}
@@ -367,6 +443,8 @@ export function CasterSheetTab({ highlightMatchKey, onHighlightHandled }: {
                 isAdmin={isAdmin}
                 savedNote={savedNote}
                 onSaveNote={note => handleSaveNote(slot.key, note)}
+                onScore={parsed ? (p1w, p2w) => updateScore(parsed.section, parsed.ri, parsed.mi, p1w, p2w) : () => {}}
+                onUndo={parsed ? () => undoMatch(parsed.section, parsed.ri, parsed.mi) : () => {}}
               />
             );
           })}
