@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useTourney } from '@/lib/context';
 import { parseStageMaps } from '@/lib/utils';
 import { computeMatchNumbers, feederLabel, type MatchNumbers } from '@/lib/bracket';
@@ -19,7 +19,7 @@ function colSpacing(colIdx: number): number {
 }
 
 // ─── FitCanvas — auto-zoom to fit everything on screen, drag to pan ───────────
-function FitCanvas({ children }: { children: React.ReactNode }) {
+function FitCanvas({ children, deps }: { children: React.ReactNode; deps?: unknown[] }) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
@@ -28,16 +28,20 @@ function FitCanvas({ children }: { children: React.ReactNode }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
 
+  // Clamp so you can't drag content fully off-screen, but allow some overscroll
+  // even when content fits (loosens the clamp when content < container)
   const clampX = (val: number, s: number) => {
     const cw = containerRef.current?.clientWidth ?? 0;
     const contentW = (contentRef.current?.offsetWidth ?? 0) * s;
-    const lo = Math.min(0, cw - contentW);
+    if (contentW <= cw) return val; // content fits — free drag
+    const lo = cw - contentW;
     return Math.max(lo, Math.min(0, val));
   };
   const clampY = (val: number, s: number) => {
     const ch = containerRef.current?.clientHeight ?? 0;
     const contentH = (contentRef.current?.offsetHeight ?? 0) * s;
-    const lo = Math.min(0, ch - contentH);
+    if (contentH <= ch) return val; // content fits — free drag
+    const lo = ch - contentH;
     return Math.max(lo, Math.min(0, val));
   };
 
@@ -53,13 +57,13 @@ function FitCanvas({ children }: { children: React.ReactNode }) {
     setTy(0);
   }, []);
 
-  useEffect(() => {
-    // Fit after children render (which updates contentRef dimensions)
-    const timer = requestAnimationFrame(fitToScreen);
-    return () => cancelAnimationFrame(timer);
-  // Re-fit whenever children change (bracket data, match count, etc.)
+  // Fit on mount and after content changes (useLayoutEffect runs after DOM mutations)
+  useLayoutEffect(() => {
+    // Double RAF to ensure all nested content has rendered and been measured
+    const id = requestAnimationFrame(() => requestAnimationFrame(fitToScreen));
+    return () => cancelAnimationFrame(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [children]);
+  }, deps);
 
   useEffect(() => {
     const ro = new ResizeObserver(fitToScreen);
@@ -804,7 +808,7 @@ export function BracketTab({ spinResults, onMatchCardClick }: { spinResults: str
       )}
 
       {bracket ? (
-        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
+        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           <BracketDisplay
             bracket={bracket}
             isAdmin={isAdmin}
@@ -874,7 +878,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
           </div>
         </div>
 
-        <FitCanvas>
+        <FitCanvas deps={[bracket, allTeams.length]}>
           {bracket.type === 'single'
             ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} onCardClick={onCardClick} />
             : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} onCardClick={onCardClick} />
