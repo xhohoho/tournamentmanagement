@@ -208,7 +208,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   </button>
                 </>
               )}
-              {isAdmin && (
+              {isActuallyAdmin && (
                 <button
                   onClick={() => setPreviewAsUser(!previewAsUser)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
