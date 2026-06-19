@@ -8,6 +8,7 @@ import { PlayersTab } from '@/components/PlayersTab';
 import { TeamsTab } from '@/components/TeamsTab';
 import { BracketTab } from '@/components/BracketTab';
 import { MapsTab } from '@/components/MapsTab';
+import { SpinTab } from '@/components/SpinTab';
 import { FFATab } from '@/components/FFATab';
 import { CasterSheetTab } from '@/components/CasterSheetTab';
 import { ChatPanel } from '@/components/ChatPanel';
@@ -22,6 +23,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'bracket', icon: '🏆', label: 'Bracket'  },
   { id: 'caster',  icon: '🎙', label: 'Match Info' },
   { id: 'maps',    icon: '🗺',  label: 'Maps'     },
+  { id: 'spin',    icon: '🎡', label: 'Spin'     },
   { id: 'ffa',     icon: '🎮', label: 'FFA'      },
 ];
 
@@ -284,6 +286,7 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
               />
             </div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab activeCategory={activeCategory} setActiveCategory={setActiveCategory} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'spin'    ? '' : 'hidden'}`}><SpinTab /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'ffa'     ? '' : 'hidden'}`}><FFATab /></div>
           </div>
         </main>

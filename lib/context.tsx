@@ -542,6 +542,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const restoreUsedMap = async (name?: string) => {
     guard.touch('usedMaps');
+    const prev = usedMaps;
     setUsedMaps(name ? (prev => prev.filter(m => m !== name)) : []);
     try {
       const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'restoreUsed', ...(name ? { map: name } : {}) });
@@ -549,8 +550,14 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
         const data = await res.json();
         guard.touch('usedMaps');
         setUsedMaps(data.usedMaps ?? []);
+      } else {
+        // Revert optimistic update on failure
+        setUsedMaps(prev);
       }
-    } catch { /* keep optimistic update */ }
+    } catch {
+      // Revert optimistic update on network error
+      setUsedMaps(prev);
+    }
   };
 
   const appendSpinQueue = async (map: string) => {
@@ -584,15 +591,25 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   const clearSpinQueue = async () => {
     guard.touch('spinQueue'); guard.touch('usedMaps');
+    const prevQueue = spinQueue;
+    const prevUsed = usedMaps;
     setSpinQueue([]);
     setUsedMaps([]);
-    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'clearAll' });
-    if (res.ok) {
-      const data = await res.json();
-      guard.touch('usedMaps');
-      setUsedMaps(data.usedMaps ?? []);
-      guard.touch('spinQueue');
-      setSpinQueue(data.spinQueue ?? []);
+    try {
+      const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'clearAll' });
+      if (res.ok) {
+        const data = await res.json();
+        guard.touch('usedMaps');
+        setUsedMaps(data.usedMaps ?? []);
+        guard.touch('spinQueue');
+        setSpinQueue(data.spinQueue ?? []);
+      } else {
+        setSpinQueue(prevQueue);
+        setUsedMaps(prevUsed);
+      }
+    } catch {
+      setSpinQueue(prevQueue);
+      setUsedMaps(prevUsed);
     }
   };
 

@@ -222,7 +222,7 @@ export interface StageFormats {
   grandFinal:         'bo1' | 'bo3' | 'bo5';
 }
 
-export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'ffa' | 'chat' | 'caster';
+export type TabId = 'players' | 'teams' | 'bracket' | 'maps' | 'spin' | 'ffa' | 'chat' | 'caster';
 
 // ─── Context shape ─────────────────────────────────────────────────────────────
 // Exported so components can import the type without pulling in the full context module.

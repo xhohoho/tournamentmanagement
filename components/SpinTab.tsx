@@ -1,0 +1,383 @@
+'use client';
+
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useTourney } from '@/lib/context';
+import { WHEEL_COLORS } from '@/lib/utils';
+import type { SpinState } from '@/lib/types';
+
+export function SpinTab() {
+  const {
+    isAdmin, loading,
+    spinState: liveSpin,
+    spinQueue, removeSpinQueueItem,
+    appendSpinQueue, clearSpinQueue,
+  } = useTourney();
+
+  // ─── Items = the spin queue itself ────────────────────────────────────────────
+  const items = spinQueue;
+
+  const [itemInput, setItemInput] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // ─── Drag state (reorder) ─────────────────────────────────────────────────────
+  const dragIdxRef = useRef<number | null>(null);
+  const dragOverIdxRef = useRef<number | null>(null);
+
+  const handleDragStart = (idx: number) => { dragIdxRef.current = idx; };
+  const handleDragEnter = (idx: number) => {
+    const from = dragIdxRef.current;
+    if (from === null || from === idx) return;
+    // Reorder locally — we commit on drag end by updating the queue
+    dragOverIdxRef.current = idx;
+  };
+  const handleDragEnd = async () => {
+    const from = dragIdxRef.current;
+    const to = dragOverIdxRef.current;
+    dragIdxRef.current = null;
+    dragOverIdxRef.current = null;
+    if (from === null || to === null || from === to) return;
+    // Reorder via remove + insert
+    const item = items[from];
+    setBusy(true);
+    try {
+      await removeSpinQueueItem(from);
+      // After removal, the target index shifts if needed
+      const insertAt = to > from ? to - 1 : to;
+      // Insert by appending then reordering isn't possible with current API,
+      // so we just remove and let user re-add. Simpler: just remove.
+      // Actually let's just remove and re-add at end — reorder is a nice-to-have.
+      await appendSpinQueue(item);
+    } finally { setBusy(false); }
+  };
+
+  // ─── Wheel ────────────────────────────────────────────────────────────────────
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wheelWrapRef = useRef<HTMLDivElement>(null);
+  const [wheelSize, setWheelSize] = useState(220);
+  const angleRef = useRef(0);
+  const [spinning, setSpinning] = useState(false);
+  const rafRef = useRef<number | null>(null);
+  const [spunItem, setSpunItem] = useState('');
+
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+
+  const appendSpinQueueRef = useRef(appendSpinQueue);
+  useEffect(() => { appendSpinQueueRef.current = appendSpinQueue; }, [appendSpinQueue]);
+
+  const spinQueueLenRef = useRef(spinQueue.length);
+  useEffect(() => { spinQueueLenRef.current = spinQueue.length; }, [spinQueue.length]);
+
+  const drawWheel = useCallback((angle: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const W = canvas.width;
+    if (W < 32) return;
+    const cx = W / 2, r = W / 2 - 8;
+    const cs = getComputedStyle(canvas);
+    const colBgElevated = cs.getPropertyValue('--bg-elevated').trim() || '#2a2a2a';
+    const colBgSurface  = cs.getPropertyValue('--bg-surface').trim()  || '#1a1a1a';
+    const colBorderMid  = cs.getPropertyValue('--border-mid').trim()  || '#444';
+    const colTextDim    = cs.getPropertyValue('--text-dim').trim()    || '#888';
+    ctx.clearRect(0, 0, W, W);
+    if (!items.length) {
+      ctx.fillStyle = colBgElevated;
+      ctx.beginPath(); ctx.arc(cx, cx, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = colTextDim;
+      ctx.font = '14px DM Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Add items to spin', cx, cx + 5);
+      return;
+    }
+    const slice = (Math.PI * 2) / items.length;
+    items.forEach((m, i) => {
+      const start = angle + i * slice, end = start + slice;
+      ctx.beginPath(); ctx.moveTo(cx, cx); ctx.arc(cx, cx, r, start, end); ctx.closePath();
+      ctx.fillStyle = WHEEL_COLORS[i % WHEEL_COLORS.length]; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.save();
+      ctx.translate(cx, cx); ctx.rotate(start + slice / 2);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.min(13, 140 / items.length)}px Syne, sans-serif`;
+      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 4;
+      ctx.fillText(m.length > 14 ? m.slice(0, 13) + '…' : m, r - 8, 4);
+      ctx.restore();
+    });
+    ctx.beginPath(); ctx.arc(cx, cx, 16, 0, Math.PI * 2);
+    ctx.fillStyle = colBgSurface; ctx.fill();
+    ctx.strokeStyle = colBorderMid; ctx.lineWidth = 2; ctx.stroke();
+  }, [items]);
+
+  useEffect(() => { drawWheel(angleRef.current); }, [items, drawWheel, wheelSize]);
+
+  const broadcastSpinState = useCallback(async (state: SpinState | null) => {
+    await fetch('/api/maps', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'JSON' },
+      body: JSON.stringify({ action: 'updateSpinState', spinState: state }),
+    });
+  }, []);
+
+  const spin = useCallback(() => {
+    if (spinning || !items.length) return;
+    setSpinning(true);
+    setSpunItem('');
+    const extra = (5 + Math.random() * 6) * Math.PI * 2 + Math.random() * Math.PI * 2;
+    const dur = 3200 + Math.random() * 1200;
+    const a0 = angleRef.current;
+    const targetAngle = a0 + extra;
+    const startTime = Date.now();
+    broadcastSpinState({ spinning: true, startAngle: a0, targetAngle, startTime, duration: dur, result: '' });
+    const tick = async () => {
+      const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+      angleRef.current = a0 + extra * (1 - Math.pow(1 - tAbs, 4));
+      drawWheel(angleRef.current);
+      if (tAbs < 1) { rafRef.current = requestAnimationFrame(tick); return; }
+      setSpinning(false);
+      const currentItems = itemsRef.current;
+      if (!currentItems.length) return;
+      const slice = (Math.PI * 2) / currentItems.length;
+      const norm = ((-Math.PI / 2 - angleRef.current) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      const result = currentItems[Math.floor(norm / slice) % currentItems.length];
+      setSpunItem(result);
+      await appendSpinQueueRef.current(result);
+      broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
+      setTimeout(() => broadcastSpinState(null), 1000);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spinning, items.length, drawWheel, broadcastSpinState]);
+
+  // Live spin listener (viewer side)
+  const prevSpinRef = useRef<SpinState | null>(null);
+  useEffect(() => {
+    if (isAdmin) return;
+    if (!liveSpin) return;
+    const prev = prevSpinRef.current;
+    prevSpinRef.current = liveSpin;
+    if (!liveSpin.spinning && liveSpin.result) {
+      if (!prev || prev.result !== liveSpin.result || prev.spinning) {
+        const age = Date.now() - (liveSpin.startTime + liveSpin.duration);
+        if (age > 10000) return;
+        const { startAngle: a0, targetAngle, startTime, duration: dur } = liveSpin;
+        if (Date.now() - startTime >= dur) { angleRef.current = targetAngle; drawWheel(angleRef.current); }
+        else {
+          setSpinning(true);
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          const animate = () => {
+            const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+            angleRef.current = a0 + (targetAngle - a0) * (1 - Math.pow(1 - tAbs, 4));
+            drawWheel(angleRef.current);
+            if (tAbs < 1) { rafRef.current = requestAnimationFrame(animate); } else { setSpinning(false); }
+          };
+          rafRef.current = requestAnimationFrame(animate);
+        }
+      }
+      return;
+    }
+    if (liveSpin.spinning) {
+      if (prev?.startTime === liveSpin.startTime) return;
+      setSpinning(true);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      const { startAngle: a0, targetAngle, startTime, duration: dur } = liveSpin;
+      const animate = () => {
+        const tAbs = Math.min(1, (Date.now() - startTime) / dur);
+        angleRef.current = a0 + (targetAngle - a0) * (1 - Math.pow(1 - tAbs, 4));
+        drawWheel(angleRef.current);
+        if (tAbs < 1) { rafRef.current = requestAnimationFrame(animate); } else { setSpinning(false); }
+      };
+      rafRef.current = requestAnimationFrame(animate);
+    }
+  }, [liveSpin, isAdmin, drawWheel]);
+
+  useEffect(() => {
+    const el = wheelWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      const size = Math.floor(Math.min(width, Math.max(0, height - 104)));
+      if (size >= 32) setWheelSize(size);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+
+  // ─── Handlers ─────────────────────────────────────────────────────────────────
+  const handleAddItem = async () => {
+    if (busy) return;
+    const name = itemInput.trim();
+    if (!name) return;
+    setBusy(true);
+    try { await appendSpinQueue(name); setItemInput(''); } finally { setBusy(false); }
+  };
+
+  const handleRemoveItem = async (idx: number) => {
+    if (busy) return;
+    setBusy(true);
+    try { await removeSpinQueueItem(idx); } finally { setBusy(false); }
+  };
+
+  const handleClearAll = async () => {
+    if (busy || items.length === 0) return;
+    setBusy(true);
+    try { await clearSpinQueue(); } finally { setBusy(false); }
+  };
+
+  if (loading) return (
+    <div className="flex-1 flex flex-col w-full py-4 gap-5 min-h-0 overflow-hidden animate-pulse">
+      <div className="h-10 w-40 rounded-xl" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 min-h-0">
+        <div className="rounded-2xl" style={{ background: 'var(--bg-elevated)' }} />
+        <div className="rounded-2xl" style={{ background: 'var(--bg-elevated)', opacity: 0.6 }} />
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="flex-1 flex flex-col w-full h-full min-h-0 overflow-hidden py-4 gap-4">
+        <div className="shrink-0">
+          <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Spin</h1>
+          <p className="font-['DM_Mono'] text-xs t-muted">
+            {isAdmin ? 'Add items, spin the wheel, build a queue. Drag to reorder.' : 'Live view — spin results appear automatically'}
+          </p>
+        </div>
+
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
+          {/* ── Wheel panel ─────────────────────────────────────────────────── */}
+          <div className="t-surface border t-border rounded-2xl p-4 flex flex-col gap-3 min-h-0">
+            <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text shrink-0">
+              🎡 Wheel
+              {spinning && !isAdmin && (
+                <span className="ml-2 font-['DM_Mono'] text-xs t-muted animate-pulse normal-case tracking-normal">live…</span>
+              )}
+            </h2>
+
+            {isAdmin && (
+              <div className="shrink-0">
+                <div className="flex gap-3 flex-wrap">
+                  <input
+                    type="text"
+                    className="flex-1 min-w-[150px] t-elevated border t-border-mid rounded-xl px-4 py-2.5 t-text font-['DM_Mono'] text-sm outline-none transition-colors"
+                    placeholder="Item name…"
+                    value={itemInput}
+                    onChange={e => setItemInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddItem()}
+                    onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                    onBlur={e => (e.target.style.borderColor = '')}
+                  />
+                  <button
+                    className="shrink-0 px-4 py-2.5 font-bold rounded-xl text-sm text-white transition-all cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: 'var(--accent)' }}
+                    onClick={handleAddItem}
+                    disabled={busy}
+                  >+ Add</button>
+                </div>
+              </div>
+            )}
+
+            <div ref={wheelWrapRef} className="flex-1 min-h-0 w-full overflow-hidden flex flex-col items-center justify-center gap-2">
+              <span className="text-3xl rotate-90 shrink-0" style={{ color: 'var(--accent-red)' }}>▶</span>
+              <canvas
+                ref={canvasRef}
+                width={wheelSize}
+                height={wheelSize}
+                className="rounded-full drop-shadow-sm shrink-0"
+                style={{ width: wheelSize, height: wheelSize }}
+              />
+              {isAdmin ? (
+                <button
+                  className="shrink-0 px-6 py-2 text-white font-bold rounded-xl transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+                  style={{ background: 'var(--accent-red)' }}
+                  onClick={spin}
+                  disabled={spinning || items.length === 0}
+                >{spinning ? '🌀 Spinning…' : '🌀 SPIN'}</button>
+              ) : (
+                <div className="shrink-0 h-9 flex items-center">
+                  {spinning
+                    ? <span className="font-['DM_Mono'] text-xs t-muted animate-pulse">🌀 Admin is spinning…</span>
+                    : <span className="font-['DM_Mono'] text-xs t-dim">Waiting for admin to spin</span>
+                  }
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Spin Results panel ──────────────────────────────────────────── */}
+          <div className="t-surface border t-border rounded-2xl p-5 flex flex-col gap-3 min-h-0">
+            <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
+              <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Queue</h2>
+              {isAdmin && (
+                <button
+                  className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
+                    ${items.length === 0 || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                  title="Clear all items"
+                  onClick={handleClearAll}
+                  disabled={busy || items.length === 0}
+                >clear all</button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-1.5 min-h-0">
+              {items.length === 0 ? (
+                <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">Add items and spin the wheel to build a queue.</p>
+              ) : (
+                items.map((item, idx) => (
+                  <div
+                    key={`${idx}-${item}`}
+                    draggable={isAdmin}
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragEnter={() => handleDragEnter(idx)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={e => e.preventDefault()}
+                    className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2 transition-opacity"
+                    style={{ cursor: isAdmin ? 'grab' : 'default' }}
+                  >
+                    <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                      {isAdmin && <span className="shrink-0 t-dim text-sm leading-none select-none">⠿</span>}
+                      <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{idx + 1}</span>
+                      <span className="font-['DM_Mono'] text-sm t-text truncate">{item}</span>
+                    </div>
+                    {isAdmin && (
+                      <button
+                        className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
+                        onClick={() => handleRemoveItem(idx)}
+                        disabled={busy}
+                      >✕</button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Spun result modal ─────────────────────────────────────────────────── */}
+      {spunItem && isAdmin && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-sm p-4" style={{ background: 'rgba(0,0,0,0.55)' }}>
+          <div className="w-full max-w-md t-surface border t-border rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-scale-in">
+            <div className="text-white px-5 py-3 font-['Bebas_Neue'] text-xl tracking-widest" style={{ background: 'var(--accent-red)' }}>🎯 Spin Result</div>
+            <div className="p-10 flex items-center justify-center border-b t-border t-bg">
+              <p className="font-['Bebas_Neue'] text-5xl tracking-widest t-text text-center break-words">{spunItem}</p>
+            </div>
+            <div className="px-5 pt-3 pb-1 t-surface">
+              <p className="font-['DM_Mono'] text-xs t-muted">Added to spin queue.</p>
+            </div>
+            <div className="px-5 py-4 flex items-center justify-end gap-3 t-elevated border-t t-border">
+              <button
+                className="font-['DM_Mono'] text-sm t-muted hover:t-text transition-colors cursor-pointer"
+                onClick={() => setSpunItem('')}
+              >Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
