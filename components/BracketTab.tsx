@@ -579,8 +579,8 @@ function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCoun
 }
 
 // ─── MatchCard ────────────────────────────────────────────────────────────────
-// The match number badge is rendered INSIDE the card (top-left corner overlay)
-// so it never escapes the card's bounding box and can't be clipped by the canvas.
+// Match number is rendered ABOVE the card (in the canvas wrapper), not inside,
+// so it never overlaps player names or gets clipped.
 function MatchCard({
   match, matchKey, onScore, onUndo, isAdmin, highlightBorder,
   p1SlotKey, p2SlotKey, isSlotRevealed,
@@ -621,26 +621,36 @@ function MatchCard({
 
   return (
     <div style={{ position: 'relative' }}>
+      {/* Match number badge — above the card, on the output connector line */}
+      {matchNumber != null && (
+        <div
+          className="font-['DM_Mono']"
+          style={{
+            position: 'absolute',
+            bottom: '100%',
+            right: 0,
+            marginBottom: 3,
+            height: 14,
+            paddingLeft: 5,
+            paddingRight: 5,
+            borderRadius: 4,
+            background: 'var(--bg-base)',
+            border: '1px solid var(--border-mid)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 8,
+            color: 'var(--text-dim)',
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+          }}
+          title={`Match ${matchNumber}`}
+        >M{matchNumber}</div>
+      )}
       <div
         className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col"
         style={{ width: CARD_W, height: CARD_H, position: 'relative', ...borderStyle }}
       >
-        {/* Match number badge — inside the card, top-left corner, so it's never clipped */}
-        {matchNumber != null && (
-          <div
-            className="font-['DM_Mono']"
-            style={{
-              position: 'absolute', top: 4, left: 4,
-              width: 16, height: 16, borderRadius: 8,
-              background: 'var(--bg-base)',
-              border: '1px solid var(--border-mid)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 8, color: 'var(--text-dim)', zIndex: 5,
-              lineHeight: 1,
-            }}
-            title={`Match ${matchNumber}`}
-          >{matchNumber}</div>
-        )}
         <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} placeholder={p1Placeholder} />
         <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(2, team)} placeholder={p2Placeholder} />
         <MapSlots matchKey={matchKey} slotCount={slotCount} isAdmin={isAdmin} />
