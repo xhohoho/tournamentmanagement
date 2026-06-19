@@ -39,15 +39,6 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   useEffect(() => { tyRef.current = ty; }, [ty]);
   useEffect(() => { scaleRef.current = scale; }, [scale]);
 
-  // The only thing that must never happen is blank space appearing on the left/top.
-  // That happens exactly when tx (or ty) is positive — so hi is always 0. On the other
-  // side, you can pan as far left/up as you want (negative tx/ty) without ever exposing
-  // left/top blank, right up until the content's far edge reaches the screen's near edge
-  // (tx = -contentSize). Past that point the screen's near edge would show nothing, which
-  // IS blank — so that's the one true floor. Within [-contentSize, 0], dragging is always
-  // free to push earlier columns out of view and pull later ones (e.g. Upper Round 2, the
-  // Upper Final, or the Grand Final) all the way to the left/top edge, at any zoom level.
-  // Extra blank on the right/bottom is fine — it's just never permitted on the left/top.
   const clampAxis = (val: number, contentSize: number) => {
     const lo = -contentSize;
     const hi = 0;
@@ -57,10 +48,6 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   const clampX = (val: number, s: number) => clampAxis(val, (contentRef.current?.offsetWidth ?? 0) * s);
   const clampY = (val: number, s: number) => clampAxis(val, (contentRef.current?.offsetHeight ?? 0) * s);
 
-  // Dynamic zoom-out floor — never let the bracket shrink past the point where it
-  // exactly fills the container on its limiting axis. Without this, zooming out kept
-  // shrinking the content while the (fixed-size) container stayed put, producing
-  // ever-growing empty space on every side.
   const getMinScale = () => {
     const cw = containerRef.current?.clientWidth ?? 0;
     const ch = containerRef.current?.clientHeight ?? 0;
@@ -71,9 +58,6 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
     return Math.max(ZOOM_MIN_ABS, Math.min(fit, ZOOM_MAX));
   };
 
-  // Fit the whole bracket inside the box with NO scrollbar/overflow, anchored to the
-  // top-left. Any leftover space from the aspect-ratio mismatch goes on the right
-  // (and/or bottom), never on the left/top.
   const fitTopLeft = useCallback(() => {
     const cw = containerRef.current?.clientWidth ?? 0;
     const ch = containerRef.current?.clientHeight ?? 0;
@@ -82,11 +66,10 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
     if (!cw || !ch || !contentW || !contentH) return;
     const fit = Math.max(ZOOM_MIN_ABS, Math.min(Math.min(cw / contentW, ch / contentH), ZOOM_MAX));
     setScale(fit);
-    setTx(0); // flush left
-    setTy(0); // flush top
+    setTx(0);
+    setTy(0);
   }, []);
 
-  // Land on the fitted top-left view as soon as the bracket has its real size measured.
   useEffect(() => {
     fitTopLeft();
     const ro = new ResizeObserver(() => fitTopLeft());
@@ -96,12 +79,10 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Snap the leading edge to the nearest match-card grid line — if more than half
-  // a card/column is cut off, advance to the next one; otherwise pull back to show it in full.
   const ROW_UNIT = CARD_H + ROW_GAP;
   const snapAxis = (pos: number, unit: number, s: number) => {
     const leadingEdge = -pos / s;
-    if (leadingEdge <= 0) return pos; // already showing the true start — nothing to snap
+    if (leadingEdge <= 0) return pos;
     const unitIndex = Math.floor(leadingEdge / unit);
     const cutFraction = (leadingEdge - unitIndex * unit) / unit;
     const snappedEdge = cutFraction > 0.5 ? (unitIndex + 1) * unit : unitIndex * unit;
@@ -109,14 +90,9 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   };
 
   const onWheel = useCallback((e: React.WheelEvent) => {
-    // Native listener (below) does the real work — this just blocks React's
-    // synthetic bubble path so nothing above us tries to scroll too.
     e.preventDefault();
   }, []);
 
-  // React's onWheel is attached passively internally, so preventDefault() there
-  // doesn't actually stop the page from scrolling. Attach a real, non-passive
-  // native listener so wheel-over-canvas ONLY zooms and never scrolls anything.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -131,8 +107,6 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
         const minScale = getMinScale();
         const newScale = Math.min(ZOOM_MAX, Math.max(minScale, prevScale * (1 + dir * 0.12)));
         if (dir === -1 && newScale <= minScale + 0.0001) {
-          // Bottomed out on zoom-out — snap straight to the top-left fit instead of
-          // wherever the cursor-anchored math would otherwise land it.
           fitTopLeft();
           return newScale;
         }
@@ -159,7 +133,6 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
 
-    // Snap to grid on release — read live values via refs, not closed-over state
     const s = scaleRef.current;
     const snappedTx = clampX(snapAxis(txRef.current, COL_W, s), s);
     const snappedTy = clampY(snapAxis(tyRef.current, ROW_UNIT, s), s);
@@ -172,7 +145,6 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
   }, [onMouseMove]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    // Let drag-and-drop (team/map cards), buttons, and inputs work normally — only pan on empty canvas
     const target = e.target as HTMLElement;
     if (e.button !== 0 || target.closest('[draggable="true"], button, input, a, select, textarea')) return;
     e.preventDefault();
@@ -236,6 +208,85 @@ function lbCardTop(colIdx: number, mi: number): number {
   const aTop = lbCardTop(colIdx - 1, mi * 2);
   const bTop = lbCardTop(colIdx - 1, mi * 2 + 1);
   return (aTop + bTop) / 2;
+}
+
+type MatchNumbers = {
+  upper: number[][];
+  lower: number[][];
+  thirdPlace: number | null;
+  gf: number | null;
+};
+
+function computeMatchNumbers(bracket: Bracket): MatchNumbers {
+  const ubRounds = bracket.upper.filter(r => r.length > 0);
+  const lbRounds = (bracket.lower || []).filter(r => r.length > 0);
+  const upper: number[][] = ubRounds.map(r => new Array(r.length).fill(0));
+  const lower: number[][] = lbRounds.map(r => new Array(r.length).fill(0));
+  let n = 1;
+  const assignUpper = (colIdx: number) => { for (let mi = 0; mi < upper[colIdx].length; mi++) upper[colIdx][mi] = n++; };
+  const assignLower = (colIdx: number) => { for (let mi = 0; mi < lower[colIdx].length; mi++) lower[colIdx][mi] = n++; };
+
+  if (bracket.type === 'single') {
+    ubRounds.forEach((_, colIdx) => assignUpper(colIdx));
+    const thirdPlace = bracket.thirdPlace ? n++ : null;
+    return { upper, lower: [], thirdPlace, gf: null };
+  }
+
+  const U = ubRounds.length;
+  const L = lbRounds.length;
+  for (let i = 0; i < U - 1; i++) {
+    assignUpper(i);
+    if (i < L) assignLower(i);
+  }
+  for (let i = U - 1; i < L - 1; i++) assignLower(i);
+  if (U > 0) assignUpper(U - 1);
+  if (L > 0) assignLower(L - 1);
+  const gf = bracket.grandFinal ? n++ : null;
+
+  return { upper, lower, thirdPlace: null, gf };
+}
+
+function feederLabel(
+  numbers: MatchNumbers,
+  section: 'upper' | 'lower' | 'gf' | 'thirdPlace',
+  colIdx: number,
+  mi: number,
+  slot: 1 | 2,
+): string | null {
+  if (section === 'upper') {
+    if (colIdx === 0) return null;
+    const prevMi = slot === 1 ? mi * 2 : mi * 2 + 1;
+    const num = numbers.upper[colIdx - 1]?.[prevMi];
+    return num ? `Winner of ${num}` : null;
+  }
+  if (section === 'lower') {
+    if (colIdx === 0) {
+      const ubMi = slot === 1 ? mi * 2 : mi * 2 + 1;
+      const num = numbers.upper[0]?.[ubMi];
+      return num ? `Loser of ${num}` : null;
+    }
+    if (colIdx % 2 === 1) {
+      if (slot === 1) {
+        const num = numbers.lower[colIdx - 1]?.[mi];
+        return num ? `Winner of ${num}` : null;
+      }
+      const ubRoundIdx = (colIdx + 1) / 2;
+      const num = numbers.upper[ubRoundIdx]?.[mi];
+      return num ? `Loser of ${num}` : null;
+    }
+    const prevMi = slot === 1 ? mi * 2 : mi * 2 + 1;
+    const num = numbers.lower[colIdx - 1]?.[prevMi];
+    return num ? `Winner of ${num}` : null;
+  }
+  if (section === 'gf') {
+    const num = slot === 1
+      ? numbers.upper[numbers.upper.length - 1]?.[0]
+      : numbers.lower[numbers.lower.length - 1]?.[0];
+    return num ? `Winner of ${num}` : null;
+  }
+  const semiColIdx = numbers.upper.length - 2;
+  const num = numbers.upper[semiColIdx]?.[slot === 1 ? 0 : 1];
+  return num ? `Loser of ${num}` : null;
 }
 
 // ─── Trophy + ghost shimmer + drop glow animations (injected once) ────────────
@@ -352,7 +403,7 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
 // ─── PlayerRow ────────────────────────────────────────────────────────────────
 function PlayerRow({
   player, score, isWinner, isLoser, showScore, canEdit, maxWins, onCommit,
-  canManualAssign, allTeams, onManualAssign,
+  canManualAssign, allTeams, onManualAssign, placeholder,
 }: {
   player: string | null; score: number; isWinner: boolean; isLoser: boolean;
   showScore: boolean; canEdit?: boolean; maxWins?: number;
@@ -360,6 +411,7 @@ function PlayerRow({
   canManualAssign?: boolean;
   allTeams?: string[];
   onManualAssign?: (team: string | null) => void;
+  placeholder?: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -372,7 +424,6 @@ function PlayerRow({
     if (!isNaN(n) && n >= 0) onCommit?.(n);
   };
 
-  // Only accept 'text/team' — never 'text/plain' (which is map data from Spin Queue)
   const acceptsDrop = canManualAssign && !isWinner && !isLoser;
 
   return (
@@ -388,7 +439,6 @@ function PlayerRow({
         transition: 'background 0.15s, outline 0.15s',
       }}
       onDragOver={acceptsDrop ? (e) => {
-        // Only allow if carrying team data, NOT map data
         if (e.dataTransfer.types.includes('text/team')) {
           e.preventDefault();
           setDragOver(true);
@@ -398,10 +448,8 @@ function PlayerRow({
       onDrop={acceptsDrop ? (e) => {
         e.preventDefault();
         setDragOver(false);
-        // Only accept team drops — guard against map drops from Spin Queue
         const team = e.dataTransfer.getData('text/team');
         if (team) onManualAssign?.(team);
-        // Ignore 'text/plain' (map data) silently
       } : undefined}
     >
       <span
@@ -421,7 +469,7 @@ function PlayerRow({
         title={canManualAssign && player && !isWinner && !isLoser ? 'Drag to remove' : canManualAssign && !player ? 'Drop a team here' : undefined}
       >
         {isWinner && '✓ '}
-        {player ?? (isLoser ? 'BYE' : 'TBD')}
+        {player ?? (isLoser ? 'BYE' : (placeholder ?? 'TBD'))}
       </span>
       {showScore && (
         editing ? (
@@ -463,7 +511,6 @@ function RoundHeader({ section, ri, label, matchCount, slotCount, isAdmin }: {
               key={slotIdx}
               className={`w-[18px] h-[18px] border border-dashed t-border-mid rounded bg-[var(--bg-surface)] text-[9px] flex items-center justify-center t-dim transition-colors cursor-crosshair ${dropSlot === slotIdx ? 'map-drop-active' : 'hover:border-[var(--accent)] hover:text-[var(--accent)] hover:bg-[rgba(58,107,255,0.05)]'}`}
               onDragOver={e => {
-                // Only accept map data ('text/plain'), not team data
                 if (e.dataTransfer.types.includes('text/plain') && !e.dataTransfer.types.includes('text/team')) {
                   e.preventDefault();
                   setDropSlot(slotIdx);
@@ -502,7 +549,6 @@ function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCoun
             className={`flex-1 flex items-center justify-center font-['DM_Mono'] text-[9px] border-r t-border last:border-r-0 relative group transition-colors ${isAdmin && isDropTarget ? 'map-drop-active' : ''}`}
             style={{ background: map ? 'rgba(58,107,255,0.04)' : undefined, color: map ? 'var(--accent)' : 'var(--text-muted)' }}
             onDragOver={isAdmin ? (e) => {
-              // Only accept map data from Spin Queue ('text/plain'), not teams
               if (e.dataTransfer.types.includes('text/plain') && !e.dataTransfer.types.includes('text/team')) {
                 e.preventDefault();
                 setDropSlot(slotIdx);
@@ -537,7 +583,7 @@ function MapSlots({ matchKey, slotCount, isAdmin }: { matchKey: string; slotCoun
 function MatchCard({
   match, matchKey, onScore, onUndo, isAdmin, highlightBorder,
   p1SlotKey, p2SlotKey, isSlotRevealed,
-  allTeams, onManualAssign,
+  allTeams, onManualAssign, matchNumber, p1Placeholder, p2Placeholder,
 }: {
   match: BracketMatch; matchKey: string;
   onScore: (p1wins: number, p2wins: number) => void;
@@ -549,6 +595,9 @@ function MatchCard({
   isSlotRevealed?: (slotKey: string) => boolean;
   allTeams?: string[];
   onManualAssign?: (slot: 1 | 2, team: string | null) => void;
+  matchNumber?: number;
+  p1Placeholder?: string | null;
+  p2Placeholder?: string | null;
 }) {
   const [s1, setS1] = useState(match.score1);
   const [s2, setS2] = useState(match.score2);
@@ -571,12 +620,24 @@ function MatchCard({
 
   return (
     <div style={{ position: 'relative' }}>
+      {matchNumber != null && (
+        <div
+          className="font-['DM_Mono']"
+          style={{
+            position: 'absolute', top: -9, left: -9, width: 18, height: 18, borderRadius: 9,
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-mid)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 9, color: 'var(--text-dim)', zIndex: 5,
+          }}
+          title={`Match ${matchNumber}`}
+        >{matchNumber}</div>
+      )}
       <div
         className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col"
         style={{ width: CARD_W, height: CARD_H, ...borderStyle }}
       >
-        <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} />
-        <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(2, team)} />
+        <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} placeholder={p1Placeholder} />
+        <PlayerRow player={p2Revealed ? match.p2 : null} score={isDone ? match.score2 : s2} isWinner={isDone && match.winner === match.p2} isLoser={isDone && match.winner !== match.p2} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS2(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(2, team)} placeholder={p2Placeholder} />
         <MapSlots matchKey={matchKey} slotCount={slotCount} isAdmin={isAdmin} />
       </div>
       {isModified && (
@@ -634,33 +695,26 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
 
 // ─── SpinQueuePanel — admin-only floating Spin Queue ─────────────────────────
 function SpinQueuePanel({ spinResults }: { spinResults: string[] }) {
-  // Each item is a draggable map card matching MapSlot height (h-7 = 28px)
-  // The panel width is fixed at CARD_W so it visually aligns with bracket cards.
   return (
     <div
       className="absolute bottom-6 right-6 t-surface border t-border rounded-xl shadow-2xl z-50 flex flex-col max-h-[50vh]"
       style={{ width: CARD_W }}
     >
-      {/* Header */}
       <div
         className="px-3 py-2 border-b t-border font-['Bebas_Neue'] text-lg tracking-widest rounded-t-xl shrink-0"
         style={{ background: 'var(--bg-elevated)', color: 'var(--accent-gold)' }}
       >
         🎯 Spin Queue
       </div>
-      {/* Hint */}
       <div className="px-3 py-1.5 border-b t-border font-['DM_Mono'] text-[9px] t-muted shrink-0" style={{ background: 'rgba(0,0,0,0.1)' }}>
         Drag maps into bracket slots
       </div>
-      {/* Items — each row is 28px tall matching MapSlot drop zones */}
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
         {spinResults.map((m, i) => (
           <div
             key={i}
             draggable
             onDragStart={(e) => {
-              // Carry map data as 'text/plain' — PlayerRow only accepts 'text/team', so
-              // this is automatically blocked from being dropped onto team slots.
               e.dataTransfer.setData('text/plain', m);
               e.dataTransfer.effectAllowed = 'copy';
             }}
@@ -687,14 +741,11 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const [localSF, setLocalSF] = useState(stageFormats);
   const [localElim, setLocalElim] = useState<'single' | 'double'>(elimMode);
 
-  // Sync local UI state from server whenever the bracket exists (locked) or on
-  // first load. This ensures a refresh always shows the saved formats correctly.
   useEffect(() => {
     if (!loading) {
       setLocalSF(stageFormats);
       setLocalElim(elimMode);
     }
-  // Only re-sync when the server values actually change, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, stageFormats.upperBracket, stageFormats.lowerBracket, stageFormats.lowerBracketFinal, stageFormats.grandFinal, elimMode]);
 
@@ -710,7 +761,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
     setElimMode(id);
   }, [bracket, localElim, setElimMode]);
 
-  // ── Shuffle reveal animation ──────────────────────────────────────────────
   const [revealedSlots, setRevealedSlots] = useState<Set<string>>(() => new Set(['__all__']));
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -754,7 +804,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
   const hasBracket = !!bracket;
   const isSeeded = hasBracket && !!bracket?.upper[0]?.some(m => m.p1 || m.p2);
 
-  // Step: 1 = choose format, 2 = generated (not seeded), 3 = seeded
   const currentStep: 1 | 2 | 3 = !hasBracket ? 1 : !isSeeded ? 2 : 3;
 
   return (
@@ -787,7 +836,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
 
             <div className="h-8 w-px shrink-0" style={{ background: 'var(--border-mid)' }} />
 
-            {/* Per-stage format picker */}
             <div className="flex flex-col gap-1.5">
               <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase t-dim mb-0.5">Match Format</div>
               {([
@@ -839,7 +887,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
                 </button>
               ) : (
                 <>
-                  {/* Shuffle button — primary CTA when structure exists but not seeded */}
                   <button
                     className="px-4 py-2 font-['DM_Mono'] font-bold rounded-xl text-xs text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
                     style={{
@@ -875,7 +922,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
         </div>
       )}
 
-      {/* ── Bracket display ──────────────────────────────────────────────── */}
       {bracket ? (
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
           <BracketDisplay
@@ -891,9 +937,7 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
           />
         </div>
       ) : (
-        /* ── No bracket yet — pre-generate placeholder ──────────────── */
         <div className="flex-1 flex flex-col items-center justify-center gap-5">
-          {/* Ghost skeleton preview */}
           <div className="flex gap-4 opacity-30 pointer-events-none select-none">
             {[4, 2, 1].map((count, colIdx) => (
               <div key={colIdx} className="flex flex-col" style={{ gap: colSpacing(colIdx) - CARD_H }}>
@@ -909,7 +953,6 @@ export function BracketTab({ spinResults }: { spinResults: string[] }) {
         </div>
       )}
 
-      {/* ── Spin Queue — admin only, shown when bracket exists and queue is non-empty ── */}
       {isAdmin && hasBracket && spinResults.length > 0 && (
         <SpinQueuePanel spinResults={spinResults} />
       )}
@@ -927,14 +970,12 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
 }) {
-  // Compute which teams are already placed in any Round 0 slot
   const assignedTeams = new Set<string>();
   const r0 = bracket.upper[0] ?? [];
   r0.forEach(m => { if (m.p1) assignedTeams.add(m.p1); if (m.p2) assignedTeams.add(m.p2); });
 
   return (
     <>
-      {/* Team pool — always visible, draggable for admin */}
       <TeamPool teams={allTeams} assignedTeams={assignedTeams} isAdmin={isAdmin} />
       <div className="t-surface border t-border rounded-xl p-5" style={{ position: 'relative' }}>
         <div className="flex items-center gap-3 font-['Bebas_Neue'] text-xl tracking-widest t-text mb-6">
@@ -949,7 +990,6 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
           </div>
         </div>
 
-        {/* Bracket canvas — always interactive, no pre-shuffle lock. Drag to pan, scroll to zoom. */}
         <PanZoomCanvas>
           {bracket.type === 'single'
             ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} />
@@ -958,7 +998,6 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
         </PanZoomCanvas>
       </div>
 
-      {/* 3rd place — single elim only */}
       {isSeeded && bracket.type === 'single' && bracket.thirdPlace && (bracket.thirdPlace.p1 || bracket.thirdPlace.p2) && (() => {
         const tp = bracket.thirdPlace!;
         const third = tp.winner;
@@ -1004,6 +1043,8 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
 }) {
   const rounds = bracket.upper.filter(r => r.length > 0);
   if (rounds.length === 0) return null;
+
+  const numbers = computeMatchNumbers(bracket);
 
   const OFFSET_Y = 40;
   const totalH = rounds[0].length * colSpacing(0) + CARD_H + OFFSET_Y + 20;
@@ -1061,6 +1102,9 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               isSlotRevealed={isSlotRevealed}
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('upper', colIdx, mi, slot, team)}
+              matchNumber={numbers.upper[colIdx]?.[mi]}
+              p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
+              p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
             />
           </div>
         ));
@@ -1082,6 +1126,8 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
   const lbRounds = (bracket.lower || []).filter(r => r.length > 0);
   const gf = bracket.grandFinal ?? null;
   if (ubRounds.length === 0) return null;
+
+  const numbers = computeMatchNumbers(bracket);
 
   const HEADER_H = 40;
   const SECTION_GAP = 48;
@@ -1186,7 +1232,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
         })()}
       </svg>
 
-      {/* UB label */}
+      {/* UB section label */}
       <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold absolute" style={{ top: 0, left: 0, color: 'var(--accent)', opacity: 0.7 }}>Upper Bracket</div>
 
       {/* UB cards */}
@@ -1214,6 +1260,9 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               isSlotRevealed={isSlotRevealed}
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('upper', colIdx, mi, slot, team)}
+              matchNumber={numbers.upper[colIdx]?.[mi]}
+              p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
+              p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
             />
           </div>
         ));
@@ -1226,24 +1275,23 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
         return (
           <div style={{ position: 'absolute', top: gfTopGF1 - HEADER_H, left: gfColX }}>
             <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold mb-1.5" style={{ color: 'var(--accent)' }}>Grand Final</div>
-            <GrandFinalCards gf={gf} lbFinalLoser={lbFinalLoser} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} />
+            <GrandFinalCards gf={gf} lbFinalLoser={lbFinalLoser} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} numbers={numbers} />
           </div>
         );
       })()}
 
-      {/* LB label */}
+      {/* LB section label */}
       {lbRounds.length > 0 && (
         <div className="font-['DM_Mono'] text-[10px] tracking-widest uppercase font-bold absolute" style={{ top: lbOriginY - HEADER_H, left: 0, color: 'var(--accent)', opacity: 0.7 }}>Lower Bracket</div>
       )}
 
-      {/* LB cards */}
+      {/* LB cards — consistent naming: Lower Round N / Lower Final */}
       {lbRounds.map((round, colIdx) => {
         const isBo3lb = round[0]?.format === 'bo3';
         const isBo5lb = round[0]?.format === 'bo5';
         const slotCountLb = isBo5lb ? 5 : isBo3lb ? 3 : 1;
         const isFinal = colIdx === lbRounds.length - 1;
-        const isSemi = colIdx === lbRounds.length - 2;
-        const label = isFinal ? 'Lower Final' : isSemi ? 'Lower Semi' : `Lower R${colIdx + 1}`;
+        const label = isFinal ? 'Lower Final' : `Lower Round ${colIdx + 1}`;
         return round.map((match, mi) => (
           <div key={`lb-card-${colIdx}-${mi}`} style={{ position: 'absolute', top: lbOriginY + lbCardTop(colIdx, mi), left: colIdx * COL_W, width: CARD_W }}>
             {mi === 0 && (
@@ -1262,6 +1310,9 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               isSlotRevealed={isSlotRevealed}
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('lower', colIdx, mi, slot, team)}
+              matchNumber={numbers.lower[colIdx]?.[mi]}
+              p1Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 1)}
+              p2Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 2)}
             />
           </div>
         ));
@@ -1271,13 +1322,14 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
 }
 
 // ─── GrandFinalCards ─────────────────────────────────────────────────────────
-function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRevealed, allTeams, onManualAssign }: {
+function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRevealed, allTeams, onManualAssign, numbers }: {
   gf: GrandFinal; lbFinalLoser: string | null; isAdmin: boolean;
   onScore: (section: string, ri: number, mi: number, p1wins: number, p2wins: number) => Promise<void>;
   onUndo: (section: string, ri: number, mi: number) => Promise<void>;
   isSlotRevealed: (slotKey: string) => boolean;
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
+  numbers: MatchNumbers;
 }) {
   const gf1: BracketMatch = {
     p1: gf.p1, p2: gf.p2, format: gf.format,
@@ -1310,6 +1362,9 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
           isSlotRevealed={isSlotRevealed}
           allTeams={allTeams}
           onManualAssign={(slot, team) => onManualAssign('gf', 0, 0, slot, team)}
+          matchNumber={numbers.gf ?? undefined}
+          p1Placeholder={feederLabel(numbers, 'gf', 0, 0, 1)}
+          p2Placeholder={feederLabel(numbers, 'gf', 0, 0, 2)}
         />
         {gf.isReset && (
           <div className="mt-1 px-3 py-1 rounded-lg text-center" style={{ background: 'rgba(58,107,255,0.06)', border: '1px solid rgba(58,107,255,0.2)' }}>
