@@ -296,7 +296,7 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
                 color: used ? 'var(--text-dim)' : 'var(--accent)',
                 opacity: used ? 0.85 : 1,
                 cursor: isAdmin && !used ? 'grab' : 'default',
-                textDecoration: used ? 'line-through' : undefined,
+                textDecoration: undefined,
                 fontWeight: used ? undefined : 700,
                 boxShadow: !used ? '0 0 0 0px rgba(77,124,255,0)' : undefined,
               }}
