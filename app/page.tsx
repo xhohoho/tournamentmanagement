@@ -221,24 +221,17 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   {previewAsUser ? '👁 Exit Preview' : '👁 Preview as User'}
                 </button>
               )}
-              {isActuallyAdmin && (
-                <button
-                  onClick={() => { adminSession.logout(); window.location.reload(); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--accent-red)] hover:text-[var(--accent-red)] cursor-pointer"
-                  title="Log out admin session (clears token)"
-                >
-                  🚪 Logout
-                </button>
-              )}
-              {!isAdmin && (
-                <button
-                  onClick={() => setAdminOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border t-border-mid t-muted t-elevated font-['DM_Mono'] text-xs transition-all hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)] cursor-pointer"
-                  title="Log in as admin for this tournament"
-                >
-                  🔒 Admin
-                </button>
-              )}
+              <button
+                onClick={() => isActuallyAdmin ? (adminSession.logout(), window.location.reload()) : setAdminOpen(true)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-['DM_Mono'] text-xs transition-all cursor-pointer ${
+                  isActuallyAdmin
+                    ? 't-border-mid t-muted t-elevated hover:border-[var(--accent-red)] hover:text-[var(--accent-red)]'
+                    : 't-border-mid t-muted t-elevated hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)]'
+                }`}
+                title={isActuallyAdmin ? 'Log out admin session' : 'Log in as admin for this tournament'}
+              >
+                {isActuallyAdmin ? '🚪 Logout' : '🔒 Login'}
+              </button>
             </div>
           </div>
         </header>
