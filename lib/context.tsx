@@ -36,7 +36,7 @@ const GUARD_MS = 1500;
 // All state fields that can be optimistically guarded against SSE overwrites.
 const GUARD_FIELDS = [
   'players', 'roster', 'teamMode', 'teams', 'bracket', 'stageMaps',
-  'maps', 'usedMaps', 'spinQueue', 'spinUsedItems', 'spinStarredItems', 'spinCategories', 'defaultMaps',
+  'maps', 'usedMaps', 'spinQueue', 'spinTabQueue', 'spinUsedItems', 'spinStarredItems', 'spinCategories', 'defaultMaps',
   'joinKey', 'queueCap', 'queueLocked', 'chat', 'tickerText', 'ffa', 'casterSheet',
 ] as const;
 type GuardField = typeof GUARD_FIELDS[number];
@@ -65,6 +65,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [spinState, setSpinState] = useState<import('@/lib/types').SpinState | null>(null);
   const [shuffleState, setShuffleState] = useState<import('@/lib/types').ShuffleState | null>(null);
   const [spinQueue, setSpinQueue] = useState<string[]>([]);
+  const [spinTabQueue, setSpinTabQueue] = useState<string[]>([]);
   const [spinUsedItems, setSpinUsedItems] = useState<string[]>([]);
   const [spinStarredItems, setSpinStarredItems] = useState<string[]>([]);
   const [spinCategories, setSpinCategories] = useState<string[]>([]);
@@ -147,6 +148,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('usedMaps'))  setUsedMaps(data.usedMaps as string[] ?? []);
     if (!fromSSE || !guard.guarded('stageMaps')) setStageMaps(data.stageMaps as Record<string, string[]> ?? {});
     if (!fromSSE || !guard.guarded('spinQueue')) setSpinQueue(data.spinQueue as string[] ?? []);
+    if (!fromSSE || !guard.guarded('spinTabQueue')) setSpinTabQueue(data.spinTabQueue as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinUsedItems')) setSpinUsedItems(data.spinUsedItems as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinStarredItems')) setSpinStarredItems(data.spinStarredItems as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinCategories')) {
@@ -657,28 +659,48 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinStarred', spinStarred: starred });
   };
 
+  // ─── Spin tab isolated queue operations ───────────────────────────────────────
+  const appendSpinTabQueue = async (item: string) => {
+    guard.touch('spinTabQueue');
+    setSpinTabQueue(prev => [...prev, item]);
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'appendSpinTabQueue', item });
+    if (res.ok) {
+      const data = await res.json();
+      setSpinTabQueue(data.spinTabQueue ?? []);
+    }
+  };
+
+  const removeSpinTabQueueItem = async (idx: number) => {
+    guard.touch('spinTabQueue');
+    const prev = spinTabQueue;
+    const newQ = prev.filter((_, i) => i !== idx);
+    setSpinTabQueue(newQ);
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinTabQueue', spinTabQueue: newQ });
+    if (!res.ok) setSpinTabQueue(prev);
+  };
+
   const clearSpinTab = async () => {
-    guard.touch('spinQueue'); guard.touch('spinUsedItems'); guard.touch('spinStarredItems');
-    const prevQueue = spinQueue;
+    guard.touch('spinTabQueue'); guard.touch('spinUsedItems'); guard.touch('spinStarredItems');
+    const prevQueue = spinTabQueue;
     const prevUsed = spinUsedItems;
     const prevStarred = spinStarredItems;
-    setSpinQueue([]);
+    setSpinTabQueue([]);
     setSpinUsedItems([]);
     setSpinStarredItems([]);
     try {
       const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'clearSpinTab' });
       if (res.ok) {
         const data = await res.json();
-        setSpinQueue(data.spinQueue ?? []);
+        setSpinTabQueue(data.spinTabQueue ?? []);
         setSpinUsedItems(data.spinUsedItems ?? []);
         setSpinStarredItems(data.spinStarredItems ?? []);
       } else {
-        setSpinQueue(prevQueue);
+        setSpinTabQueue(prevQueue);
         setSpinUsedItems(prevUsed);
         setSpinStarredItems(prevStarred);
       }
     } catch {
-      setSpinQueue(prevQueue);
+      setSpinTabQueue(prevQueue);
       setSpinUsedItems(prevUsed);
       setSpinStarredItems(prevStarred);
     }
@@ -829,6 +851,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       generateBracket, seedBracket, manualSeedSlot, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, moveMapToUsed, restoreUsedMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       markSpinUsed, restoreSpinUsed, saveSpinStarred, clearSpinTab, spinUsedItems, spinStarredItems,
+      appendSpinTabQueue, removeSpinTabQueueItem, spinTabQueue,
       assignLeader,
       createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,
       deleteFFAMatch, lockFFAMatch, updateFFAMapInfo, setFFAMatchImage, setFFAMatchScoreImage,

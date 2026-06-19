@@ -9,15 +9,15 @@ export function SpinTab() {
   const {
     isAdmin, loading,
     spinState: liveSpin,
-    spinQueue, removeSpinQueueItem,
-    appendSpinQueue, clearSpinQueue,
+    spinTabQueue, removeSpinTabQueueItem,
+    appendSpinTabQueue,
     spinUsedItems, spinStarredItems,
     markSpinUsed, restoreSpinUsed, saveSpinStarred, clearSpinTab,
     adminToken,
   } = useTourney();
 
-  // ─── Items = the spin queue itself ────────────────────────────────────────────
-  const items = spinQueue;
+  // ─── Items = the spin tab's own isolated queue ─────────────────────────────────
+  const items = spinTabQueue;
 
   // ─── Isolated used / starred pools for Spin tab only ───────────────────────────
   const usedItems = spinUsedItems;
@@ -48,8 +48,8 @@ export function SpinTab() {
     const item = items[from];
     setBusy(true);
     try {
-      await removeSpinQueueItem(from);
-      await appendSpinQueue(item);
+      await removeSpinTabQueueItem(from);
+      await appendSpinTabQueue(item);
     } finally { setBusy(false); }
   };
 
@@ -236,13 +236,13 @@ export function SpinTab() {
     const name = itemInput.trim();
     if (!name) return;
     setBusy(true);
-    try { await appendSpinQueue(name); setItemInput(''); } finally { setBusy(false); }
+    try { await appendSpinTabQueue(name); setItemInput(''); } finally { setBusy(false); }
   };
 
   const handleRemoveItem = async (idx: number) => {
     if (busy) return;
     setBusy(true);
-    try { await removeSpinQueueItem(idx); } finally { setBusy(false); }
+    try { await removeSpinTabQueueItem(idx); } finally { setBusy(false); }
   };
 
   const handleClearAll = async () => {

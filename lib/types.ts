@@ -178,6 +178,7 @@ export interface ServerState {
   chatMessages: ChatMessage[];
   defaultMaps: string[];     // maps that are always restored after reset
   spinQueue: string[];
+  spinTabQueue: string[];        // isolated queue for Spin tab (independent of Maps tab)
   spinUsedItems: string[];       // items marked as used in Spin tab (hidden from wheel)
   spinStarredItems: string[];    // starred items in Spin tab (restored on clear)
   spinState: SpinState | null;  // live spin broadcast
@@ -241,6 +242,7 @@ export interface TourneyContext {
   spinState: SpinState | null;
   shuffleState: ShuffleState | null;
   spinQueue: string[];
+  spinTabQueue: string[];
   spinUsedItems: string[];
   spinStarredItems: string[];
   spinCategories: string[];
@@ -322,6 +324,8 @@ export interface TourneyContext {
   restoreSpinUsed: (name?: string) => Promise<void>;
   saveSpinStarred: (starred: string[]) => Promise<void>;
   clearSpinTab: () => Promise<void>;
+  appendSpinTabQueue: (item: string) => Promise<void>;
+  removeSpinTabQueueItem: (idx: number) => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;

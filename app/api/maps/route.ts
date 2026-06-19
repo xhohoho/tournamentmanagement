@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
     usedMaps: state.usedMaps ?? [],
     stageMaps: state.stageMaps,
     spinQueue: state.spinQueue || [],
+    spinTabQueue: state.spinTabQueue || [],
     spinUsedItems: state.spinUsedItems ?? [],
     spinStarredItems: state.spinStarredItems ?? [],
     spinCategories: state.spinCategories || [],
@@ -192,15 +193,29 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ spinStarredItems: next.spinStarredItems ?? [] });
   }
 
+  if (action === 'appendSpinTabQueue') {
+    const { item } = body;
+    if (!item) return NextResponse.json({ error: 'item required' }, { status: 400 });
+    const next = await updateState(s => ({ ...s, spinTabQueue: [...(s.spinTabQueue || []), item] }), tid);
+    return NextResponse.json({ spinTabQueue: next.spinTabQueue });
+  }
+
+  if (action === 'updateSpinTabQueue') {
+    const { spinTabQueue } = body;
+    const next = await updateState(s => ({ ...s, spinTabQueue: spinTabQueue || [] }), tid);
+    return NextResponse.json({ spinTabQueue: next.spinTabQueue });
+  }
+
   if (action === 'clearSpinTab') {
+    // Only clear Spin tab's isolated state — do NOT touch spinQueue (Maps tab uses it)
     const next = await updateState(s => ({
       ...s,
-      spinQueue: [],
+      spinTabQueue: [],
       spinUsedItems: [],
       spinStarredItems: [],
     }), tid);
     return NextResponse.json({
-      spinQueue: next.spinQueue ?? [],
+      spinTabQueue: next.spinTabQueue ?? [],
       spinUsedItems: next.spinUsedItems ?? [],
       spinStarredItems: next.spinStarredItems ?? [],
     });
