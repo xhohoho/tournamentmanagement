@@ -308,12 +308,11 @@ function _onDragMouseMove(e: MouseEvent) {
     ghost.style.width = `${slotRect.width}px`;
     ghost.style.height = `${slotRect.height}px`;
     ghost.style.borderRadius = '3px';
-    ghost.style.padding = '0';
+    ghost.style.padding = '0 4px';
     ghost.style.display = 'flex';
     ghost.style.alignItems = 'center';
     ghost.style.justifyContent = 'center';
     ghost.style.transform = 'none';
-    // Position ghost exactly over the slot (top-left alignment)
     ghost.style.left = `${slotRect.left}px`;
     ghost.style.top = `${slotRect.top}px`;
     ghost.style.fontSize = '9px';
@@ -334,14 +333,14 @@ function _onDragMouseMove(e: MouseEvent) {
 
   // Update nearest slot highlight
   if (snappedEl) {
-    const prevEl = _dragState.type === 'map' ? _dragState.nearestMapSlot?.el : _dragState.nearestSlot?.el;
+    const prevEl = _dragState.nearestSlot?.el || _dragState.nearestMapSlot?.el;
     if (prevEl !== snappedEl) {
       _clearNearestHighlight();
       snappedEl.classList.add('magnetic-snap-target');
       if (_dragState.type === 'map' && nearestMap && nearestMap.dist < MAGNETIC_THRESHOLD) {
         _dragState.nearestMapSlot = { el: snappedEl, matchKey: nearestMap.matchKey, slotIdx: nearestMap.slotIdx, roundSlot: nearestMap.roundSlot };
         _dragState.nearestSlot = null;
-      } else if (nearestTeam && nearestTeam.dist < MAGNETIC_THRESHOLD) {
+      } else if (_dragState.type === 'team' && nearestTeam && nearestTeam.dist < MAGNETIC_THRESHOLD) {
         _dragState.nearestSlot = { el: snappedEl, section: nearestTeam.section, ri: nearestTeam.ri, mi: nearestTeam.mi, slot: nearestTeam.slot };
         _dragState.nearestMapSlot = null;
       }
@@ -355,23 +354,24 @@ function _onDragMouseUp(e: MouseEvent) {
   if (!_dragState) return;
 
   const MAGNETIC_THRESHOLD = 60;
-  const nearestTeam = _findNearestSlot(e.clientX, e.clientY);
-  const nearestMap = _findNearestMapSlot(e.clientX, e.clientY);
-  const nearest = _dragState.type === 'map' ? nearestMap : nearestTeam;
 
-  if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
-    if (_dragState.type === 'map' && nearestMap) {
-      // Map drop — dispatch with map-specific details
+  if (_dragState.type === 'map') {
+    // Map drop via magnetic snap
+    const nearest = _findNearestMapSlot(e.clientX, e.clientY);
+    if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
       window.dispatchEvent(new CustomEvent('magnetic-drop-map', {
         detail: {
           map: _dragState.team,
-          matchKey: nearestMap.matchKey,
-          slotIdx: nearestMap.slotIdx,
-          roundSlot: !!nearestMap.roundSlot,
+          matchKey: nearest.matchKey,
+          slotIdx: nearest.slotIdx,
+          roundSlot: !!nearest.roundSlot,
         },
       }));
-    } else if (_dragState.type === 'team' && nearestTeam) {
-      // Team drop
+    }
+  } else {
+    // Team drop via magnetic snap
+    const nearest = _findNearestSlot(e.clientX, e.clientY);
+    if (nearest && nearest.dist < MAGNETIC_THRESHOLD) {
       const detail: {
         team: string;
         source: 'pool' | 'slot' | 'spinqueue';
@@ -386,10 +386,10 @@ function _onDragMouseUp(e: MouseEvent) {
       } = {
         team: _dragState.team,
         source: _dragState.source,
-        targetSection: nearestTeam.section,
-        targetRi: nearestTeam.ri,
-        targetMi: nearestTeam.mi,
-        targetSlot: nearestTeam.slot,
+        targetSection: nearest.section,
+        targetRi: nearest.ri,
+        targetMi: nearest.mi,
+        targetSlot: nearest.slot,
       };
       if (_dragState.source === 'slot') {
         detail.sourceSection = _dragState.sourceSection;
@@ -904,7 +904,7 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
 }
 
 // ─── SpinQueuePanel ───────────────────────────────────────────────────────────
-function SpinQueuePanel({ spinResults }: { spinResults: string[] }) {
+function SpinQueuePanel({ spinResults, isAdmin }: { spinResults: string[]; isAdmin: boolean }) {
   return (
     <div
       className="absolute bottom-6 right-6 t-surface border t-border rounded-xl shadow-2xl z-50 flex flex-col max-h-[50vh]"
@@ -923,11 +923,11 @@ function SpinQueuePanel({ spinResults }: { spinResults: string[] }) {
         {spinResults.map((m, i) => (
           <div
             key={i}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData('text/plain', m);
-              e.dataTransfer.effectAllowed = 'copy';
-            }}
+            onMouseDown={isAdmin ? (e) => {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              startMagneticDrag(e, m, 'spinqueue', { type: 'map' });
+            } : undefined}
             className="flex items-center gap-2 font-['DM_Mono'] border t-border-mid rounded t-elevated transition-colors cursor-grab active:cursor-grabbing hover:border-[var(--accent)] select-none"
             style={{ height: 28, paddingLeft: 8, paddingRight: 8 }}
             title={`Drag "${m}" into a map slot`}
@@ -1169,7 +1169,7 @@ export function BracketTab({ spinResults, onMatchCardClick }: { spinResults: str
       )}
 
       {isAdmin && hasBracket && spinResults.length > 0 && (
-        <SpinQueuePanel spinResults={spinResults} />
+        <SpinQueuePanel spinResults={spinResults} isAdmin={isAdmin} />
       )}
 
     </div>
