@@ -1,36 +1,61 @@
 @import "tailwindcss";
 /****** Light mode ******/
+/* Neutral scale retuned for contrast — borders, dim/muted text, and surface
+   separation were previously too close in value (e.g. border-mid on
+   bg-elevated was ~1.5:1), which made cards, dividers, and placeholder text
+   ("TBD", "Winner of N") wash into the background.
+
+   Accent/red/green/gold: previously these used the same bright/saturated hex
+   in both themes. That works great on dark surfaces but fails text-contrast
+   badly on light ones — e.g. the old --accent-green (#22b862) was only
+   ~2.4:1 against bg-elevated, and --accent-gold (#e09010) only ~2.4:1 — both
+   well under the 4.5:1 AA minimum for normal text. This showed up as
+   "hard to read" winner names, champion text, and status badges in light
+   mode (e.g. the Bracket tab's match cards). Below, the LIGHT-mode values of
+   these four are darkened/more-saturated versions of the same hue so they
+   read clearly as text on white/near-white, while dark mode keeps the
+   original bright values unchanged. Components that hardcode rgba() tints
+   keyed to the *old* bright hex (badge/chip backgrounds, glows) are left as
+   they are on purpose — a darker saturated foreground colour on a lighter
+   tint of the same hue is the standard "badge" pairing and still looks
+   correct; only the foreground text itself needed to get darker. */
 :root {
-  --bg:          #f0f2f8;
+  --bg:          #eef0f7;
   --bg-surface:  #ffffff;
-  --bg-elevated: #f5f6fc;
-  --bg-hover:    #eaecf5;
-  --border:      #dde0ef;
-  --border-mid:  #c4c8e0;
-  --text:        #1a1a2e;
-  --text-muted:  #5a5a80;
-  --text-dim:    #9090b8;
-  --accent:      #3a6bff;
-  --accent-red:  #e8294a;
-  --accent-green:#22b862;
-  --accent-gold: #e09010;
+  --bg-elevated: #f2f3fa;
+  --bg-hover:    #e6e9f4;
+  --border:      #d6dae9;
+  --border-mid:  #aab0d4;
+  --text:        #14141f;
+  --text-muted:  #51517a;
+  --text-dim:    #71719c;
+  --accent:      #2f5edb;
+  --accent-red:  #c81f3f;
+  --accent-green:#197a42;
+  --accent-gold: #976008;
   --grad-start:  rgba(77,124,255,0.05);
   --grad-end:    rgba(255,61,90,0.04);
   --header-bg:   rgba(255,255,255,0.92);
-  --scrollbar:   #c4c8e0;
+  --scrollbar:   #aab0d4;
+  /* Darkens TEAM_COLORS/WHEEL_COLORS when used as *text* in light mode (they're
+     tuned bright for dark backgrounds and dot/border swatches). No-op in dark
+     mode. Applied via the .t-team-text utility below — never on swatches/dots/
+     borders, only on text, since darkening a colour swatch would defeat its
+     purpose. */
+  --team-text-filter: brightness(0.6) saturate(1.15);
 }
 
 /****** Dark mode ******/
 .dark {
   --bg:          #080810;
   --bg-surface:  #0f0f1a;
-  --bg-elevated: #161625;
-  --bg-hover:    #1e1e30;
-  --border:      #252538;
-  --border-mid:  #32324a;
-  --text:        #dde0f0;
-  --text-muted:  #7878a0;
-  --text-dim:    #4a4a6a;
+  --bg-elevated: #181828;
+  --bg-hover:    #232338;
+  --border:      #2a2a40;
+  --border-mid:  #45456a;
+  --text:        #e8eaf6;
+  --text-muted:  #9d9dc2;
+  --text-dim:    #6e6e98;
   --accent:      #4d7cff;
   --accent-red:  #ff3d5a;
   --accent-green:#2dcc70;
@@ -38,7 +63,8 @@
   --grad-start:  rgba(77,124,255,0.08);
   --grad-end:    rgba(255,61,90,0.07);
   --header-bg:   rgba(15,15,26,0.92);
-  --scrollbar:   #32324a;
+  --scrollbar:   #45456a;
+  --team-text-filter: none;
 }
 
 /****** Base overrides ******/
@@ -72,6 +98,7 @@ body {
   .t-dim         { color: var(--text-dim); }
   .t-accent      { color: var(--accent); }
   .t-header      { background: var(--header-bg); }
+  .t-team-text   { filter: var(--team-text-filter); }
   
   .animate-fade-up   { animation: fade-up 0.35s ease; }
   .animate-scale-in  { animation: scale-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }

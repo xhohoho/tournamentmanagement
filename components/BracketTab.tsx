@@ -166,7 +166,7 @@ function PanZoomCanvas({ children }: { children: React.ReactNode }) {
       onWheel={onWheel}
       onMouseDown={onMouseDown}
       className="relative overflow-hidden rounded-lg select-none"
-      style={{ height: '68vh', minHeight: 420, cursor: isPanning ? 'grabbing' : 'grab', touchAction: 'none', overscrollBehavior: 'contain', background: 'var(--bg-base)' }}
+      style={{ height: '68vh', minHeight: 420, cursor: isPanning ? 'grabbing' : 'grab', touchAction: 'none', overscrollBehavior: 'contain', background: 'var(--bg)' }}
     >
       <div
         ref={contentRef}
@@ -368,8 +368,8 @@ function TeamPool({ teams, assignedTeams, isAdmin }: {
               style={{
                 borderColor: used ? 'var(--border)' : 'var(--accent)',
                 background: used ? 'transparent' : 'rgba(77,124,255,0.12)',
-                color: used ? 'var(--text-dim)' : 'var(--accent)',
-                opacity: used ? 0.4 : 1,
+                color: used ? 'var(--text-muted)' : 'var(--accent)',
+                opacity: used ? 0.7 : 1,
                 cursor: isAdmin && !used ? 'grab' : 'default',
                 textDecoration: used ? 'line-through' : undefined,
                 fontWeight: used ? undefined : 700,
@@ -460,9 +460,9 @@ function PlayerRow({
           onManualAssign?.(null);
         } : undefined}
         style={{
-          color: !player ? (canManualAssign ? 'var(--accent)' : 'var(--text-dim)') : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-dim)' : 'var(--text)',
+          color: !player ? (canManualAssign ? 'var(--accent)' : 'var(--text-dim)') : isWinner ? 'var(--accent-green)' : isLoser ? 'var(--text-muted)' : 'var(--text)',
           fontStyle: !player && !canManualAssign ? 'italic' : undefined,
-          opacity: isLoser ? 0.5 : 1,
+          opacity: isLoser ? 0.85 : 1,
           cursor: canManualAssign && player && !isWinner && !isLoser ? 'grab' : undefined,
         }}
         title={canManualAssign && player && !isWinner && !isLoser ? 'Drag to remove' : canManualAssign && !player ? 'Drop a team here' : undefined}
@@ -622,7 +622,7 @@ function MatchCard({
   return (
     <div style={{ position: 'relative' }}>
       <div
-        className="t-elevated border t-border rounded-xl overflow-hidden flex flex-col"
+        className="t-elevated border t-border-mid rounded-xl overflow-hidden flex flex-col shadow-sm"
         style={{ width: CARD_W, height: CARD_H, position: 'relative', ...borderStyle }}
       >
         <PlayerRow player={p1Revealed ? match.p1 : null} score={isDone ? match.score1 : s1} isWinner={isDone && match.winner === match.p1} isLoser={isDone && match.winner !== match.p1} showScore={isDone || !!(match.p1 && match.p2)} canEdit={canEdit} maxWins={maxWins} onCommit={n => setS1(n)} canManualAssign={canManualAssign} allTeams={allTeams} onManualAssign={team => onManualAssign?.(1, team)} placeholder={p1Placeholder} />
@@ -660,7 +660,7 @@ function MatchNumberBadge({ matchNumber }: { matchNumber: number }) {
         paddingLeft: 4,
         paddingRight: 4,
         borderRadius: 3,
-        background: 'var(--bg-base)',
+        background: 'var(--bg-elevated)',
         border: '1px solid var(--border-mid)',
         display: 'inline-flex',
         alignItems: 'center',

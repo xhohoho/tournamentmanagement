@@ -555,7 +555,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
                     <span
                       key={m}
                       className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm"
-                      style={{ opacity: isUsed ? 0.45 : 1, color: 'var(--text-base)' }}
+                      style={{ opacity: isUsed ? 0.45 : 1, color: 'var(--text)' }}
                     >
                       {m}
                       {isUsed && <span className="text-[9px] font-bold tracking-wider" style={{ color: 'var(--accent-gold)' }}>USED</span>}
@@ -809,18 +809,18 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
 
       {spunMap && isAdmin && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-[#1e1e1e] border border-[var(--border-mid)] rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+          <div className="w-full max-w-md t-surface border t-border rounded overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="bg-[#d32f2f] text-white px-5 py-3 font-semibold text-lg tracking-wide">🎯 Current Round Map</div>
+            <div className="text-white px-5 py-3 font-semibold text-lg tracking-wide" style={{ background: 'var(--accent-red)' }}>🎯 Current Round Map</div>
 
             {/* Map name */}
-            <div className="p-10 flex items-center justify-center border-b border-[#333]">
-              <p className="text-white text-5xl font-light tracking-wide text-center break-words">{spunMap}</p>
+            <div className="p-10 flex items-center justify-center border-b t-border">
+              <p className="t-text text-5xl font-light tracking-wide text-center break-words">{spunMap}</p>
             </div>
 
             {/* Subtext */}
             <div className="px-5 pt-3 pb-1">
-              <p className="font-['DM_Mono'] text-xs text-gray-400">
+              <p className="font-['DM_Mono'] text-xs t-muted">
                 Added to spin queue.{' '}
                 {usedMaps.includes(spunMap)
                   ? <span style={{ color: 'var(--accent-gold)' }}>Already marked as used.</span>
@@ -829,9 +829,9 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
             </div>
 
             {/* Actions */}
-            <div className="px-5 py-4 flex items-center justify-end gap-3 bg-[#242424]">
+            <div className="px-5 py-4 flex items-center justify-end gap-3" style={{ background: 'var(--bg-elevated)' }}>
               <button
-                className="text-sm text-gray-300 hover:text-white font-medium transition-colors cursor-pointer"
+                className="text-sm t-muted hover:t-text font-medium transition-colors cursor-pointer"
                 onClick={() => setSpunMap('')}
               >Close</button>
               <button
@@ -841,7 +841,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
               >Delete from pool</button>
               <button
                 className="px-4 py-2 text-white text-sm font-semibold rounded shadow-sm transition-colors cursor-pointer disabled:opacity-40"
-                style={{ background: usedMaps.includes(spunMap) ? '#555' : '#5c7cfa' }}
+                style={{ background: usedMaps.includes(spunMap) ? 'var(--border-mid)' : 'var(--accent)' }}
                 disabled={usedMaps.includes(spunMap) || busy}
                 onClick={() => { handleUseMap(spunMap); setSpunMap(''); }}
               >{usedMaps.includes(spunMap) ? '✓ Map used' : 'Use Map'}</button>
