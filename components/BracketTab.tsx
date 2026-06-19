@@ -673,7 +673,7 @@ function MatchNumberBadge({ matchNumber }: { matchNumber: number }) {
       }}
       title={`Match ${matchNumber}`}
     >
-      M{matchNumber}
+      {matchNumber}
     </div>
   );
 }
