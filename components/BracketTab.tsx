@@ -17,6 +17,99 @@ function colSpacing(colIdx: number): number {
   return (CARD_H + ROW_GAP) * Math.pow(2, colIdx);
 }
 
+// ─── PanZoomCanvas — drag with mouse to pan, scroll wheel to zoom ────────────
+const ZOOM_MIN = 0.35;
+const ZOOM_MAX = 2;
+
+function PanZoomCanvas({ children }: { children: React.ReactNode }) {
+  const [scale, setScale] = useState(1);
+  const [tx, setTx] = useState(0);
+  const [ty, setTy] = useState(0);
+  const [isPanning, setIsPanning] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
+
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const dir = e.deltaY > 0 ? -1 : 1;
+    setScale(prevScale => {
+      const newScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prevScale * (1 + dir * 0.12)));
+      const ratio = newScale / prevScale;
+      // keep the point under the cursor stationary while zooming
+      setTx(prevTx => cx - (cx - prevTx) * ratio);
+      setTy(prevTy => cy - (cy - prevTy) * ratio);
+      return newScale;
+    });
+  }, []);
+
+  const onMouseMove = useCallback((e: MouseEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setTx(d.startTx + (e.clientX - d.startX));
+    setTy(d.startTy + (e.clientY - d.startY));
+  }, []);
+
+  const onMouseUp = useCallback(() => {
+    dragRef.current = null;
+    setIsPanning(false);
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+  }, [onMouseMove]);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    // Let drag-and-drop (team/map cards), buttons, and inputs work normally — only pan on empty canvas
+    const target = e.target as HTMLElement;
+    if (e.button !== 0 || target.closest('[draggable="true"], button, input, a, select, textarea')) return;
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startTx: tx, startTy: ty };
+    setIsPanning(true);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [tx, ty, onMouseMove, onMouseUp]);
+
+  useEffect(() => () => {
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+  }, [onMouseMove, onMouseUp]);
+
+  const resetView = () => { setScale(1); setTx(0); setTy(0); };
+
+  return (
+    <div
+      ref={containerRef}
+      onWheel={onWheel}
+      onMouseDown={onMouseDown}
+      className="relative overflow-hidden rounded-lg select-none"
+      style={{ height: '68vh', minHeight: 420, cursor: isPanning ? 'grabbing' : 'grab', touchAction: 'none', background: 'var(--bg-base)' }}
+    >
+      <div
+        style={{
+          transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+          transformOrigin: '0 0',
+          display: 'inline-block',
+          willChange: 'transform',
+        }}
+      >
+        {children}
+      </div>
+      <div className="absolute bottom-2 right-2 flex items-center gap-2 font-['DM_Mono'] text-[10px] t-dim z-10 pointer-events-none">
+        <span className="px-2 py-1 rounded t-elevated border t-border-mid">{Math.round(scale * 100)}%</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); resetView(); }}
+          className="px-2 py-1 rounded border t-border-mid t-elevated hover:border-[var(--accent)] transition-colors pointer-events-auto"
+          style={{ cursor: 'pointer' }}
+        >
+          Reset View
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ubCardTop(colIdx: number, mi: number): number {
   if (colIdx === 0) return mi * colSpacing(0);
   const aTop = ubCardTop(colIdx - 1, mi * 2);
@@ -743,13 +836,13 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
           </div>
         </div>
 
-        {/* Bracket canvas — always interactive, no pre-shuffle lock */}
-        <div className="overflow-x-auto overflow-y-visible pb-4">
+        {/* Bracket canvas — always interactive, no pre-shuffle lock. Drag to pan, scroll to zoom. */}
+        <PanZoomCanvas>
           {bracket.type === 'single'
             ? <SingleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} />
             : <DoubleElimCanvas bracket={bracket} isAdmin={isAdmin} onScore={onScore} onUndo={onUndo} isSlotRevealed={isSlotRevealed} allTeams={allTeams} onManualAssign={onManualAssign} />
           }
-        </div>
+        </PanZoomCanvas>
       </div>
 
       {/* 3rd place — single elim only */}
