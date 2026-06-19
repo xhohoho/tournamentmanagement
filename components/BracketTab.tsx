@@ -684,86 +684,8 @@ function SpinQueuePanel({ spinResults }: { spinResults: string[] }) {
   );
 }
 
-// ─── MatchDetailsModal ───────────────────────────────────────────────────────
-function MatchDetailsModal({ label, match, onClose }: {
-  label: string;
-  match: BracketMatch;
-  onClose: () => void;
-}) {
-  const isDone = !!match.winner;
-  const isBo3 = match.format === 'bo3';
-  const isBo5 = match.format === 'bo5';
-  const formatLabel = isBo5 ? 'Best of 5' : isBo3 ? 'Best of 3' : 'Best of 1';
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="t-surface border t-border rounded-2xl shadow-2xl flex flex-col"
-        style={{ width: 360, maxWidth: '92vw', background: 'var(--bg-elevated)', borderColor: 'var(--border-mid)', animation: 'slot-pop 0.28s cubic-bezier(0.34,1.56,0.64,1) both' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b t-border" style={{ borderColor: 'var(--border)' }}>
-          <div>
-            <div className="font-['Bebas_Neue'] text-xl tracking-widest t-text">{label}</div>
-            <div className="font-['DM_Mono'] text-[10px] uppercase tracking-widest t-muted mt-0.5">{formatLabel}</div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center t-muted hover:text-[var(--accent-red)] hover:bg-[rgba(232,41,74,0.08)] transition-colors cursor-pointer"
-          >✕</button>
-        </div>
-
-        {/* Teams + Score */}
-        <div className="px-5 py-5 flex items-center gap-3">
-          <div className="flex-1 text-right">
-            <div
-              className="font-['Bebas_Neue'] text-2xl tracking-wide"
-              style={{ color: isDone && match.winner === match.p1 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text)' }}
-            >{match.p1 ?? <span className="t-muted italic text-base">TBD</span>}</div>
-            {isDone && match.winner === match.p1 && <div className="font-['DM_Mono'] text-[9px] text-[var(--accent-green)] uppercase tracking-widest">✓ Winner</div>}
-          </div>
-          <div className="flex flex-col items-center shrink-0">
-            {isDone ? (
-              <div className="font-['Bebas_Neue'] text-3xl tracking-widest" style={{ color: 'var(--accent-gold)' }}>
-                {match.score1} – {match.score2}
-              </div>
-            ) : (
-              <div className="font-['DM_Mono'] text-sm t-muted">vs</div>
-            )}
-          </div>
-          <div className="flex-1">
-            <div
-              className="font-['Bebas_Neue'] text-2xl tracking-wide"
-              style={{ color: isDone && match.winner === match.p2 ? 'var(--accent-green)' : isDone ? 'var(--text-muted)' : 'var(--text)' }}
-            >{match.p2 ?? <span className="t-muted italic text-base">TBD</span>}</div>
-            {isDone && match.winner === match.p2 && <div className="font-['DM_Mono'] text-[9px] text-[var(--accent-green)] uppercase tracking-widest">✓ Winner</div>}
-          </div>
-        </div>
-
-        {/* Status */}
-        <div className="px-5 pb-5">
-          <div
-            className="rounded-xl px-4 py-2 text-center font-['DM_Mono'] text-xs"
-            style={{
-              background: isDone ? 'rgba(34,184,98,0.08)' : (!match.p1 || !match.p2) ? 'rgba(120,120,180,0.06)' : 'rgba(58,107,255,0.07)',
-              color: isDone ? 'var(--accent-green)' : (!match.p1 || !match.p2) ? 'var(--text-dim)' : 'var(--accent)',
-              border: `1px solid ${isDone ? 'rgba(34,184,98,0.25)' : (!match.p1 || !match.p2) ? 'rgba(120,120,180,0.18)' : 'rgba(58,107,255,0.2)'}`,
-            }}
-          >
-            {isDone ? `✅ Match complete — ${match.winner} wins` : (!match.p1 || !match.p2) ? '⏳ Waiting for teams to be determined' : '🎮 Ready to play'}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── BracketTab ──────────────────────────────────────────────────────────────────
-export function BracketTab({ spinResults, onOpenCaster }: { spinResults: string[]; onOpenCaster?: (matchKey: string, label: string, p1: string | null, p2: string | null) => void }) {
+export function BracketTab({ spinResults, onMatchCardClick }: { spinResults: string[]; onMatchCardClick?: (matchKey: string) => void }) {
   const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, manualSeedSlot } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -823,10 +745,8 @@ export function BracketTab({ spinResults, onOpenCaster }: { spinResults: string[
     else if (r?.shuffleState) runRevealAnimation(r.shuffleState.reveals, r.shuffleState.delayMs);
   };
 
-  const [detailMatch, setDetailMatch] = useState<{ label: string; p1: string | null; p2: string | null; match: BracketMatch } | null>(null);
-
-  const handleCardClick = (label: string, p1: string | null, p2: string | null, match: BracketMatch) => {
-    setDetailMatch({ label, p1, p2, match });
+  const handleCardClick = (matchKey: string) => {
+    onMatchCardClick?.(matchKey);
   };
 
   if (loading) return (
@@ -995,13 +915,6 @@ export function BracketTab({ spinResults, onOpenCaster }: { spinResults: string[
         <SpinQueuePanel spinResults={spinResults} />
       )}
 
-      {detailMatch && (
-        <MatchDetailsModal
-          label={detailMatch.label}
-          match={detailMatch.match}
-          onClose={() => setDetailMatch(null)}
-        />
-      )}
     </div>
   );
 }
@@ -1015,7 +928,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
   isSlotRevealed: (slotKey: string) => boolean;
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
-  onCardClick?: (label: string, p1: string | null, p2: string | null, match: BracketMatch) => void;
+  onCardClick?: (matchKey: string) => void;
 }) {
   const assignedTeams = new Set<string>();
   const r0 = bracket.upper[0] ?? [];
@@ -1071,7 +984,7 @@ function BracketDisplay({ bracket, isAdmin, isSeeded, onScore, onThirdPlace, onU
               isSlotRevealed={isSlotRevealed}
               allTeams={allTeams}
               onManualAssign={(slot, team) => onManualAssign('thirdPlace', 0, 0, slot, team)}
-              onCardClick={onCardClick ? () => onCardClick('3rd Place Match', tp.p1, tp.p2, tp) : undefined}
+              onCardClick={onCardClick ? () => onCardClick('m_thirdPlace_0_0') : undefined}
             />
           </div>
         );
@@ -1088,7 +1001,7 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
   isSlotRevealed: (slotKey: string) => boolean;
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
-  onCardClick?: (label: string, p1: string | null, p2: string | null, match: BracketMatch) => void;
+  onCardClick?: (matchKey: string) => void;
 }) {
   const rounds = bracket.upper.filter(r => r.length > 0);
   if (rounds.length === 0) return null;
@@ -1155,7 +1068,7 @@ function SingleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               onManualAssign={(slot, team) => onManualAssign('upper', colIdx, mi, slot, team)}
               p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
-              onCardClick={onCardClick ? () => onCardClick(`${label} — Match ${numbers.upper[colIdx]?.[mi] ?? ''}`, match.p1, match.p2, match) : undefined}
+              onCardClick={onCardClick ? () => onCardClick(`m_upper_${colIdx}_${mi}`) : undefined}
             />
             {/* Match number badge — on the output connector line, just above the wire */}
             {!isLastCol && numbers.upper[colIdx]?.[mi] != null && (
@@ -1176,7 +1089,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
   isSlotRevealed: (slotKey: string) => boolean;
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
-  onCardClick?: (label: string, p1: string | null, p2: string | null, match: BracketMatch) => void;
+  onCardClick?: (matchKey: string) => void;
 }) {
   const ubRounds = bracket.upper.filter(r => r.length > 0);
   const lbRounds = (bracket.lower || []).filter(r => r.length > 0);
@@ -1319,7 +1232,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               onManualAssign={(slot, team) => onManualAssign('upper', colIdx, mi, slot, team)}
               p1Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'upper', colIdx, mi, 2)}
-              onCardClick={onCardClick ? () => onCardClick(`${label} — Match ${numbers.upper[colIdx]?.[mi] ?? ''}`, match.p1, match.p2, match) : undefined}
+              onCardClick={onCardClick ? () => onCardClick(`m_upper_${colIdx}_${mi}`) : undefined}
             />
             {/* Match number badge on output connector line */}
             {numbers.upper[colIdx]?.[mi] != null && (
@@ -1373,7 +1286,7 @@ function DoubleElimCanvas({ bracket, isAdmin, onScore, onUndo, isSlotRevealed, a
               onManualAssign={(slot, team) => onManualAssign('lower', colIdx, mi, slot, team)}
               p1Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 1)}
               p2Placeholder={feederLabel(numbers, 'lower', colIdx, mi, 2)}
-              onCardClick={onCardClick ? () => onCardClick(`${label} — Match ${numbers.lower[colIdx]?.[mi] ?? ''}`, match.p1, match.p2, match) : undefined}
+              onCardClick={onCardClick ? () => onCardClick(`m_lower_${colIdx}_${mi}`) : undefined}
             />
             {/* Match number badge on output connector line */}
             {numbers.lower[colIdx]?.[mi] != null && (
@@ -1395,7 +1308,7 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
   allTeams: string[];
   onManualAssign: (section: string, ri: number, mi: number, slot: 1 | 2, team: string | null) => Promise<{ error?: string }>;
   numbers: MatchNumbers;
-  onCardClick?: (label: string, p1: string | null, p2: string | null, match: BracketMatch) => void;
+  onCardClick?: (matchKey: string) => void;
 }) {
   const gf1: BracketMatch = {
     p1: gf.p1, p2: gf.p2, format: gf.format,
@@ -1430,7 +1343,7 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
           onManualAssign={(slot, team) => onManualAssign('gf', 0, 0, slot, team)}
           p1Placeholder={feederLabel(numbers, 'gf', 0, 0, 1)}
           p2Placeholder={feederLabel(numbers, 'gf', 0, 0, 2)}
-          onCardClick={onCardClick ? () => onCardClick('Grand Final', gf1.p1, gf1.p2, gf1) : undefined}
+          onCardClick={onCardClick ? () => onCardClick('m_gf_0_0') : undefined}
         />
         {gf.isReset && (
           <div className="mt-1 px-3 py-1 rounded-lg text-center" style={{ background: 'rgba(58,107,255,0.06)', border: '1px solid rgba(58,107,255,0.2)' }}>
@@ -1454,7 +1367,7 @@ function GrandFinalCards({ gf, lbFinalLoser, isAdmin, onScore, onUndo, isSlotRev
             isSlotRevealed={isSlotRevealed}
             allTeams={allTeams}
             onManualAssign={(slot, team) => onManualAssign('gf', 0, 0, slot, team)}
-            onCardClick={onCardClick ? () => onCardClick('Grand Final (Reset)', gf2.p1, gf2.p2, gf2) : undefined}
+            onCardClick={onCardClick ? () => onCardClick('m_gf_0_1') : undefined}
             />
         </div>
       )}

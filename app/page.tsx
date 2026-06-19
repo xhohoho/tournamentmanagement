@@ -20,7 +20,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'players', icon: '👥', label: 'Players' },
   { id: 'teams',   icon: '🛡',  label: 'Teams'   },
   { id: 'bracket', icon: '🏆', label: 'Bracket'  },
-  { id: 'caster',  icon: '🎙', label: 'Caster'   },
+  { id: 'caster',  icon: '🎙', label: 'Match Info' },
   { id: 'maps',    icon: '🗺',  label: 'Maps'     },
   { id: 'ffa',     icon: '🎮', label: 'FFA'      },
 ];
@@ -35,7 +35,6 @@ function TickerEditModal({ open, tickerText, onClose, onSave }: {
   const [draft, setDraft] = useState(tickerText);
   const [saving, setSaving] = useState(false);
 
-  // Sync draft when modal opens with fresh tickerText.
   useEffect(() => { if (open) setDraft(tickerText); }, [open, tickerText]);
 
   if (!open) return null;
@@ -82,9 +81,18 @@ TickerEditModal.displayName = 'TickerEditModal';
 
 // ─── Inner app — must be inside TourneyProvider ───────────────────────────────
 function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; onChangeTournament: () => void }) {
-  const { isAdmin, previewAsUser, setPreviewAsUser, adminName, players, roster, loading, resetAll, spinQueue, spinItemCategory, tickerText, setTickerText, ffa, sseStatus, visitorCount, activeAdminCount, casterSheet, setCasterSheet } = useTourney();
+  const {
+    isAdmin, previewAsUser, setPreviewAsUser, adminName,
+    players, roster, loading, resetAll,
+    spinQueue, spinItemCategory,
+    tickerText, setTickerText,
+    ffa, sseStatus, visitorCount, activeAdminCount,
+  } = useTourney();
+
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [highlightCasterId, setHighlightCasterId] = useState<string | null>(null);
+
+  // matchKey of the card that should glow in the Match Info tab
+  const [highlightMatchKey, setHighlightMatchKey] = useState<string | null>(null);
 
   const filteredSpinResults = activeCategory
     ? spinQueue.filter((_, i) => spinItemCategory[i] === activeCategory)
@@ -113,35 +121,12 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
     setResetConfirm(false);
   };
 
-  // Click a 🎙 button on a bracket match card — jump to Caster tab, creating
-  // (or just selecting) the caster entry bound to that match via linkedMatchKey.
-  const handleOpenCaster = (matchKey: string, label: string, p1: string | null, p2: string | null) => {
-    const existing = casterSheet?.matches?.find(m => m.linkedMatchKey === matchKey);
-    if (existing) {
-      setHighlightCasterId(existing.id);
-    } else if (isAdmin) {
-      const id = `caster_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const next = {
-        id,
-        matchNo: label,
-        team1: p1 ?? '',
-        team2: p2 ?? '',
-        maps: '',
-        side: '',
-        notes: '',
-        result: '',
-        createdAt: Date.now(),
-        linkedMatchKey: matchKey,
-      };
-      setCasterSheet([...(casterSheet?.matches ?? []), next]);
-      setHighlightCasterId(id);
-    }
+  // Bracket card clicked → switch to Match Info tab and glow the right card
+  const handleMatchCardClick = (matchKey: string) => {
+    setHighlightMatchKey(matchKey);
     setActiveTab('caster');
   };
 
-  // isAdmin from context is already (rawAdmin && !previewAsUser) — false during preview.
-  // We need to know if the user IS an admin (ignoring preview) to show the right button.
-  // previewAsUser can only be true when the user is actually an admin, so:
   const isActuallyAdmin = isAdmin || previewAsUser;
 
   if (loading) {
@@ -181,11 +166,9 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
               <span className="font-['DM_Mono'] text-[10px] t-muted border t-border-mid rounded px-2 py-1 uppercase tracking-widest hidden sm:inline">
                 {tournamentId}
               </span>
-              {/* Visitor / Admin count badge */}
               <span className="hidden sm:inline-flex items-center gap-1 font-['DM_Mono'] text-[10px] t-muted border t-border-mid rounded px-2 py-1">
                 👁 {visitorCount} visitor{visitorCount !== 1 ? 's' : ''} | 🛡 {activeAdminCount} admin{activeAdminCount !== 1 ? 's' : ''}
               </span>
-              {/* SSE connection status indicator */}
               <span
                 className="hidden sm:inline-flex items-center gap-1 font-['DM_Mono'] text-[10px] px-2 py-1 rounded border"
                 style={{
@@ -204,7 +187,6 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
               >
                 {dark ? '☀️ Light' : '🌙 Dark'}
               </button>
-              {/* Only show Ticker/Reset when actually acting as admin (not in preview) */}
               {isAdmin && (
                 <>
                   <button
@@ -225,7 +207,6 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
                   </button>
                 </>
               )}
-              {/* Admin / preview toggle button */}
               {isActuallyAdmin ? (
                 <button
                   onClick={() => setPreviewAsUser(!previewAsUser)}
@@ -254,7 +235,6 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
 
         {/* Tab nav */}
         <nav className="t-surface border-b t-border shrink-0 relative">
-          {/* Mobile scroll hint gradient */}
           <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 sm:hidden" style={{ background: 'linear-gradient(to left, var(--bg-surface), transparent)', zIndex: 1 }} />
           <div className="w-full px-8 flex overflow-x-auto scrollbar-none">
             {TABS.map(tab => (
@@ -288,8 +268,18 @@ function MainApp({ tournamentId, onChangeTournament }: { tournamentId: string; o
           <div className="flex-1 min-h-0 flex flex-col px-8">
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'players' ? '' : 'hidden'}`}><PlayersTab /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'teams'   ? '' : 'hidden'}`}><TeamsTab /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}><BracketTab spinResults={filteredSpinResults} onOpenCaster={handleOpenCaster} /></div>
-            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'caster'  ? '' : 'hidden'}`}><CasterSheetTab highlightId={highlightCasterId} onHighlightHandled={() => setHighlightCasterId(null)} /></div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'bracket' ? '' : 'hidden'}`}>
+              <BracketTab
+                spinResults={filteredSpinResults}
+                onMatchCardClick={handleMatchCardClick}
+              />
+            </div>
+            <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'caster'  ? '' : 'hidden'}`}>
+              <CasterSheetTab
+                highlightMatchKey={highlightMatchKey}
+                onHighlightHandled={() => setHighlightMatchKey(null)}
+              />
+            </div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'maps'    ? '' : 'hidden'}`}><MapsTab activeCategory={activeCategory} setActiveCategory={setActiveCategory} /></div>
             <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'ffa'     ? '' : 'hidden'}`}><FFATab /></div>
           </div>
@@ -315,8 +305,6 @@ MainApp.displayName = 'MainApp';
 // ─── Root page — manages picker → provider → app ──────────────────────────────
 export default function Home() {
   const [tournamentId, setTournamentId] = useState<string | null>(null);
-
-  // Single source of truth for admin session — useAdminSession reads from localStorage on init.
   const session = useAdminSession();
 
   useEffect(() => {
@@ -326,7 +314,6 @@ export default function Home() {
 
   const handleSelect = (id: string, adminToken?: string, adminInfo?: { adminId: string; name: string; isSuperAdmin: boolean }) => {
     localStorage.setItem('lastTournamentId', id);
-    // If the picker logged in (e.g. via SuperAdminPanel), sync to session hook.
     if (adminToken && adminInfo) {
       localStorage.setItem('adminToken', adminToken);
       localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
