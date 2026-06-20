@@ -282,6 +282,15 @@ export function SpinTab() {
     try { await removeSpinTabQueueItem(idx); } finally { setBusy(false); }
   };
 
+  // Delete-by-name variant for the spun-result modal (removes first matching pool entry)
+  const handleDeleteSpunItem = async (item: string) => {
+    if (busy) return;
+    const idx = items.indexOf(item);
+    if (idx === -1) return;
+    setBusy(true);
+    try { await removeSpinTabQueueItem(idx); } finally { setBusy(false); }
+  };
+
   const handleRemoveResult = async (idx: number) => {
     if (busy) return;
     setBusy(true);
@@ -563,9 +572,7 @@ export function SpinTab() {
               <p className="font-['Bebas_Neue'] text-5xl tracking-widest t-text text-center break-words">{spunItem}</p>
             </div>
             <div className="px-5 pt-3 pb-1 t-surface">
-              <p className="font-['DM_Mono'] text-xs t-muted">
-                Added to Spin Results. Mark as used to remove it from the wheel, or close to keep spinning.
-              </p>
+              <p className="font-['DM_Mono'] text-xs t-muted">Added to Spin Results.</p>
             </div>
             <div className="px-5 py-4 flex items-center justify-end gap-3 t-elevated border-t t-border">
               <button
@@ -574,9 +581,9 @@ export function SpinTab() {
               >Close</button>
               <button
                 className="px-4 py-2 text-white font-['DM_Mono'] text-sm font-bold rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-40 hover:opacity-90"
-                style={{ background: 'var(--accent)' }}
-                onClick={() => { markUsed(spunItem); setSpunItem(''); }}
-              >✓ Use</button>
+                style={{ background: 'var(--accent-red)' }}
+                onClick={() => { handleDeleteSpunItem(spunItem); setSpunItem(''); }}
+              >Delete from pool</button>
             </div>
           </div>
         </div>
