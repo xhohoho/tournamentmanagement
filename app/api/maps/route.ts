@@ -14,7 +14,6 @@ export async function GET(req: NextRequest) {
     spinTabQueue: state.spinTabQueue || [],
     spinTabResults: state.spinTabResults || [],
     spinTabState: state.spinTabState ?? null,
-    spinTabUsedItems: state.spinTabUsedItems ?? [],
     spinTabStarredItems: state.spinTabStarredItems ?? [],
     spinCategories: state.spinCategories || [],
     spinItemCategory: state.spinItemCategory || {},
@@ -192,25 +191,6 @@ export async function PATCH(req: NextRequest) {
 
   // ── Spin tab: isolated pool state ────────────────────────────────────────────
 
-  if (action === 'markSpinTabUsed') {
-    const { item } = body;
-    if (!item) return NextResponse.json({ error: 'item required' }, { status: 400 });
-    const next = await updateState(s => {
-      if ((s.spinTabUsedItems ?? []).includes(item)) return s;
-      return { ...s, spinTabUsedItems: [...(s.spinTabUsedItems ?? []), item] };
-    }, tid);
-    return NextResponse.json({ spinTabUsedItems: next.spinTabUsedItems ?? [] });
-  }
-
-  if (action === 'restoreSpinTabUsed') {
-    const { item } = body; // omit to restore all
-    const next = await updateState(s => ({
-      ...s,
-      spinTabUsedItems: item ? (s.spinTabUsedItems ?? []).filter(m => m !== item) : [],
-    }), tid);
-    return NextResponse.json({ spinTabUsedItems: next.spinTabUsedItems ?? [] });
-  }
-
   if (action === 'updateSpinTabStarred') {
     const { spinTabStarred } = body;
     const next = await updateState(s => ({
@@ -260,14 +240,12 @@ export async function PATCH(req: NextRequest) {
         ...s,
         spinTabQueue: starred,
         spinTabResults: [],
-        spinTabUsedItems: [],
         // spinTabStarredItems left untouched
       };
     }, tid);
     return NextResponse.json({
       spinTabQueue:        next.spinTabQueue        ?? [],
       spinTabResults:      next.spinTabResults      ?? [],
-      spinTabUsedItems:    next.spinTabUsedItems    ?? [],
       spinTabStarredItems: next.spinTabStarredItems ?? [],
     });
   }

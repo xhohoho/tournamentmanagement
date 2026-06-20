@@ -153,7 +153,6 @@ export function defaultState(): ServerState {
     spinQueue: [],
     spinTabQueue: [],
     spinTabResults: [],
-    spinTabUsedItems: [],
     spinTabStarredItems: [],
     spinState: null,
     spinTabState: null,

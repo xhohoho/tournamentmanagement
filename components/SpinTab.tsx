@@ -12,20 +12,19 @@ export function SpinTab() {
     spinTabQueue, removeSpinTabQueueItem,
     appendSpinTabQueue,
     spinTabResults, removeSpinTabResult, appendSpinTabResult,
-    spinTabUsedItems, spinTabStarredItems,
-    markSpinTabUsed, restoreSpinTabUsed, saveSpinTabStarred, clearSpinTab,
+    spinTabStarredItems,
+    saveSpinTabStarred, clearSpinTab,
     updateSpinTabState,
   } = useTourney();
 
   // items = the wheel's item pool (what gets added/spun)
   // results = the ordered history of spin outcomes, shown in the Spin Results panel
-  const items     = spinTabQueue;
-  const results   = spinTabResults;
-  const usedItems = spinTabUsedItems;
+  const items      = spinTabQueue;
+  const results    = spinTabResults;
   const starredItems = spinTabStarredItems;
 
-  // Wheel items = pool minus used
-  const wheelItems = items.filter(m => !usedItems.includes(m));
+  // Wheel items = the full pool
+  const wheelItems = items;
 
   const [itemInput, setItemInput] = useState('');
   const [busy, setBusy]           = useState(false);
@@ -88,25 +87,6 @@ export function SpinTab() {
     saveSpinTabStarred(next);
   };
 
-  // ─── Used / restore ───────────────────────────────────────────────────────
-  const markUsed = async (item: string) => {
-    if (busy) return;
-    setBusy(true);
-    try { await markSpinTabUsed(item); } finally { setBusy(false); }
-  };
-
-  const restoreUsed = async (item: string) => {
-    if (busy) return;
-    setBusy(true);
-    try { await restoreSpinTabUsed(item); } finally { setBusy(false); }
-  };
-
-  const restoreAll = async () => {
-    if (busy) return;
-    setBusy(true);
-    try { await restoreSpinTabUsed(); } finally { setBusy(false); }
-  };
-
   // ─── Wheel canvas ─────────────────────────────────────────────────────────
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const wheelWrapRef = useRef<HTMLDivElement>(null);
@@ -143,7 +123,7 @@ export function SpinTab() {
       ctx.fillStyle = colTextDim;
       ctx.font = '14px DM Mono, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(items.length > 0 ? 'All items used' : 'Add items to spin', cx, cx + 5);
+      ctx.fillText('Add items to spin', cx, cx + 5);
       return;
     }
     const slice = (Math.PI * 2) / wheelItems.length;
@@ -298,7 +278,7 @@ export function SpinTab() {
   };
 
   const handleClearAll = async () => {
-    if (busy || (items.length === 0 && results.length === 0 && usedItems.length === 0 && starredItems.length === 0)) return;
+    if (busy || (items.length === 0 && results.length === 0 && starredItems.length === 0)) return;
     setBusy(true);
     try { await clearSpinTab(); } finally { setBusy(false); }
   };
@@ -325,7 +305,7 @@ export function SpinTab() {
           <h1 className="font-['Bebas_Neue'] text-3xl tracking-widest t-text mb-0.5">Spin</h1>
           <p className="font-['DM_Mono'] text-xs t-muted">
             {isAdmin
-              ? 'Add items to the wheel, spin to record results. Mark items as used to remove them from the wheel.'
+              ? 'Add items to the wheel and spin to record results.'
               : 'Live view — spin results appear automatically'}
           </p>
         </div>
@@ -369,37 +349,16 @@ export function SpinTab() {
               <div className="shrink-0 max-h-[96px] overflow-y-auto">
                 <div className="flex flex-wrap gap-2">
                   {items.map((m, idx) => {
-                    const isUsed    = usedItems.includes(m);
                     const isStarred = starredItems.includes(m);
                     return (
                       <span
                         key={`${idx}-${m}`}
                         className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm"
-                        style={{ opacity: isUsed ? 0.45 : 1, color: 'var(--text)' }}
+                        style={{ color: 'var(--text)' }}
                       >
                         {m}
-                        {isUsed && (
-                          <span className="text-[9px] font-bold tracking-wider" style={{ color: 'var(--accent-gold)' }}>USED</span>
-                        )}
                         {isAdmin && (
                           <>
-                            {isUsed ? (
-                              <button
-                                className={`shrink-0 transition-colors text-[10px] leading-none ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
-                                style={{ color: 'var(--text-dim)' }}
-                                title="Restore to wheel"
-                                onClick={() => !busy && restoreUsed(m)}
-                                disabled={busy}
-                              >↩</button>
-                            ) : (
-                              <button
-                                className={`shrink-0 transition-colors text-[10px] leading-none ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
-                                style={{ color: 'var(--text-dim)' }}
-                                title="Mark as used (remove from wheel)"
-                                onClick={() => !busy && markUsed(m)}
-                                disabled={busy}
-                              >✕</button>
-                            )}
                             <button
                               className="shrink-0 transition-colors cursor-pointer text-xs leading-none"
                               style={{ color: isStarred ? 'var(--accent-gold)' : 'var(--text-dim)' }}
@@ -456,18 +415,11 @@ export function SpinTab() {
               {isAdmin && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    className={`font-['DM_Mono'] text-[10px] whitespace-nowrap t-dim transition-colors
-                      ${busy || usedItems.length === 0 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-green)]'}`}
-                    title={`Restore ${usedItems.length} used item(s) back to wheel`}
-                    onClick={restoreAll}
-                    disabled={busy || usedItems.length === 0}
-                  >↩ restore pool</button>
-                  <button
                     className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
-                      ${(items.length === 0 && results.length === 0 && usedItems.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
-                    title="Clear all results and restore used items to wheel"
+                      ${(items.length === 0 && results.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                    title="Clear all results"
                     onClick={handleClearAll}
-                    disabled={busy || (items.length === 0 && results.length === 0 && usedItems.length === 0)}
+                    disabled={busy || (items.length === 0 && results.length === 0)}
                   >clear all</button>
                 </div>
               )}
@@ -489,47 +441,26 @@ export function SpinTab() {
                       onDragEnter={isAdmin ? () => handleDragEnter(origIdx) : undefined}
                       onDragEnd={isAdmin ? handleDragEnd : undefined}
                       onDragOver={isAdmin ? e => e.preventDefault() : undefined}
-                      className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2 transition-opacity"
-                      style={{ cursor: isAdmin ? 'grab' : 'default', opacity: isUsed ? 0.45 : 1 }}
+                      className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2"
+                      style={{ cursor: isAdmin ? 'grab' : 'default' }}
                     >
                       <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                        {isAdmin && (
-                          <span className="shrink-0 t-dim text-sm leading-none select-none">⠿</span>
-                        )}
-                        <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{displayIdx + 1}</span>
-                        <span className="font-['DM_Mono'] text-sm t-text truncate">{item}</span>
-                        {isUsed && (
-                          <span className="text-[9px] font-bold tracking-wider shrink-0" style={{ color: 'var(--accent-gold)' }}>USED</span>
-                        )}
+                      {isAdmin && (
+                      <span className="shrink-0 t-dim text-sm leading-none select-none">⠿</span>
+                      )}
+                      <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{displayIdx + 1}</span>
+                      <span className="font-['DM_Mono'] text-sm t-text truncate">{item}</span>
                       </div>
 
                       {isAdmin && (
-                        <div className="flex items-center gap-1 shrink-0">
-                          {isUsed ? (
-                            /* Restore to wheel */
-                            <button
-                              className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-green)] cursor-pointer'}`}
-                              title="Restore to wheel"
-                              onClick={() => restoreUsed(item)}
-                              disabled={busy}
-                            >↩</button>
-                          ) : (
-                            /* Mark as used — distinct ✓ icon (gold) so it can't be confused with remove (✕ red) */
-                            <button
-                              className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-gold)] cursor-pointer'}`}
-                              title="Mark as used — removes from wheel"
-                              onClick={() => markUsed(item)}
-                              disabled={busy}
-                            >✓</button>
-                          )}
-                          {/* Remove from results entirely */}
+                      <div className="flex items-center gap-1 shrink-0">
                           <button
                             className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
-                            title="Remove from results"
-                            onClick={() => handleRemoveResult(origIdx)}
-                            disabled={busy}
-                          >✕</button>
-                        </div>
+                          title="Remove from results"
+                        onClick={() => handleRemoveResult(origIdx)}
+                      disabled={busy}
+                      >✕</button>
+                      </div>
                       )}
                     </div>
                   );

@@ -182,7 +182,6 @@ export interface ServerState {
   spinTabQueue: string[];
   /** Spin tab — ordered history of spin results (appended each time wheel lands) */
   spinTabResults: string[];
-  spinTabUsedItems: string[];       // items marked as used in Spin tab (hidden from wheel)
   spinTabStarredItems: string[];    // starred items in Spin tab (restored on clear)
   spinState: SpinState | null;  // live spin broadcast
   /** Spin tab — isolated live wheel broadcast, fully separate from Maps tab's spinState */
@@ -250,7 +249,6 @@ export interface TourneyContext {
   spinQueue: string[];
   spinTabQueue: string[];
   spinTabResults: string[];
-  spinTabUsedItems: string[];
   spinTabStarredItems: string[];
   spinCategories: string[];
   spinItemCategory: Record<number, string>;
@@ -327,8 +325,6 @@ export interface TourneyContext {
   removeSpinQueueItem: (idx: number) => Promise<void>;
   saveSpinCategories: (cats: string[], itemCat: Record<number, string>) => Promise<void>;
   saveDefaultMaps: (starred: string[]) => Promise<void>;
-  markSpinTabUsed: (name: string) => Promise<void>;
-  restoreSpinTabUsed: (name?: string) => Promise<void>;
   saveSpinTabStarred: (starred: string[]) => Promise<void>;
   clearSpinTab: () => Promise<void>;
   appendSpinTabQueue: (item: string) => Promise<void>;

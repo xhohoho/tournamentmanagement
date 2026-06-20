@@ -36,7 +36,7 @@ const GUARD_MS = 1500;
 // All state fields that can be optimistically guarded against SSE overwrites.
 const GUARD_FIELDS = [
   'players', 'roster', 'teamMode', 'teams', 'bracket', 'stageMaps',
-  'maps', 'usedMaps', 'spinQueue', 'spinTabQueue', 'spinTabResults', 'spinTabUsedItems', 'spinTabStarredItems', 'spinCategories', 'defaultMaps',
+  'maps', 'usedMaps', 'spinQueue', 'spinTabQueue', 'spinTabResults', 'spinTabStarredItems', 'spinCategories', 'defaultMaps',
   'joinKey', 'queueCap', 'queueLocked', 'chat', 'tickerText', 'ffa', 'casterSheet',
 ] as const;
 type GuardField = typeof GUARD_FIELDS[number];
@@ -68,7 +68,6 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [spinQueue, setSpinQueue] = useState<string[]>([]);
   const [spinTabQueue, setSpinTabQueue] = useState<string[]>([]);
   const [spinTabResults, setSpinTabResults] = useState<string[]>([]);
-  const [spinTabUsedItems, setSpinTabUsedItems] = useState<string[]>([]);
   const [spinTabStarredItems, setSpinTabStarredItems] = useState<string[]>([]);
   const [spinCategories, setSpinCategories] = useState<string[]>([]);
   const [spinItemCategory, setSpinItemCategory] = useState<Record<number, string>>({});
@@ -152,7 +151,6 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('spinQueue')) setSpinQueue(data.spinQueue as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinTabQueue')) setSpinTabQueue(data.spinTabQueue as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinTabResults')) setSpinTabResults(data.spinTabResults as string[] ?? []);
-    if (!fromSSE || !guard.guarded('spinTabUsedItems')) setSpinTabUsedItems(data.spinTabUsedItems as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinTabStarredItems')) setSpinTabStarredItems(data.spinTabStarredItems as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinCategories')) {
       setSpinCategories(data.spinCategories as string[] ?? []);
@@ -630,33 +628,6 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   // ─── Spin tab isolated state ──────────────────────────────────────────────────
-  const markSpinTabUsed = async (name: string) => {
-    guard.touch('spinTabUsedItems');
-    setSpinTabUsedItems(prev => [...prev, name]);
-    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'markSpinTabUsed', item: name });
-    if (res.ok) {
-      const data = await res.json();
-      setSpinTabUsedItems(data.spinTabUsedItems ?? []);
-    }
-  };
-
-  const restoreSpinTabUsed = async (name?: string) => {
-    guard.touch('spinTabUsedItems');
-    const prev = spinTabUsedItems;
-    setSpinTabUsedItems(name ? prev.filter(m => m !== name) : []);
-    try {
-      const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'restoreSpinTabUsed', ...(name ? { item: name } : {}) });
-      if (res.ok) {
-        const data = await res.json();
-        setSpinTabUsedItems(data.spinTabUsedItems ?? []);
-      } else {
-        setSpinTabUsedItems(prev);
-      }
-    } catch {
-      setSpinTabUsedItems(prev);
-    }
-  };
-
   const saveSpinTabStarred = async (starred: string[]) => {
     guard.touch('spinTabStarredItems');
     setSpinTabStarredItems(starred);
@@ -713,31 +684,26 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   const clearSpinTab = async () => {
-    guard.touch('spinTabQueue'); guard.touch('spinTabResults'); guard.touch('spinTabUsedItems');
+    guard.touch('spinTabQueue'); guard.touch('spinTabResults');
     const prevQueue = spinTabQueue;
     const prevResults = spinTabResults;
-    const prevUsed = spinTabUsedItems;
     // Optimistic: pool resets to just the starred items, same as Maps tab's clear-all.
     setSpinTabQueue([...new Set(spinTabStarredItems)]);
     setSpinTabResults([]);
-    setSpinTabUsedItems([]);
     try {
       const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'clearSpinTab' });
       if (res.ok) {
         const data = await res.json();
         setSpinTabQueue(data.spinTabQueue ?? []);
         setSpinTabResults(data.spinTabResults ?? []);
-        setSpinTabUsedItems(data.spinTabUsedItems ?? []);
         setSpinTabStarredItems(data.spinTabStarredItems ?? []);
       } else {
         setSpinTabQueue(prevQueue);
         setSpinTabResults(prevResults);
-        setSpinTabUsedItems(prevUsed);
       }
     } catch {
       setSpinTabQueue(prevQueue);
       setSpinTabResults(prevResults);
-      setSpinTabUsedItems(prevUsed);
     }
   };
 
@@ -885,7 +851,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       formTeams, resetTeams, setTeamMode, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement, swapPlayer,
       generateBracket, seedBracket, manualSeedSlot, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, moveMapToUsed, restoreUsedMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
-      markSpinTabUsed, restoreSpinTabUsed, saveSpinTabStarred, clearSpinTab, spinTabUsedItems, spinTabStarredItems,
+      saveSpinTabStarred, clearSpinTab, spinTabStarredItems,
       appendSpinTabQueue, removeSpinTabQueueItem, spinTabQueue,
       appendSpinTabResult, removeSpinTabResult, spinTabResults, updateSpinTabState,
       assignLeader,
