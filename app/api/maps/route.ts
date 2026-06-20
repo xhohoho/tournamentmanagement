@@ -12,8 +12,10 @@ export async function GET(req: NextRequest) {
     stageMaps: state.stageMaps,
     spinQueue: state.spinQueue || [],
     spinTabQueue: state.spinTabQueue || [],
-    spinUsedItems: state.spinUsedItems ?? [],
-    spinStarredItems: state.spinStarredItems ?? [],
+    spinTabResults: state.spinTabResults || [],
+    spinTabState: state.spinTabState ?? null,
+    spinTabUsedItems: state.spinTabUsedItems ?? [],
+    spinTabStarredItems: state.spinTabStarredItems ?? [],
     spinCategories: state.spinCategories || [],
     spinItemCategory: state.spinItemCategory || {},
   });
@@ -143,13 +145,18 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ defaultMaps: next.defaultMaps });
   }
 
-  // ── Shared: live spin-wheel broadcast ─────────────────────────────────────────
-  // Both MapsTab and SpinTab call this to animate the wheel for all viewers.
-  // SpinTab tags result strings with "|spintab" so viewers can tell the tabs apart.
+  // ── Shared: live spin-wheel broadcast (Maps tab only) ────────────────────────
   if (action === 'updateSpinState') {
     const { spinState } = body; // SpinState | null
     const next = await updateState(s => ({ ...s, spinState: spinState ?? null }), tid);
     return NextResponse.json({ spinState: next.spinState });
+  }
+
+  // ── Spin tab: isolated live spin-wheel broadcast — fully separate from Maps tab
+  if (action === 'updateSpinTabState') {
+    const { spinTabState } = body; // SpinState | null
+    const next = await updateState(s => ({ ...s, spinTabState: spinTabState ?? null }), tid);
+    return NextResponse.json({ spinTabState: next.spinTabState });
   }
 
   // ── Stage maps (bracket map slots) ───────────────────────────────────────────
@@ -185,32 +192,32 @@ export async function PATCH(req: NextRequest) {
 
   // ── Spin tab: isolated pool state ────────────────────────────────────────────
 
-  if (action === 'markSpinUsed') {
+  if (action === 'markSpinTabUsed') {
     const { item } = body;
     if (!item) return NextResponse.json({ error: 'item required' }, { status: 400 });
     const next = await updateState(s => {
-      if ((s.spinUsedItems ?? []).includes(item)) return s;
-      return { ...s, spinUsedItems: [...(s.spinUsedItems ?? []), item] };
+      if ((s.spinTabUsedItems ?? []).includes(item)) return s;
+      return { ...s, spinTabUsedItems: [...(s.spinTabUsedItems ?? []), item] };
     }, tid);
-    return NextResponse.json({ spinUsedItems: next.spinUsedItems ?? [] });
+    return NextResponse.json({ spinTabUsedItems: next.spinTabUsedItems ?? [] });
   }
 
-  if (action === 'restoreSpinUsed') {
+  if (action === 'restoreSpinTabUsed') {
     const { item } = body; // omit to restore all
     const next = await updateState(s => ({
       ...s,
-      spinUsedItems: item ? (s.spinUsedItems ?? []).filter(m => m !== item) : [],
+      spinTabUsedItems: item ? (s.spinTabUsedItems ?? []).filter(m => m !== item) : [],
     }), tid);
-    return NextResponse.json({ spinUsedItems: next.spinUsedItems ?? [] });
+    return NextResponse.json({ spinTabUsedItems: next.spinTabUsedItems ?? [] });
   }
 
-  if (action === 'updateSpinStarred') {
-    const { spinStarred } = body;
+  if (action === 'updateSpinTabStarred') {
+    const { spinTabStarred } = body;
     const next = await updateState(s => ({
       ...s,
-      ...(spinStarred !== undefined ? { spinStarredItems: spinStarred } : {}),
+      ...(spinTabStarred !== undefined ? { spinTabStarredItems: spinTabStarred } : {}),
     }), tid);
-    return NextResponse.json({ spinStarredItems: next.spinStarredItems ?? [] });
+    return NextResponse.json({ spinTabStarredItems: next.spinTabStarredItems ?? [] });
   }
 
   // ── Spin tab: isolated results queue ─────────────────────────────────────────
@@ -228,18 +235,35 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ spinTabQueue: next.spinTabQueue });
   }
 
+  // ── Spin tab: results history (separate from the wheel item pool) ──────────
+
+  if (action === 'appendSpinTabResult') {
+    const { item } = body;
+    if (!item) return NextResponse.json({ error: 'item required' }, { status: 400 });
+    const next = await updateState(s => ({ ...s, spinTabResults: [...(s.spinTabResults || []), item] }), tid);
+    return NextResponse.json({ spinTabResults: next.spinTabResults });
+  }
+
+  if (action === 'updateSpinTabResults') {
+    const { spinTabResults: newResults } = body;
+    const next = await updateState(s => ({ ...s, spinTabResults: newResults || [] }), tid);
+    return NextResponse.json({ spinTabResults: next.spinTabResults });
+  }
+
   // Clear all Spin-tab-specific state — does NOT touch Maps-tab spinQueue.
   if (action === 'clearSpinTab') {
     const next = await updateState(s => ({
       ...s,
       spinTabQueue: [],
-      spinUsedItems: [],
-      spinStarredItems: [],
+      spinTabResults: [],
+      spinTabUsedItems: [],
+      spinTabStarredItems: [],
     }), tid);
     return NextResponse.json({
-      spinTabQueue:    next.spinTabQueue    ?? [],
-      spinUsedItems:   next.spinUsedItems   ?? [],
-      spinStarredItems: next.spinStarredItems ?? [],
+      spinTabQueue:        next.spinTabQueue        ?? [],
+      spinTabResults:      next.spinTabResults      ?? [],
+      spinTabUsedItems:    next.spinTabUsedItems    ?? [],
+      spinTabStarredItems: next.spinTabStarredItems ?? [],
     });
   }
 

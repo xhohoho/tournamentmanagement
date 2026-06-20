@@ -5,31 +5,24 @@ import { useTourney } from '@/lib/context';
 import { WHEEL_COLORS } from '@/lib/utils';
 import type { SpinState } from '@/lib/types';
 
-// Tag embedded in spinState.result so the viewer-side listener here can
-// distinguish SpinTab broadcasts from MapsTab broadcasts (which share the
-// same spinState field on the server).  No server schema change required.
-const SPIN_TAB_SOURCE = 'spintab';
-
-const tagResult   = (r: string) => r ? `${r}|${SPIN_TAB_SOURCE}` : r;
-const isSpinTabBc = (s: SpinState) => s.result?.endsWith(`|${SPIN_TAB_SOURCE}`) ?? false;
-const stripTag    = (r: string)   =>
-  r.endsWith(`|${SPIN_TAB_SOURCE}`) ? r.slice(0, -(SPIN_TAB_SOURCE.length + 1)) : r;
-
 export function SpinTab() {
   const {
     isAdmin, loading,
-    spinState: liveSpin,
+    spinTabState: liveSpin,
     spinTabQueue, removeSpinTabQueueItem,
     appendSpinTabQueue,
-    spinUsedItems, spinStarredItems,
-    markSpinUsed, restoreSpinUsed, saveSpinStarred, clearSpinTab,
-    adminToken,
+    spinTabResults, removeSpinTabResult, appendSpinTabResult,
+    spinTabUsedItems, spinTabStarredItems,
+    markSpinTabUsed, restoreSpinTabUsed, saveSpinTabStarred, clearSpinTab,
+    updateSpinTabState,
   } = useTourney();
 
-  // items = the SpinTab's isolated pool (also doubles as the spin-results history)
+  // items = the wheel's item pool (what gets added/spun)
+  // results = the ordered history of spin outcomes, shown in the Spin Results panel
   const items     = spinTabQueue;
-  const usedItems = spinUsedItems;
-  const starredItems = spinStarredItems;
+  const results   = spinTabResults;
+  const usedItems = spinTabUsedItems;
+  const starredItems = spinTabStarredItems;
 
   // Wheel items = pool minus used
   const wheelItems = items.filter(m => !usedItems.includes(m));
@@ -45,7 +38,7 @@ export function SpinTab() {
 
   const handleDragStart = (idx: number) => {
     dragIdxRef.current = idx;
-    setDragOrder(items.map((_, i) => i));
+    setDragOrder(results.map((_, i) => i));
   };
 
   const handleDragEnter = (idx: number) => {
@@ -72,17 +65,17 @@ export function SpinTab() {
     setDragOrder(null);
 
     if (from === null || !order) return;
-    const reordered = order.map(i => items[i]);
-    if (reordered.every((v, i) => v === items[i])) return;   // nothing changed
+    const reordered = order.map(i => results[i]);
+    if (reordered.every((v, i) => v === results[i])) return;   // nothing changed
 
     setBusy(true);
     try {
       // Clear from back to front so indices don't shift mid-loop
-      for (let i = items.length - 1; i >= 0; i--) {
-        await removeSpinTabQueueItem(i);
+      for (let i = results.length - 1; i >= 0; i--) {
+        await removeSpinTabResult(i);
       }
       for (const item of reordered) {
-        await appendSpinTabQueue(item);
+        await appendSpinTabResult(item);
       }
     } finally { setBusy(false); }
   };
@@ -92,26 +85,26 @@ export function SpinTab() {
     const next = starredItems.includes(item)
       ? starredItems.filter(m => m !== item)
       : [...starredItems, item];
-    saveSpinStarred(next);
+    saveSpinTabStarred(next);
   };
 
   // ─── Used / restore ───────────────────────────────────────────────────────
   const markUsed = async (item: string) => {
     if (busy) return;
     setBusy(true);
-    try { await markSpinUsed(item); } finally { setBusy(false); }
+    try { await markSpinTabUsed(item); } finally { setBusy(false); }
   };
 
   const restoreUsed = async (item: string) => {
     if (busy) return;
     setBusy(true);
-    try { await restoreSpinUsed(item); } finally { setBusy(false); }
+    try { await restoreSpinTabUsed(item); } finally { setBusy(false); }
   };
 
   const restoreAll = async () => {
     if (busy) return;
     setBusy(true);
-    try { await restoreSpinUsed(); } finally { setBusy(false); }
+    try { await restoreSpinTabUsed(); } finally { setBusy(false); }
   };
 
   // ─── Wheel canvas ─────────────────────────────────────────────────────────
@@ -126,9 +119,9 @@ export function SpinTab() {
   const wheelItemsRef = useRef(wheelItems);
   useEffect(() => { wheelItemsRef.current = wheelItems; }, [wheelItems]);
 
-  // Stable ref so the RAF spin closure always calls the latest appendSpinTabQueue
-  const appendSpinTabQueueRef = useRef(appendSpinTabQueue);
-  useEffect(() => { appendSpinTabQueueRef.current = appendSpinTabQueue; }, [appendSpinTabQueue]);
+  // Stable ref so the RAF spin closure always calls the latest appendSpinTabResult
+  const appendSpinTabResultRef = useRef(appendSpinTabResult);
+  useEffect(() => { appendSpinTabResultRef.current = appendSpinTabResult; }, [appendSpinTabResult]);
 
   const drawWheel = useCallback((angle: number) => {
     const canvas = canvasRef.current;
@@ -175,17 +168,10 @@ export function SpinTab() {
 
   useEffect(() => { drawWheel(angleRef.current); }, [wheelItems, drawWheel, wheelSize]);
 
-  // Broadcast with SpinTab source tag so MapsTab viewers don't animate
+  // Broadcast on SpinTab's own isolated live-wheel field — never touches Maps tab's spinState.
   const broadcastSpinState = useCallback(async (state: SpinState | null) => {
-    const tagged: SpinState | null = state
-      ? { ...state, result: tagResult(state.result) }
-      : null;
-    await fetch('/api/maps', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
-      body: JSON.stringify({ action: 'updateSpinState', spinState: tagged }),
-    });
-  }, [adminToken]);
+    await updateSpinTabState(state);
+  }, [updateSpinTabState]);
 
   const spin = useCallback(() => {
     if (spinning || !wheelItems.length) return;
@@ -210,7 +196,7 @@ export function SpinTab() {
       const result = currentItems[Math.floor(norm / slice) % currentItems.length];
 
       setSpunItem(result);                                   // show modal (clean string)
-      await appendSpinTabQueueRef.current(result);           // record in results history
+      await appendSpinTabResultRef.current(result);           // record in results history
 
       broadcastSpinState({ spinning: false, startAngle: a0, targetAngle, startTime, duration: dur, result });
       setTimeout(() => broadcastSpinState(null), 1000);
@@ -219,24 +205,19 @@ export function SpinTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spinning, wheelItems.length, drawWheel, broadcastSpinState]);
 
-  // ─── Live spin listener — viewer side only, SpinTab broadcasts only ────────
+  // ─── Live spin listener — viewer side only ─────────────────────────────────
+  // liveSpin comes from spinTabState, a field fully isolated from Maps tab's
+  // spinState, so no tag-based filtering is needed here.
   const prevSpinRef = useRef<SpinState | null>(null);
   useEffect(() => {
     if (isAdmin) return;
     if (!liveSpin) return;
-    // Ignore MapsTab broadcasts (no SpinTab tag on a non-empty result)
-    if (liveSpin.result && !isSpinTabBc(liveSpin)) return;
-    // Ignore in-progress spins — we can't confirm the source until result arrives
-    if (liveSpin.spinning && !liveSpin.result) return;
 
     const prev = prevSpinRef.current;
     prevSpinRef.current = liveSpin;
 
     if (!liveSpin.spinning && liveSpin.result) {
-      // Strip tag before comparing so duplicate-detection works cleanly
-      const cleanResult = stripTag(liveSpin.result);
-      const prevClean   = prev?.result ? stripTag(prev.result) : '';
-      if (!prev || prevClean !== cleanResult || prev.spinning) {
+      if (!prev || prev.result !== liveSpin.result || prev.spinning) {
         const age = Date.now() - (liveSpin.startTime + liveSpin.duration);
         if (age > 10000) return;
         const { startAngle: a0, targetAngle, startTime, duration: dur } = liveSpin;
@@ -295,22 +276,22 @@ export function SpinTab() {
     try { await appendSpinTabQueue(name); setItemInput(''); } finally { setBusy(false); }
   };
 
-  const handleRemoveItem = async (idx: number) => {
+  const handleRemoveResult = async (idx: number) => {
     if (busy) return;
     setBusy(true);
-    try { await removeSpinTabQueueItem(idx); } finally { setBusy(false); }
+    try { await removeSpinTabResult(idx); } finally { setBusy(false); }
   };
 
   const handleClearAll = async () => {
-    if (busy || (items.length === 0 && usedItems.length === 0 && starredItems.length === 0)) return;
+    if (busy || (items.length === 0 && results.length === 0 && usedItems.length === 0 && starredItems.length === 0)) return;
     setBusy(true);
     try { await clearSpinTab(); } finally { setBusy(false); }
   };
 
-  // Resolve display order: shadow during drag, identity otherwise
-  const displayItems = dragOrder
-    ? dragOrder.map(i => ({ item: items[i], origIdx: i }))
-    : items.map((item, i) => ({ item, origIdx: i }));
+  // Resolve display order for the Results panel: shadow during drag, identity otherwise
+  const displayResults = dragOrder
+    ? dragOrder.map(i => ({ item: results[i], origIdx: i }))
+    : results.map((item, i) => ({ item, origIdx: i }));
 
   if (loading) return (
     <div className="flex-1 flex flex-col w-full py-4 gap-5 min-h-0 overflow-hidden animate-pulse">
@@ -461,36 +442,36 @@ export function SpinTab() {
                   >↩ restore pool</button>
                   <button
                     className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
-                      ${(items.length === 0 && usedItems.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                      ${(items.length === 0 && results.length === 0 && usedItems.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
                     title="Clear all results and restore used items to wheel"
                     onClick={handleClearAll}
-                    disabled={busy || (items.length === 0 && usedItems.length === 0)}
+                    disabled={busy || (items.length === 0 && results.length === 0 && usedItems.length === 0)}
                   >clear all</button>
                 </div>
               )}
             </div>
 
             <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-1.5 min-h-0">
-              {items.length === 0 ? (
+              {results.length === 0 ? (
                 <p className="font-['DM_Mono'] text-xs t-dim text-center py-3">
                   Add items to the wheel and spin to see results here.
                 </p>
               ) : (
-                displayItems.map(({ item, origIdx }, displayIdx) => {
+                displayResults.map(({ item, origIdx }, displayIdx) => {
                   const isUsed = usedItems.includes(item);
                   return (
                     <div
                       key={`${origIdx}-${item}`}
-                      draggable={isAdmin && !isUsed}
-                      onDragStart={isAdmin && !isUsed ? () => handleDragStart(origIdx) : undefined}
-                      onDragEnter={isAdmin && !isUsed ? () => handleDragEnter(origIdx) : undefined}
+                      draggable={isAdmin}
+                      onDragStart={isAdmin ? () => handleDragStart(origIdx) : undefined}
+                      onDragEnter={isAdmin ? () => handleDragEnter(origIdx) : undefined}
                       onDragEnd={isAdmin ? handleDragEnd : undefined}
                       onDragOver={isAdmin ? e => e.preventDefault() : undefined}
                       className="flex items-center justify-between t-elevated border t-border rounded-xl px-3 py-2 gap-2 transition-opacity"
-                      style={{ cursor: isAdmin && !isUsed ? 'grab' : 'default', opacity: isUsed ? 0.45 : 1 }}
+                      style={{ cursor: isAdmin ? 'grab' : 'default', opacity: isUsed ? 0.45 : 1 }}
                     >
                       <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                        {isAdmin && !isUsed && (
+                        {isAdmin && (
                           <span className="shrink-0 t-dim text-sm leading-none select-none">⠿</span>
                         )}
                         <span className="shrink-0 font-['DM_Mono'] text-[10px] t-dim w-5 text-right">#{displayIdx + 1}</span>
@@ -523,7 +504,7 @@ export function SpinTab() {
                           <button
                             className={`font-['DM_Mono'] text-[10px] t-dim px-1 py-1 transition-colors ${busy ? 'opacity-30 cursor-not-allowed' : 'hover:text-[var(--accent-red)] cursor-pointer'}`}
                             title="Remove from results"
-                            onClick={() => handleRemoveItem(origIdx)}
+                            onClick={() => handleRemoveResult(origIdx)}
                             disabled={busy}
                           >✕</button>
                         </div>
@@ -566,7 +547,6 @@ export function SpinTab() {
               🎯 Spin Result
             </div>
             <div className="p-10 flex items-center justify-center border-b t-border t-bg">
-              {/* spunItem is always the clean string (tag never reaches here) */}
               <p className="font-['Bebas_Neue'] text-5xl tracking-widest t-text text-center break-words">{spunItem}</p>
             </div>
             <div className="px-5 pt-3 pb-1 t-surface">

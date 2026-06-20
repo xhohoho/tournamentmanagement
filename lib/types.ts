@@ -178,10 +178,15 @@ export interface ServerState {
   chatMessages: ChatMessage[];
   defaultMaps: string[];     // maps that are always restored after reset
   spinQueue: string[];
-  spinTabQueue: string[];        // isolated queue for Spin tab (independent of Maps tab)
-  spinUsedItems: string[];       // items marked as used in Spin tab (hidden from wheel)
-  spinStarredItems: string[];    // starred items in Spin tab (restored on clear)
+  /** Spin tab — wheel item pool (what the admin adds to put on the wheel) */
+  spinTabQueue: string[];
+  /** Spin tab — ordered history of spin results (appended each time wheel lands) */
+  spinTabResults: string[];
+  spinTabUsedItems: string[];       // items marked as used in Spin tab (hidden from wheel)
+  spinTabStarredItems: string[];    // starred items in Spin tab (restored on clear)
   spinState: SpinState | null;  // live spin broadcast
+  /** Spin tab — isolated live wheel broadcast, fully separate from Maps tab's spinState */
+  spinTabState: SpinState | null;
   shuffleState: ShuffleState | null; // live bracket shuffle broadcast
   spinCategories: string[];              // ordered category names
   spinItemCategory: Record<number, string>; // spinQueue index -> category name
@@ -240,11 +245,13 @@ export interface TourneyContext {
   usedMaps: string[];
   stageMaps: Record<string, string[]>;
   spinState: SpinState | null;
+  spinTabState: SpinState | null;
   shuffleState: ShuffleState | null;
   spinQueue: string[];
   spinTabQueue: string[];
-  spinUsedItems: string[];
-  spinStarredItems: string[];
+  spinTabResults: string[];
+  spinTabUsedItems: string[];
+  spinTabStarredItems: string[];
   spinCategories: string[];
   spinItemCategory: Record<number, string>;
   defaultMaps: string[];
@@ -320,12 +327,15 @@ export interface TourneyContext {
   removeSpinQueueItem: (idx: number) => Promise<void>;
   saveSpinCategories: (cats: string[], itemCat: Record<number, string>) => Promise<void>;
   saveDefaultMaps: (starred: string[]) => Promise<void>;
-  markSpinUsed: (name: string) => Promise<void>;
-  restoreSpinUsed: (name?: string) => Promise<void>;
-  saveSpinStarred: (starred: string[]) => Promise<void>;
+  markSpinTabUsed: (name: string) => Promise<void>;
+  restoreSpinTabUsed: (name?: string) => Promise<void>;
+  saveSpinTabStarred: (starred: string[]) => Promise<void>;
   clearSpinTab: () => Promise<void>;
   appendSpinTabQueue: (item: string) => Promise<void>;
   removeSpinTabQueueItem: (idx: number) => Promise<void>;
+  appendSpinTabResult: (item: string) => Promise<void>;
+  removeSpinTabResult: (idx: number) => Promise<void>;
+  updateSpinTabState: (state: SpinState | null) => Promise<void>;
   assignStage: (stageKey: string, mapName: string, slot?: number) => Promise<void>;
   clearStage: (stageKey: string, slot?: number) => Promise<void>;
   assignLeader: (teamId: string, playerName: string) => Promise<{ error?: string }>;

@@ -36,7 +36,7 @@ const GUARD_MS = 1500;
 // All state fields that can be optimistically guarded against SSE overwrites.
 const GUARD_FIELDS = [
   'players', 'roster', 'teamMode', 'teams', 'bracket', 'stageMaps',
-  'maps', 'usedMaps', 'spinQueue', 'spinTabQueue', 'spinUsedItems', 'spinStarredItems', 'spinCategories', 'defaultMaps',
+  'maps', 'usedMaps', 'spinQueue', 'spinTabQueue', 'spinTabResults', 'spinTabUsedItems', 'spinTabStarredItems', 'spinCategories', 'defaultMaps',
   'joinKey', 'queueCap', 'queueLocked', 'chat', 'tickerText', 'ffa', 'casterSheet',
 ] as const;
 type GuardField = typeof GUARD_FIELDS[number];
@@ -63,11 +63,13 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   const [usedMaps, setUsedMaps] = useState<string[]>([]);
   const [stageMaps, setStageMaps] = useState<Record<string, string[]>>({});
   const [spinState, setSpinState] = useState<import('@/lib/types').SpinState | null>(null);
+  const [spinTabState, setSpinTabState] = useState<import('@/lib/types').SpinState | null>(null);
   const [shuffleState, setShuffleState] = useState<import('@/lib/types').ShuffleState | null>(null);
   const [spinQueue, setSpinQueue] = useState<string[]>([]);
   const [spinTabQueue, setSpinTabQueue] = useState<string[]>([]);
-  const [spinUsedItems, setSpinUsedItems] = useState<string[]>([]);
-  const [spinStarredItems, setSpinStarredItems] = useState<string[]>([]);
+  const [spinTabResults, setSpinTabResults] = useState<string[]>([]);
+  const [spinTabUsedItems, setSpinTabUsedItems] = useState<string[]>([]);
+  const [spinTabStarredItems, setSpinTabStarredItems] = useState<string[]>([]);
   const [spinCategories, setSpinCategories] = useState<string[]>([]);
   const [spinItemCategory, setSpinItemCategory] = useState<Record<number, string>>({});
   const [defaultMaps, setDefaultMaps] = useState<string[]>([]);
@@ -149,8 +151,9 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!fromSSE || !guard.guarded('stageMaps')) setStageMaps(data.stageMaps as Record<string, string[]> ?? {});
     if (!fromSSE || !guard.guarded('spinQueue')) setSpinQueue(data.spinQueue as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinTabQueue')) setSpinTabQueue(data.spinTabQueue as string[] ?? []);
-    if (!fromSSE || !guard.guarded('spinUsedItems')) setSpinUsedItems(data.spinUsedItems as string[] ?? []);
-    if (!fromSSE || !guard.guarded('spinStarredItems')) setSpinStarredItems(data.spinStarredItems as string[] ?? []);
+    if (!fromSSE || !guard.guarded('spinTabResults')) setSpinTabResults(data.spinTabResults as string[] ?? []);
+    if (!fromSSE || !guard.guarded('spinTabUsedItems')) setSpinTabUsedItems(data.spinTabUsedItems as string[] ?? []);
+    if (!fromSSE || !guard.guarded('spinTabStarredItems')) setSpinTabStarredItems(data.spinTabStarredItems as string[] ?? []);
     if (!fromSSE || !guard.guarded('spinCategories')) {
       setSpinCategories(data.spinCategories as string[] ?? []);
       setSpinItemCategory(data.spinItemCategory as Record<number, string> ?? {});
@@ -169,6 +172,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     setActiveAdminCount(data.activeAdminCount as number ?? 0);
 
     setSpinState(data.spinState as import('@/lib/types').SpinState | null ?? null);
+    setSpinTabState(data.spinTabState as import('@/lib/types').SpinState | null ?? null);
     setShuffleState(prev =>
       applyShuffleState(prev, data.shuffleState as import('@/lib/types').ShuffleState | null ?? null, localShuffleStartTimeRef)
     );
@@ -626,37 +630,37 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   // ─── Spin tab isolated state ──────────────────────────────────────────────────
-  const markSpinUsed = async (name: string) => {
-    guard.touch('spinUsedItems');
-    setSpinUsedItems(prev => [...prev, name]);
-    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'markSpinUsed', item: name });
+  const markSpinTabUsed = async (name: string) => {
+    guard.touch('spinTabUsedItems');
+    setSpinTabUsedItems(prev => [...prev, name]);
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'markSpinTabUsed', item: name });
     if (res.ok) {
       const data = await res.json();
-      setSpinUsedItems(data.spinUsedItems ?? []);
+      setSpinTabUsedItems(data.spinTabUsedItems ?? []);
     }
   };
 
-  const restoreSpinUsed = async (name?: string) => {
-    guard.touch('spinUsedItems');
-    const prev = spinUsedItems;
-    setSpinUsedItems(name ? prev.filter(m => m !== name) : []);
+  const restoreSpinTabUsed = async (name?: string) => {
+    guard.touch('spinTabUsedItems');
+    const prev = spinTabUsedItems;
+    setSpinTabUsedItems(name ? prev.filter(m => m !== name) : []);
     try {
-      const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'restoreSpinUsed', ...(name ? { item: name } : {}) });
+      const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'restoreSpinTabUsed', ...(name ? { item: name } : {}) });
       if (res.ok) {
         const data = await res.json();
-        setSpinUsedItems(data.spinUsedItems ?? []);
+        setSpinTabUsedItems(data.spinTabUsedItems ?? []);
       } else {
-        setSpinUsedItems(prev);
+        setSpinTabUsedItems(prev);
       }
     } catch {
-      setSpinUsedItems(prev);
+      setSpinTabUsedItems(prev);
     }
   };
 
-  const saveSpinStarred = async (starred: string[]) => {
-    guard.touch('spinStarredItems');
-    setSpinStarredItems(starred);
-    await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinStarred', spinStarred: starred });
+  const saveSpinTabStarred = async (starred: string[]) => {
+    guard.touch('spinTabStarredItems');
+    setSpinTabStarredItems(starred);
+    await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinTabStarred', spinTabStarred: starred });
   };
 
   // ─── Spin tab isolated queue operations ───────────────────────────────────────
@@ -679,30 +683,64 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!res.ok) setSpinTabQueue(prev);
   };
 
+  // ─── Spin tab: results history (separate from the wheel pool) ────────────────
+  const appendSpinTabResult = async (item: string) => {
+    guard.touch('spinTabResults');
+    setSpinTabResults(prev => [...prev, item]);
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'appendSpinTabResult', item });
+    if (res.ok) {
+      const data = await res.json();
+      setSpinTabResults(data.spinTabResults ?? []);
+    }
+  };
+
+  const removeSpinTabResult = async (idx: number) => {
+    guard.touch('spinTabResults');
+    const prev = spinTabResults;
+    const newR = prev.filter((_, i) => i !== idx);
+    setSpinTabResults(newR);
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinTabResults', spinTabResults: newR });
+    if (!res.ok) setSpinTabResults(prev);
+  };
+
+  // Isolated live wheel broadcast for the Spin tab — never touches Maps tab's spinState.
+  const updateSpinTabState = async (state: import('@/lib/types').SpinState | null) => {
+    await fetch(`/api/maps?t=${t}`, {
+      method: 'PATCH',
+      headers: adminHeaders,
+      body: JSON.stringify({ action: 'updateSpinTabState', spinTabState: state }),
+    });
+  };
+
   const clearSpinTab = async () => {
-    guard.touch('spinTabQueue'); guard.touch('spinUsedItems'); guard.touch('spinStarredItems');
+    guard.touch('spinTabQueue'); guard.touch('spinTabResults'); guard.touch('spinTabUsedItems'); guard.touch('spinTabStarredItems');
     const prevQueue = spinTabQueue;
-    const prevUsed = spinUsedItems;
-    const prevStarred = spinStarredItems;
+    const prevResults = spinTabResults;
+    const prevUsed = spinTabUsedItems;
+    const prevStarred = spinTabStarredItems;
     setSpinTabQueue([]);
-    setSpinUsedItems([]);
-    setSpinStarredItems([]);
+    setSpinTabResults([]);
+    setSpinTabUsedItems([]);
+    setSpinTabStarredItems([]);
     try {
       const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'clearSpinTab' });
       if (res.ok) {
         const data = await res.json();
         setSpinTabQueue(data.spinTabQueue ?? []);
-        setSpinUsedItems(data.spinUsedItems ?? []);
-        setSpinStarredItems(data.spinStarredItems ?? []);
+        setSpinTabResults(data.spinTabResults ?? []);
+        setSpinTabUsedItems(data.spinTabUsedItems ?? []);
+        setSpinTabStarredItems(data.spinTabStarredItems ?? []);
       } else {
         setSpinTabQueue(prevQueue);
-        setSpinUsedItems(prevUsed);
-        setSpinStarredItems(prevStarred);
+        setSpinTabResults(prevResults);
+        setSpinTabUsedItems(prevUsed);
+        setSpinTabStarredItems(prevStarred);
       }
     } catch {
       setSpinTabQueue(prevQueue);
-      setSpinUsedItems(prevUsed);
-      setSpinStarredItems(prevStarred);
+      setSpinTabResults(prevResults);
+      setSpinTabUsedItems(prevUsed);
+      setSpinTabStarredItems(prevStarred);
     }
   };
 
@@ -835,7 +873,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
 
   return (
     <Ctx.Provider value={{
-      players, roster, teamMode, teams, elimMode, bracket, maps, usedMaps, stageMaps, spinState, shuffleState, spinQueue,
+      players, roster, teamMode, teams, elimMode, bracket, maps, usedMaps, stageMaps, spinState, spinTabState, shuffleState, spinQueue,
       spinCategories, spinItemCategory, defaultMaps, stageFormats, ffa, casterSheet,
       tournamentId,
       joinKey, chatMessages,
@@ -850,8 +888,9 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       formTeams, resetTeams, setTeamMode, renameTeam, setTeamNameFromLeader, addReplacement, removeReplacement, swapPlayer,
       generateBracket, seedBracket, manualSeedSlot, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, moveMapToUsed, restoreUsedMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
-      markSpinUsed, restoreSpinUsed, saveSpinStarred, clearSpinTab, spinUsedItems, spinStarredItems,
+      markSpinTabUsed, restoreSpinTabUsed, saveSpinTabStarred, clearSpinTab, spinTabUsedItems, spinTabStarredItems,
       appendSpinTabQueue, removeSpinTabQueueItem, spinTabQueue,
+      appendSpinTabResult, removeSpinTabResult, spinTabResults, updateSpinTabState,
       assignLeader,
       createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,
       deleteFFAMatch, lockFFAMatch, updateFFAMapInfo, setFFAMatchImage, setFFAMatchScoreImage,
