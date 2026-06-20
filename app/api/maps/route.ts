@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getState, updateState, safeState } from '@/lib/kv';
+import { getState, updateState } from '@/lib/kv';
 import { parseStageMaps } from '@/lib/utils';
 import { checkTournamentAccess } from '@/lib/tournamentAccess';
 
@@ -41,7 +41,7 @@ export async function DELETE(req: NextRequest) {
   const access = await checkTournamentAccess(req, tid);
   if (access instanceof NextResponse) return access;
   const { name } = await req.json();
-  
+
   const next = await updateState(s => {
     // Also clean up any stageMaps entries that reference the deleted map.
     const stageMaps: Record<string, string[]> = {};
@@ -55,7 +55,7 @@ export async function DELETE(req: NextRequest) {
       stageMaps,
     };
   }, tid);
-  
+
   return NextResponse.json({ maps: next.maps, stageMaps: next.stageMaps });
 }
 
@@ -66,12 +66,14 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { action, stageKey, mapName, slot, spinQueue } = body;
 
-  // Move a map from the active wheel into the usedMaps pool (hides it from the wheel without deleting).
+  // ── Maps tab: wheel pool management ──────────────────────────────────────────
+
+  // Move a map from the active wheel into usedMaps (hides from wheel, keeps in pool).
   if (action === 'moveToUsed') {
     const { map } = body;
     if (!map) return NextResponse.json({ error: 'map required' }, { status: 400 });
     const next = await updateState(s => {
-      if ((s.usedMaps ?? []).includes(map)) return s; // already used
+      if ((s.usedMaps ?? []).includes(map)) return s;
       return { ...s, usedMaps: [...(s.usedMaps ?? []), map] };
     }, tid);
     return NextResponse.json({ usedMaps: next.usedMaps ?? [] });
@@ -79,7 +81,7 @@ export async function PATCH(req: NextRequest) {
 
   // Restore one or all maps from usedMaps back to the active wheel.
   if (action === 'restoreUsed') {
-    const { map } = body; // if omitted → restore all
+    const { map } = body; // omit to restore all
     const next = await updateState(s => ({
       ...s,
       usedMaps: map ? (s.usedMaps ?? []).filter(m => m !== map) : [],
@@ -87,29 +89,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ usedMaps: next.usedMaps ?? [] });
   }
 
-  if (action === 'updateSpinQueue') {
-    const next = await updateState(s => ({ ...s, spinQueue: spinQueue || [] }), tid);
-    return NextResponse.json({ spinQueue: next.spinQueue });
-  }
-
-  if (action === 'updateDefaultMaps') {
-    const { defaultMaps } = body;
-    const next = await updateState(s => ({
-      ...s,
-      ...(defaultMaps !== undefined ? { defaultMaps } : {}),
-    }), tid);
-    return NextResponse.json({ defaultMaps: next.defaultMaps });
-  }
-
-  if (action === 'updateSpinCategories') {
-    const { spinCategories, spinItemCategory } = body;
-    const next = await updateState(s => ({
-      ...s,
-      ...(spinCategories !== undefined ? { spinCategories } : {}),
-      ...(spinItemCategory !== undefined ? { spinItemCategory } : {}),
-    }), tid);
-    return NextResponse.json({ spinCategories: next.spinCategories, spinItemCategory: next.spinItemCategory });
-  }
+  // ── Maps tab: spin queue ──────────────────────────────────────────────────────
 
   if (action === 'appendSpinQueue') {
     const { map } = body;
@@ -118,7 +98,12 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ spinQueue: next.spinQueue });
   }
 
-  // Clear all: restore usedMaps back to wheel, wipe spinQueue + categories.
+  if (action === 'updateSpinQueue') {
+    const next = await updateState(s => ({ ...s, spinQueue: spinQueue || [] }), tid);
+    return NextResponse.json({ spinQueue: next.spinQueue });
+  }
+
+  // Clear all Maps-tab state: restore usedMaps, wipe spinQueue + category assignments.
   if (action === 'clearAll') {
     const next = await updateState(s => ({
       ...s,
@@ -134,6 +119,40 @@ export async function PATCH(req: NextRequest) {
       spinItemCategory: next.spinItemCategory,
     });
   }
+
+  // ── Maps tab: spin categories ─────────────────────────────────────────────────
+
+  if (action === 'updateSpinCategories') {
+    const { spinCategories, spinItemCategory } = body;
+    const next = await updateState(s => ({
+      ...s,
+      ...(spinCategories   !== undefined ? { spinCategories }   : {}),
+      ...(spinItemCategory !== undefined ? { spinItemCategory } : {}),
+    }), tid);
+    return NextResponse.json({ spinCategories: next.spinCategories, spinItemCategory: next.spinItemCategory });
+  }
+
+  // ── Maps tab: default/starred maps ────────────────────────────────────────────
+
+  if (action === 'updateDefaultMaps') {
+    const { defaultMaps } = body;
+    const next = await updateState(s => ({
+      ...s,
+      ...(defaultMaps !== undefined ? { defaultMaps } : {}),
+    }), tid);
+    return NextResponse.json({ defaultMaps: next.defaultMaps });
+  }
+
+  // ── Shared: live spin-wheel broadcast ─────────────────────────────────────────
+  // Both MapsTab and SpinTab call this to animate the wheel for all viewers.
+  // SpinTab tags result strings with "|spintab" so viewers can tell the tabs apart.
+  if (action === 'updateSpinState') {
+    const { spinState } = body; // SpinState | null
+    const next = await updateState(s => ({ ...s, spinState: spinState ?? null }), tid);
+    return NextResponse.json({ spinState: next.spinState });
+  }
+
+  // ── Stage maps (bracket map slots) ───────────────────────────────────────────
 
   if (action === 'assignStage') {
     const next = await updateState(s => {
@@ -164,7 +183,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ stageMaps: next.stageMaps });
   }
 
-  // ─── Spin tab isolated actions ────────────────────────────────────────────────
+  // ── Spin tab: isolated pool state ────────────────────────────────────────────
+
   if (action === 'markSpinUsed') {
     const { item } = body;
     if (!item) return NextResponse.json({ error: 'item required' }, { status: 400 });
@@ -176,7 +196,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (action === 'restoreSpinUsed') {
-    const { item } = body; // if omitted → restore all
+    const { item } = body; // omit to restore all
     const next = await updateState(s => ({
       ...s,
       spinUsedItems: item ? (s.spinUsedItems ?? []).filter(m => m !== item) : [],
@@ -193,6 +213,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ spinStarredItems: next.spinStarredItems ?? [] });
   }
 
+  // ── Spin tab: isolated results queue ─────────────────────────────────────────
+
   if (action === 'appendSpinTabQueue') {
     const { item } = body;
     if (!item) return NextResponse.json({ error: 'item required' }, { status: 400 });
@@ -201,13 +223,13 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (action === 'updateSpinTabQueue') {
-    const { spinTabQueue } = body;
-    const next = await updateState(s => ({ ...s, spinTabQueue: spinTabQueue || [] }), tid);
+    const { spinTabQueue: newQueue } = body;
+    const next = await updateState(s => ({ ...s, spinTabQueue: newQueue || [] }), tid);
     return NextResponse.json({ spinTabQueue: next.spinTabQueue });
   }
 
+  // Clear all Spin-tab-specific state — does NOT touch Maps-tab spinQueue.
   if (action === 'clearSpinTab') {
-    // Only clear Spin tab's isolated state — do NOT touch spinQueue (Maps tab uses it)
     const next = await updateState(s => ({
       ...s,
       spinTabQueue: [],
@@ -215,8 +237,8 @@ export async function PATCH(req: NextRequest) {
       spinStarredItems: [],
     }), tid);
     return NextResponse.json({
-      spinTabQueue: next.spinTabQueue ?? [],
-      spinUsedItems: next.spinUsedItems ?? [],
+      spinTabQueue:    next.spinTabQueue    ?? [],
+      spinUsedItems:   next.spinUsedItems   ?? [],
       spinStarredItems: next.spinStarredItems ?? [],
     });
   }
