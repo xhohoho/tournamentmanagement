@@ -927,10 +927,10 @@ function SpinQueuePanel({ spinResults, isAdmin }: { spinResults: string[]; isAdm
         className="px-3 py-2 border-b t-border font-['Bebas_Neue'] text-lg tracking-widest rounded-t-xl shrink-0"
         style={{ background: 'var(--bg-elevated)', color: 'var(--accent-gold)' }}
       >
-        🎯 Spin Queue
+        🎡 Spin Result
       </div>
       <div className="px-3 py-1.5 border-b t-border font-['DM_Mono'] text-[9px] t-muted shrink-0">
-        Drag maps into bracket slots
+        Drag items into bracket map slots
       </div>
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
         {spinResults.map((m, i) => (
@@ -956,7 +956,7 @@ function SpinQueuePanel({ spinResults, isAdmin }: { spinResults: string[]; isAdm
 
 // ─── BracketTab ──────────────────────────────────────────────────────────────────
 export function BracketTab({ spinResults, onMatchCardClick }: { spinResults: string[]; onMatchCardClick?: (matchKey: string) => void }) {
-  const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, manualSeedSlot, spinTabQueue } = useTourney();
+  const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, manualSeedSlot } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -1181,9 +1181,6 @@ export function BracketTab({ spinResults, onMatchCardClick }: { spinResults: str
         </div>
       )}
 
-      {isAdmin && hasBracket && spinTabQueue.length > 0 && (
-        <SpinQueuePanel spinResults={spinTabQueue} isAdmin={isAdmin} />
-      )}
 
     </div>
   );
