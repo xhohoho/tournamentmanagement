@@ -276,6 +276,12 @@ export function SpinTab() {
     try { await appendSpinTabQueue(name); setItemInput(''); } finally { setBusy(false); }
   };
 
+  const handleDeletePoolItem = async (idx: number) => {
+    if (busy) return;
+    setBusy(true);
+    try { await removeSpinTabQueueItem(idx); } finally { setBusy(false); }
+  };
+
   const handleRemoveResult = async (idx: number) => {
     if (busy) return;
     setBusy(true);
@@ -353,12 +359,12 @@ export function SpinTab() {
             {items.length > 0 && (
               <div className="shrink-0 max-h-[96px] overflow-y-auto">
                 <div className="flex flex-wrap gap-2">
-                  {items.map(m => {
+                  {items.map((m, idx) => {
                     const isUsed    = usedItems.includes(m);
                     const isStarred = starredItems.includes(m);
                     return (
                       <span
-                        key={m}
+                        key={`${idx}-${m}`}
                         className="inline-flex items-center gap-1.5 t-elevated border t-border rounded-lg px-3 py-1.5 font-['DM_Mono'] text-sm"
                         style={{ opacity: isUsed ? 0.45 : 1, color: 'var(--text)' }}
                       >
@@ -391,6 +397,13 @@ export function SpinTab() {
                               title={isStarred ? 'Unstar' : 'Star — kept after clear all'}
                               onClick={() => toggleStar(m)}
                             >★</button>
+                            <button
+                              className={`shrink-0 transition-colors text-[10px] leading-none ${busy ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                              style={{ color: 'var(--text-dim)' }}
+                              title="Delete from pool"
+                              onClick={() => !busy && handleDeletePoolItem(idx)}
+                              disabled={busy}
+                            >🗑</button>
                           </>
                         )}
                       </span>

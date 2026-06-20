@@ -250,15 +250,20 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ spinTabResults: next.spinTabResults });
   }
 
-  // Clear all Spin-tab-specific state — does NOT touch Maps-tab spinQueue.
+  // Clear all Spin-tab-specific state — preserves starred items in the pool,
+  // mirroring Maps tab's clear-all (pool resets down to just the starred set).
+  // Does NOT touch Maps-tab spinQueue.
   if (action === 'clearSpinTab') {
-    const next = await updateState(s => ({
-      ...s,
-      spinTabQueue: [],
-      spinTabResults: [],
-      spinTabUsedItems: [],
-      spinTabStarredItems: [],
-    }), tid);
+    const next = await updateState(s => {
+      const starred = [...new Set(s.spinTabStarredItems ?? [])];
+      return {
+        ...s,
+        spinTabQueue: starred,
+        spinTabResults: [],
+        spinTabUsedItems: [],
+        // spinTabStarredItems left untouched
+      };
+    }, tid);
     return NextResponse.json({
       spinTabQueue:        next.spinTabQueue        ?? [],
       spinTabResults:      next.spinTabResults      ?? [],

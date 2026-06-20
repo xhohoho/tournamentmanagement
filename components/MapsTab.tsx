@@ -8,7 +8,7 @@ import type { SpinState } from '@/lib/types';
 export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory: string | null; setActiveCategory: (cat: string | null) => void }) {
   const {
     maps, usedMaps, isAdmin, loading,
-    addMap, removeMap, moveMapToUsed, restoreUsedMap, appendSpinQueue, clearSpinQueue,
+    addMap, removeMap, restoreUsedMap, appendSpinQueue, clearSpinQueue,
     adminToken, spinState: liveSpin,
     spinQueue, removeSpinQueueItem,
     spinCategories: serverCategories,
@@ -244,13 +244,6 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
       ? defaultMaps.filter(m => m !== map)
       : [...defaultMaps, map];
     saveDefaultMaps(next);
-  };
-
-  // Move the spun map to the used pool (hides from wheel, keeps in master list)
-  const handleUseMap = async (mapName: string) => {
-    if (busy) return;
-    setBusy(true);
-    try { await moveMapToUsed(mapName); } finally { setBusy(false); }
   };
 
   const handleRemoveMap = async (mapToRemove: string) => {
@@ -820,12 +813,7 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
 
             {/* Subtext */}
             <div className="px-5 pt-3 pb-1 t-surface">
-              <p className="font-['DM_Mono'] text-xs t-muted">
-                Added to spin queue.{' '}
-                {usedMaps.includes(spunMap)
-                  ? <span style={{ color: 'var(--accent-gold)' }}>Already marked as used.</span>
-                  : 'Click "Use Map" to hide it from the wheel until reset.'}
-              </p>
+              <p className="font-['DM_Mono'] text-xs t-muted">Added to spin queue.</p>
             </div>
 
             {/* Actions */}
@@ -835,16 +823,10 @@ export function MapsTab({ activeCategory, setActiveCategory }: { activeCategory:
                 onClick={() => setSpunMap('')}
               >Close</button>
               <button
-                className="font-['DM_Mono'] text-sm transition-colors cursor-pointer"
-                style={{ color: 'var(--accent-red)' }}
+                className="px-4 py-2 text-white font-['DM_Mono'] text-sm font-bold rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-40 hover:opacity-90"
+                style={{ background: 'var(--accent-red)' }}
                 onClick={() => { handleRemoveMap(spunMap); setSpunMap(''); }}
               >Delete from pool</button>
-              <button
-                className="px-4 py-2 text-white font-['DM_Mono'] text-sm font-bold rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-40 hover:opacity-90"
-                style={{ background: usedMaps.includes(spunMap) ? 'var(--border-mid)' : 'var(--accent)' }}
-                disabled={usedMaps.includes(spunMap) || busy}
-                onClick={() => { handleUseMap(spunMap); setSpunMap(''); }}
-              >{usedMaps.includes(spunMap) ? '✓ Map used' : 'Use Map'}</button>
             </div>
           </div>
         </div>

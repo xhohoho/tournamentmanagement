@@ -713,15 +713,14 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
   };
 
   const clearSpinTab = async () => {
-    guard.touch('spinTabQueue'); guard.touch('spinTabResults'); guard.touch('spinTabUsedItems'); guard.touch('spinTabStarredItems');
+    guard.touch('spinTabQueue'); guard.touch('spinTabResults'); guard.touch('spinTabUsedItems');
     const prevQueue = spinTabQueue;
     const prevResults = spinTabResults;
     const prevUsed = spinTabUsedItems;
-    const prevStarred = spinTabStarredItems;
-    setSpinTabQueue([]);
+    // Optimistic: pool resets to just the starred items, same as Maps tab's clear-all.
+    setSpinTabQueue([...new Set(spinTabStarredItems)]);
     setSpinTabResults([]);
     setSpinTabUsedItems([]);
-    setSpinTabStarredItems([]);
     try {
       const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'clearSpinTab' });
       if (res.ok) {
@@ -734,13 +733,11 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
         setSpinTabQueue(prevQueue);
         setSpinTabResults(prevResults);
         setSpinTabUsedItems(prevUsed);
-        setSpinTabStarredItems(prevStarred);
       }
     } catch {
       setSpinTabQueue(prevQueue);
       setSpinTabResults(prevResults);
       setSpinTabUsedItems(prevUsed);
-      setSpinTabStarredItems(prevStarred);
     }
   };
 
