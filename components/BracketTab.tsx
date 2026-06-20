@@ -956,7 +956,7 @@ function SpinQueuePanel({ spinResults, isAdmin }: { spinResults: string[]; isAdm
 
 // ─── BracketTab ──────────────────────────────────────────────────────────────────
 export function BracketTab({ spinResults, onMatchCardClick }: { spinResults: string[]; onMatchCardClick?: (matchKey: string) => void }) {
-  const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, manualSeedSlot } = useTourney();
+  const { bracket, elimMode, teams, isAdmin, loading, stageFormats, setStageFormats, setElimMode, generateBracket, seedBracket, updateScore, undoMatch, updateThirdPlace, resetBracket, manualSeedSlot, spinTabQueue } = useTourney();
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -1181,8 +1181,8 @@ export function BracketTab({ spinResults, onMatchCardClick }: { spinResults: str
         </div>
       )}
 
-      {isAdmin && hasBracket && spinResults.length > 0 && (
-        <SpinQueuePanel spinResults={spinResults} isAdmin={isAdmin} />
+      {isAdmin && hasBracket && spinTabQueue.length > 0 && (
+        <SpinQueuePanel spinResults={spinTabQueue} isAdmin={isAdmin} />
       )}
 
     </div>
