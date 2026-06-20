@@ -283,6 +283,19 @@ export function SpinTab() {
     try { await clearSpinTab(); } finally { setBusy(false); }
   };
 
+  // Restore starred items back into the wheel pool (skip duplicates)
+  const handleRestorePool = async () => {
+    if (busy || starredItems.length === 0) return;
+    setBusy(true);
+    try {
+      for (const item of starredItems) {
+        if (!items.includes(item)) {
+          await appendSpinTabQueue(item);
+        }
+      }
+    } finally { setBusy(false); }
+  };
+
   // Resolve display order for the Results panel: shadow during drag, identity otherwise
   const displayResults = dragOrder
     ? dragOrder.map(i => ({ item: results[i], origIdx: i }))
@@ -414,6 +427,16 @@ export function SpinTab() {
               <h2 className="font-['Bebas_Neue'] text-xl tracking-widest t-text">🎯 Spin Results</h2>
               {isAdmin && (
                 <div className="flex items-center gap-2 flex-wrap">
+                  {starredItems.length > 0 && (
+                    <button
+                      className={`font-['DM_Mono'] text-[10px] transition-colors whitespace-nowrap
+                        ${busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-gold)]'}`}
+                      style={{ color: 'var(--accent-gold)' }}
+                      title="Restore all starred items back into the wheel pool"
+                      onClick={handleRestorePool}
+                      disabled={busy}
+                    >★ restore pool</button>
+                  )}
                   <button
                     className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
                       ${(items.length === 0 && results.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
