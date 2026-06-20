@@ -1149,6 +1149,10 @@ export function BracketTab({ spinResults, onMatchCardClick }: { spinResults: str
         </div>
       )}
 
+      {isAdmin && hasBracket && spinResults.length > 0 && (
+        <SpinQueuePanel spinResults={spinResults} isAdmin={isAdmin} />
+      )}
+
       {bracket ? (
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           <BracketDisplay
