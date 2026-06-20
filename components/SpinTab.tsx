@@ -432,7 +432,6 @@ export function SpinTab() {
                 </p>
               ) : (
                 displayResults.map(({ item, origIdx }, displayIdx) => {
-                  const isUsed = usedItems.includes(item);
                   return (
                     <div
                       key={`${origIdx}-${item}`}
