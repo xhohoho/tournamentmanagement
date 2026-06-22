@@ -438,10 +438,10 @@ export function SpinTab() {
                   )}
                   <button
                     className={`font-['DM_Mono'] text-[10px] t-dim transition-colors whitespace-nowrap
-                      ${(items.length === 0 && results.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
-                    title="Clear all results"
+                      ${(items.length === 0 && results.length === 0 && starredItems.length === 0) || busy ? 'opacity-30 pointer-events-none' : 'cursor-pointer hover:text-[var(--accent-red)]'}`}
+                    title="Clear all results and restore starred items to wheel"
                     onClick={handleClearAll}
-                    disabled={busy || (items.length === 0 && results.length === 0)}
+                    disabled={busy || (items.length === 0 && results.length === 0 && starredItems.length === 0)}
                   >clear all</button>
                 </div>
               )}
