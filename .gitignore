@@ -43,6 +43,6 @@ next-env.d.ts
 test-results/
 
 # additional: generated runtime, secrets, caches
-/tmp
+/.tmp
 /credentials.json
 /token.json
