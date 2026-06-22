@@ -654,6 +654,18 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
     if (!res.ok) setSpinTabQueue(prev);
   };
 
+  // Remove by name — finds first matching entry and removes it (like MapsTab's removeMap)
+  const removeSpinTabQueueItemByName = async (name: string) => {
+    guard.touch('spinTabQueue');
+    const prev = spinTabQueue;
+    const idx = prev.indexOf(name);
+    if (idx === -1) return; // already removed
+    const newQ = prev.filter((_, i) => i !== idx);
+    setSpinTabQueue(newQ);
+    const res = await apiFetch(`/api/maps?t=${t}`, 'PATCH', { action: 'updateSpinTabQueue', spinTabQueue: newQ });
+    if (!res.ok) setSpinTabQueue(prev);
+  };
+
   // ─── Spin tab: results history (separate from the wheel pool) ────────────────
   const appendSpinTabResult = async (item: string) => {
     guard.touch('spinTabResults');
@@ -852,7 +864,7 @@ export function TourneyProvider({ children, tournamentId = 'default', initialAdm
       generateBracket, seedBracket, manualSeedSlot, updateScore, undoMatch, updateThirdPlace, resetBracket, setElimMode,
       addMap, removeMap, moveMapToUsed, restoreUsedMap, appendSpinQueue, clearSpinQueue, removeSpinQueueItem, saveDefaultMaps, saveSpinCategories, assignStage, clearStage,
       saveSpinTabStarred, clearSpinTab, spinTabStarredItems,
-      appendSpinTabQueue, removeSpinTabQueueItem, spinTabQueue,
+      appendSpinTabQueue, removeSpinTabQueueItem, removeSpinTabQueueItemByName, spinTabQueue,
       appendSpinTabResult, removeSpinTabResult, spinTabResults, updateSpinTabState,
       assignLeader,
       createFFAMatch, updateFFAScore, removeFFAScore, setFFAScores, setFFAPlayers,

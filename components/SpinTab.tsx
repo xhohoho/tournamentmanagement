@@ -9,7 +9,7 @@ export function SpinTab() {
   const {
     isAdmin, loading,
     spinTabState: liveSpin,
-    spinTabQueue, removeSpinTabQueueItem,
+    spinTabQueue, removeSpinTabQueueItem, removeSpinTabQueueItemByName,
     appendSpinTabQueue,
     spinTabResults, removeSpinTabResult, appendSpinTabResult,
     spinTabStarredItems,
@@ -144,9 +144,9 @@ export function SpinTab() {
     ctx.beginPath(); ctx.arc(cx, cx, 16, 0, Math.PI * 2);
     ctx.fillStyle = colBgSurface; ctx.fill();
     ctx.strokeStyle = colBorderMid; ctx.lineWidth = 2; ctx.stroke();
-  }, [wheelItems, items.length]);
+  }, [items]);
 
-  useEffect(() => { drawWheel(angleRef.current); }, [wheelItems, drawWheel, wheelSize]);
+  useEffect(() => { drawWheel(angleRef.current); }, [items, drawWheel, wheelSize]);
 
   // Broadcast on SpinTab's own isolated live-wheel field — never touches Maps tab's spinState.
   const broadcastSpinState = useCallback(async (state: SpinState | null) => {
@@ -263,12 +263,11 @@ export function SpinTab() {
   };
 
   // Delete-by-name variant for the spun-result modal (removes first matching pool entry)
+  // Works like MapsTab's handleRemoveMap — removes by name, not index
   const handleDeleteSpunItem = async (item: string) => {
     if (busy) return;
-    const idx = items.indexOf(item);
-    if (idx === -1) return;
     setBusy(true);
-    try { await removeSpinTabQueueItem(idx); } finally { setBusy(false); }
+    try { await removeSpinTabQueueItemByName(item); } finally { setBusy(false); }
   };
 
   const handleRemoveResult = async (idx: number) => {

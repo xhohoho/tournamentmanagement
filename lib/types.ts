@@ -329,6 +329,7 @@ export interface TourneyContext {
   clearSpinTab: () => Promise<void>;
   appendSpinTabQueue: (item: string) => Promise<void>;
   removeSpinTabQueueItem: (idx: number) => Promise<void>;
+  removeSpinTabQueueItemByName: (name: string) => Promise<void>;
   appendSpinTabResult: (item: string) => Promise<void>;
   removeSpinTabResult: (idx: number) => Promise<void>;
   updateSpinTabState: (state: SpinState | null) => Promise<void>;
